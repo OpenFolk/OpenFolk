@@ -119,7 +119,8 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   Anthropics Warnung davor), dann den API-Schlüssel bis zum Reset, höchstens bis zu einem Tagesbudget in US-Dollar.
   Den Zug, den das Limit abgebrochen hat, startet die Sitzung mit dem Schlüssel neu.
 - Optional: ein Host für das Relay mit HTTPS, für das Handy von überall und mehrere Rechner. Ohne läuft das Relay
-  im Backend.
+  im Backend. Das Relay allein passt auf den kleinsten VPS; mit einem Backend im Container daneben mindestens 2 GB
+  Arbeitsspeicher und 10 GB Platte (`docs/running.md`, „Server size“).
 - Optional: Python 3 für die Spracherkennung; Android Studio bzw. Xcode für die Mobile-Apps
   (`mobile/README.md`, englisch, auch zur Einrichtung von APNs und FCM).
 
@@ -205,7 +206,9 @@ Das erste Gerät braucht kein Terminal: Das Backend schreibt bei jedem Start ein
 solange der Hauptzugang kein Gerät hat. Das Relay sieht den Code nie. Claude meldet sich mit einem
 Anthropic-API-Schlüssel direkt in den ersten Schritten an, oder mit Abo über
 `docker compose -f docker-compose.server.yml exec -u node local claude`; `… exec -u node local npm run pair` liefert
-weiterhin einen Pairing-Link.
+weiterhin einen Pairing-Link. In Coolify stattdessen `docker-compose.coolify.yml` nehmen (fertige Images, kein
+Host-Port, den Setup-Code erzeugt Coolify): dem Dienst `relay` die Domain mit Port 8787 geben und `APP_URL` auf
+dieselbe Adresse ohne Port setzen.
 
 **Backend als Container (Linux):** ein Rechner, der nie schläft, etwa auf dem Server neben dem Relay. Bots können
 dort wohnen und arbeiten rund um die Uhr, ihre Routinen laufen, ohne einen PC zu wecken.

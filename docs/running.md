@@ -50,10 +50,9 @@ That is right for the setups below; with a CDN in front of the proxy set `TRUST_
   `docker compose up -d --build` builds from the checkout.
 - **Coolify:** add a new resource of the type *Docker Image* `ghcr.io/openfolk/openfolk:latest`, port `8787`, your
   domain, a persistent storage at `/data` and the variables you want; the setup code is in the application's log.
-  Alternatively *Public/Private Repository* with build pack *Docker Compose* (Coolify asks for the required
-  variables itself; `docker-compose.server.yml` for relay and backend together, see below) or *Dockerfile* with
-  `/relay/Dockerfile` and base directory `/`. Coolify's proxy handles HTTPS and WebSockets; `TRUST_PROXY` can
-  stay empty.
+  Alternatively *Public/Private Repository* with build pack *Docker Compose* (`docker-compose.coolify.yml` for
+  relay and backend together, see below) or *Dockerfile* with `/relay/Dockerfile` and base directory `/`. Coolify's
+  proxy handles HTTPS and WebSockets; `TRUST_PROXY` can stay empty.
 - **Home server:** Unraid users add `deploy/unraid/openfolk-relay.xml` as a template (Docker, Add Container); Portainer
   and similar take `docker-compose.yml` or `docker-compose.server.yml` straight from this repository as a stack.
 - **Own build:** `docker build -f relay/Dockerfile -t openfolk-relay .` from the repository root. The image
@@ -85,13 +84,19 @@ npm run restart                         # same, but returns only once the backen
 **Relay and backend on one server:** `docker-compose.server.yml` starts both, the backend talking to the relay
 inside the Docker network. Two values in a `.env` next to it are required: `APP_URL`, the public HTTPS address of
 the relay (pairing links carry it), and `RELAY_SETUP_CODE`, any 10 or more letters and digits
-(`openssl rand -hex 8`); the backend claims the fresh relay with it on its first connection. In Coolify use the
-build pack *Docker Compose* with this file, give the `relay` service your domain and port `8787`.
+(`openssl rand -hex 8`); the backend claims the fresh relay with it on its first connection.
 
 ```sh
 docker compose -f docker-compose.server.yml up -d
 docker compose -f docker-compose.server.yml logs local                         # the code for the first device
 ```
+
+In Coolify take `docker-compose.coolify.yml` instead, with the build pack *Docker Compose* or pasted into an
+*Empty Docker Compose*: it pulls the prebuilt images rather than building both on the server, publishes no host
+port and has Coolify generate the setup code. Give the `relay` service your domain with port 8787
+(`https://bots.example.com:8787`) and set `APP_URL` to the same address without the port. Coolify hands every
+variable of the resource to both containers, so engine keys set there reach the relay too; enter them in the app's
+first steps or in the terminal of `local` instead.
 
 The first device needs no terminal: the backend prints a code to its log on every start, and the relay's sign-in
 page offers "Code from the server log" while the main account has no device. The page sends only its key; the backend
@@ -103,6 +108,14 @@ run pair` makes a pairing link as before.
 The backend part works as described in the next paragraph. PCs that should join set `RELAY_URL` to the relay's
 public address and copy `E2E_KEY`, `AGENT_TOKEN` and `PUSH_VAPID_*` from the container
 (`docker compose -f docker-compose.server.yml exec -u node local npm run env -- --print` shows the lines).
+
+**Server size:** the relay alone needs about 30 MB of memory while idle and under 200 MB at its peak, next to no
+CPU and under 200 MB of disk; it fits next to anything on the smallest VPS. A backend in a container idles at about
+200 MB of memory and next to no CPU. The models compute at their providers, so CPU load comes only from what the
+bots run themselves (installs, builds, tests). Every bot at work adds an engine process; plan with a few hundred MB
+for each bot working at the same time (an estimate, not a measurement). For relay and backend together take at least
+2 GB of memory, 4 GB for several bots at once, one or two cores and about 10 GB of disk: the backend image is about
+1.9 GB, an update briefly keeps a second one, and the bots' repositories in `/work` grow with use.
 
 **Backend as a container (Linux):** a machine that never sleeps, e.g. on the server that also hosts the relay.
 Bots that live on it work around the clock, and their routines run without waking a PC.

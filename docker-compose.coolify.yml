@@ -1,0 +1,57 @@
+# Relay and backend on one server, for Coolify: a resource with the build pack "Docker Compose" and this file, or
+# "Empty Docker Compose" with its contents pasted in.
+# Unlike docker-compose.server.yml it pulls the prebuilt images instead of building them on the server, publishes no
+# host port (Coolify's proxy reaches the relay over the Docker network) and lets Coolify generate the setup code.
+#
+# In Coolify:
+#   - give the service "relay" your domain with the port, e.g. https://bots.example.com:8787
+#   - set APP_URL to the same address without the port, e.g. https://bots.example.com
+#   - deploy; the log of "local" shows the code for the first device, the relay's sign-in page takes it
+#   - Claude: an API key in the first steps, or the terminal of "local" as user node: claude
+#
+# Coolify hands every variable of the resource to both containers. Engine keys and tokens set there reach the relay
+# as well; enter them in the app's first steps or in the terminal of "local" instead.
+# Optional: WORK_DIR, the host folder for the bots' folders (default ./work, which Coolify places under
+# /data/coolify/applications/<resource>/work); MACHINE_NAME (default cloud); OPENFOLK_RELAY_IMAGE and
+# OPENFOLK_LOCAL_IMAGE for a fixed version such as ghcr.io/openfolk/openfolk:0.1.2.
+services:
+  relay:
+    image: ${OPENFOLK_RELAY_IMAGE:-ghcr.io/openfolk/openfolk:latest}
+    restart: unless-stopped
+    expose:
+      - "8787"
+    environment:
+      RELAY_SETUP_CODE: ${SERVICE_PASSWORD_SETUPCODE}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      TOTP_SECRET: ${TOTP_SECRET:-}
+      APNS_KEY: ${APNS_KEY:-}
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_TOPIC: ${APNS_TOPIC:-}
+      APNS_ENV: ${APNS_ENV:-}
+      FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
+    volumes:
+      - relay-data:/data
+
+  local:
+    image: ${OPENFOLK_LOCAL_IMAGE:-ghcr.io/openfolk/openfolk-local:latest}
+    restart: unless-stopped
+    depends_on:
+      - relay
+    environment:
+      RELAY_URL: ws://relay:8787/ws/agent
+      RELAY_SETUP_CODE: ${SERVICE_PASSWORD_SETUPCODE}
+      APP_URL: ${APP_URL:?set APP_URL to the public https address of the relay}
+      MACHINE_NAME: ${MACHINE_NAME:-cloud}
+      DATA_DIR: /data
+      ALLOWED_ROOTS: /work
+      AUTOLOGON_METHOD: none
+    volumes:
+      - local-home:/home/node
+      - local-data:/data
+      - ${WORK_DIR:-./work}:/work
+
+volumes:
+  relay-data:
+  local-home:
+  local-data:

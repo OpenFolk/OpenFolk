@@ -5,6 +5,10 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+### Added
+- `docker-compose.coolify.yml` runs relay and backend in Coolify from the prebuilt images, without a host port and
+  with a setup code that Coolify generates; `docker-compose.server.yml` built both images on the server there.
+
 ## [0.1.2] - 2026-10-20
 
 ### Fixed

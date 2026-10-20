@@ -173,7 +173,9 @@ check incoming frames with Zod (`local/src/frames.ts`) and answer malformed ones
   environment are never passed to it). An engine appears in the model list once its login is present; restart the
   backend afterwards. The Codex, Copilot and OpenCode CLIs come as optional npm dependencies (about 750 MB); `npm install --omit=optional` leaves them out for Claude-only use.
 - Optional: a host for the relay with HTTPS (any Docker host, e.g. Coolify, Fly, a VPS behind a reverse proxy),
-  for your phone from anywhere and for several machines. Without one the relay runs inside the backend.
+  for your phone from anywhere and for several machines. Without one the relay runs inside the backend. The relay
+  alone fits on the smallest VPS; with a backend in a container next to it take at least 2 GB of memory and 10 GB
+  of disk (`docs/running.md`, "Server size").
 - Optional for transcribing voice messages: Python 3.9 or newer; the app's settings set up the rest.
 - Optional for the mobile apps: Android Studio and/or Xcode, see `mobile/README.md`.
 
@@ -230,8 +232,8 @@ and the page follows it, signed in there; or in the terminal with `npm run claim
 that relay with the link from "Add machine" ("Connect this computer to my server") and, on Windows, runs its backend
 without signing in ("Run without signing in" in the tray menu). Backends from a checkout start with their machine (a
 scheduled task on Windows) or run as a container that never sleeps (`ghcr.io/openfolk/openfolk-local`);
-`docker-compose.server.yml` puts relay and backend on one server, and its first device signs in with the code the
-backend prints to its log. Waking (Wake-on-LAN, your own command, a wake service) is set on the relay, shutting down
+`docker-compose.server.yml` puts relay and backend on one server (`docker-compose.coolify.yml` in Coolify), and its
+first device signs in with the code the backend prints to its log. Waking (Wake-on-LAN, your own command, a wake service) is set on the relay, shutting down
 and restarting on each backend.
 
 All of it, step by step: [docs/running.md](docs/running.md).
