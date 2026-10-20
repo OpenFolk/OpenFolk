@@ -1,6 +1,6 @@
 # OpenFolk
 
-[![CI](https://github.com/OpenFolk/OpenFolk/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenFolk/OpenFolk/actions/workflows/ci.yml)
+[![CI](https://github.com/OpenFolk/OpenFolk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OpenFolk/OpenFolk/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A messenger-style web app (phone first) for running several AI coding agents on your own computers.
