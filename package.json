@@ -2,7 +2,7 @@
   "name": "openfolk",
   "private": true,
   "license": "MIT",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Messenger-style web app for running AI coding agents (Claude Code, Codex, ACP) on your own machines",
   "homepage": "https://github.com/OpenFolk/OpenFolk#readme",
   "repository": { "type": "git", "url": "git+https://github.com/OpenFolk/OpenFolk.git" },

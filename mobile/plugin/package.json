@@ -1,6 +1,6 @@
 {
   "name": "openfolk-native",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "license": "MIT",
   "description": "OpenFolk's own Capacitor plugin: end-to-end key in the iOS Keychain / Android Keystore, number on the app icon",

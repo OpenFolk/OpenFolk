@@ -5,22 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
-### Added
-- The sign-in step of the first steps opens a terminal with Claude Code on the machine (the desktop apps bring Claude
-  Code without a `claude` on the PATH) and takes an Anthropic API key instead of a subscription.
-- Moving to a relay on a server from the app: the first steps and the settings claim it with the setup code from its
-  log; the backend moves over without a restart and the page follows, signed in there.
-- Desktop app: "Connect this computer to my server" on the setup page joins the computer with the link from "Add
-  machine"; on Windows, "Run without signing in" runs its backend from system start through a scheduled task.
-- A backend in a container prints a code for the main account's first device to its log; the sign-in page takes it
-  ("Code from the server log") while there is no device, so the first device needs no `docker exec`.
+## [0.1.1] - 2026-10-20
 
-### Changed
-- A new installation starts with no AI provider switched on: the first steps ask which ones you use, and only those
-  start. Existing machines keep all of them. A machine may now have every provider switched off.
-- Notifications, devices and security, and accounts are blocks of the settings page instead of pages of their own.
-- Reaching the phone through Tailscale Serve without a server is no longer offered; the phone needs a relay on a
-  server. Tailscale still keeps the backend's connection to such a relay off the internet (`docs/tailscale.md`).
+### Fixed
+- macOS: the desktop app is signed and notarized; 0.1.0 shipped without a Mac package. electron-builder 26.17.0
+  unlocks its temporary keychain with the right password, and the licence moved into the app's resources.
+- A machine whose host name is longer than 32 characters (common on Macs) was refused by the relay and never
+  connected; the name is cut to fit.
+- Windows: a bot whose folder lies behind a short (8.3) name, a junction or a link was not recognised as working
+  inside its repo, so pulling all repos could pull under it.
+- The settings of a machine closed again when a message from the backend arrived right after opening them.
 
 ## [0.1.0] - 2026-10-20
 
@@ -71,6 +65,21 @@ Docker runs.
   system.
 - `npm install --omit=optional` leaves out Codex and Copilot (about 600 MB).
 - `PROTOCOL_VERSION`: web app and backends report what they speak and say which side needs an update.
+- The sign-in step of the first steps opens a terminal with Claude Code on the machine (the desktop apps bring Claude
+  Code without a `claude` on the PATH) and takes an Anthropic API key instead of a subscription.
+- Moving to a relay on a server from the app: the first steps and the settings claim it with the setup code from its
+  log; the backend moves over without a restart and the page follows, signed in there.
+- Desktop app: "Connect this computer to my server" on the setup page joins the computer with the link from "Add
+  machine"; on Windows, "Run without signing in" runs its backend from system start through a scheduled task.
+- A backend in a container prints a code for the main account's first device to its log; the sign-in page takes it
+  ("Code from the server log") while there is no device, so the first device needs no `docker exec`.
+
+### Changed
+- A new installation starts with no AI provider switched on: the first steps ask which ones you use, and only those
+  start. Existing machines keep all of them. A machine may now have every provider switched off.
+- Notifications, devices and security, and accounts are blocks of the settings page instead of pages of their own.
+- Reaching the phone through Tailscale Serve without a server is no longer offered; the phone needs a relay on a
+  server. Tailscale still keeps the backend's connection to such a relay off the internet (`docs/tailscale.md`).
 
 ### Security
 - The relay stores no messages and holds no model credentials. End-to-end encryption between devices and backends
@@ -97,5 +106,6 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/OpenFolk/OpenFolk/releases/tag/v0.1.0

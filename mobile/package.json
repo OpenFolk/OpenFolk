@@ -3,7 +3,7 @@
   "productName": "OpenFolk",
   "private": true,
   "license": "MIT",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenFolk as iOS and Android app: Capacitor around the web app, with native push, Keychain/Keystore and share sheet",
   "type": "module",
   "scripts": {
