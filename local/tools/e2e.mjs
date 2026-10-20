@@ -154,7 +154,7 @@ ${parts.join('\n')}
     // Open in the default browser; then delete the file after 15 minutes in a process of its own
     const opener = process.platform === 'win32' ? ['cmd.exe', ['/c', 'start', '', file]] : [process.platform === 'darwin' ? 'open' : 'xdg-open', [file]];
     spawn(opener[0], opener[1], { detached: true, stdio: 'ignore' }).unref();
-    spawn(process.execPath, ['-e', `setTimeout(() => { try { require('fs').rmSync(${JSON.stringify(file)}, { force: true }); } catch {} }, 15 * 60 * 1000)`],
+    spawn(process.execPath, ['-e', "setTimeout(() => { try { require('fs').rmSync(process.argv[1], { force: true }); } catch {} }, 15 * 60 * 1000)", file],
         { detached: true, stdio: 'ignore', windowsHide: true }).unref();
     console.log('Pairing page opened in the browser (deleted after 15 minutes).');
 } else if (command === 'link') {
