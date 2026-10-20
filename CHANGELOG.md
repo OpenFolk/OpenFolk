@@ -8,6 +8,8 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 ### Security
 - The relay keeps passwords (`USER_PASSWORD`, the claimed password, the passwords of further accounts) as salted
   scrypt hashes instead of SHA-256. Existing hashes keep working and are replaced on the next sign-in with the password.
+- The web app no longer lets a chat or machine id like `__proto__` from a frame reach `Object.prototype`, and answers
+  to name suggestions only call the suggestion buttons it knows.
 
 ## [0.1.1] - 2026-10-20
 

@@ -105,6 +105,7 @@ export const startParams = (() => {
     return params;
 })();
 
+// Maps two levels deep keyed by ids from frames have no prototype: an id '__proto__' must not reach Object.prototype
 export const state = {
     ws: null, signedIn: false, agentOnline: false,
     pairToken: startParams.get('pair') || '',  // one-time token of a pairing link, used instead of the password once
@@ -113,7 +114,7 @@ export const state = {
     online: [],              // machines that are awake (backends at the relay)
     onlineKnown: false,      // "online" is reliable only after the relay's machine list (per connection)
     pinned: {},              // chatId -> pinned messages [{ id, text, ts, from }]
-    perMachine: {},          // machine -> { states, activity, activeChats, queues } according to its backend
+    perMachine: Object.create(null), // machine -> { states, activity, activeChats, queues } according to its backend
     pushKeys: {},            // machine -> public VAPID key
     pushChannels: {},        // machine -> push channels its backend can send to ('web', 'apns', 'fcm')
     pushSettings: null,      // { kinds: { done: 'normal', … }, updatedAt } for all devices
@@ -138,12 +139,12 @@ export const state = {
     lastTs: {},              // chatId -> time of the last message (sorting and time in the overview)
     incoming: {},            // chatId -> time of the last incoming message (bot, job from a bot)
     context: {},             // session key (bot id or conversation chatId) -> tokens in context
-    backgroundPerMachine: {}, // machine -> { session key -> [{ id, description }] } running background tasks
+    backgroundPerMachine: Object.create(null), // machine -> { session key -> [{ id, description }] } running background tasks
     gitPerMachine: {},       // machine -> { bot id -> open repos } for the bots running there (git_status)
     backendPerMachine: {},   // machine -> { since, changed, requested } according to its backend (backend_status)
     setupPerMachine: {},     // machine -> { relay, container, engines } for the first steps (setup_status)
     engineLogin: {},         // 'machine:engine' -> { state, url, code, message } of a sign-in with a device code
-    live: {},                // chatId -> { botId -> { wrap, bubble, content, text, tools: Map, rows: Map, timer } }
+    live: Object.create(null), // chatId -> { botId -> { wrap, bubble, content, text, tools: Map, rows: Map, timer } }
     editorBot: null, editorAvatar: '', editorRemote: '', // origin of the edited bot's folder, offered for cloning
     groupEditorGroup: null, groupAvatarData: '',
     infoBot: null, infoChat: null, routineEdit: null,

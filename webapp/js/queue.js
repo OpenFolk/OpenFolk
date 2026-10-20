@@ -359,7 +359,7 @@ export function showEvent(text, error = false, chatId = null) {
 // ---------------------------------------------------------------- Running answers
 
 export function getLive(chatId, botId) {
-    const chat = (state.live[chatId] = state.live[chatId] || {});
+    const chat = (state.live[chatId] = state.live[chatId] || Object.create(null));
     if (!chat[botId]) chat[botId] = { wrap: null, bubble: null, content: null, text: '', tools: new Map(), rows: new Map(), timer: null };
     return chat[botId];
 }

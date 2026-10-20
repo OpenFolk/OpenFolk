@@ -365,7 +365,7 @@ export function requestSuggestion(what) {
 }
 
 export async function receiveSuggestion(f) {
-    const button = suggestButton[f.what] && suggestButton[f.what]();
+    const button = Object.hasOwn(suggestButton, f.what) && suggestButton[f.what]();
     if (button) { button.disabled = false; button.textContent = button.dataset.label || button.textContent; }
     if (el.editor.hidden) return;
     if (f.error || !f.result) { showEditorError(f.error || t('editor.noSuggestion')); return; }

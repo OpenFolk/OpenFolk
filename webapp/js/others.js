@@ -42,7 +42,7 @@ export function connectOthers() {
         if (a.id === loadedAccount || others.has(a.id)) continue;
         /** @type {Other} */
         const o = {
-            account: a, ws: null, channel: newChannel(), bots: [], groups: [], perMachine: {}, approvals: {}, last: {}, lastTs: {}, incoming: {},
+            account: a, ws: null, channel: newChannel(), bots: [], groups: [], perMachine: Object.create(null), approvals: {}, last: {}, lastTs: {}, incoming: {},
             seen: storedSeen(a.id), online: [], retry: null,
         };
         others.set(a.id, o);
