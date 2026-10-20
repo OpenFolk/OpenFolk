@@ -45,7 +45,8 @@ threw = '';
 try { void new Owner(tmp(), CLIENT, 'short-agent'); } catch (e) { threw = (e as Error).message; }
 check('agent token under 16 characters: refused at start', threw.includes('AGENT_TOKEN'), threw);
 const fromEnv = new Owner(tmp(), CLIENT, AGENT);
-check('tokens from the environment: only hashes kept', fromEnv.credentials?.clientHash === hashToken(CLIENT) && fromEnv.credentials?.agentHash === hashToken(AGENT) && !fromEnv.setupCode);
+check('tokens from the environment: only hashes kept, the password salted', fromEnv.credentials?.clientHash.startsWith('scrypt$') === true && fromEnv.passwordMatches(CLIENT)
+    && !fromEnv.passwordMatches('wrong-password-0123') && fromEnv.credentials?.agentHash === hashToken(AGENT) && !fromEnv.setupCode);
 
 const ownerDir = tmp();
 const unclaimed = new Owner(ownerDir, '', '', 'abcde-fghjk');
@@ -54,9 +55,20 @@ check('claim with a wrong code', unclaimed.claim('ZZZZZ-ZZZZZ', CLIENT, AGENT) =
 check('claim with a short token', unclaimed.claim('ABCDE-FGHJK', 'short', AGENT) === 'invalid');
 check('claim with the code in other spelling', unclaimed.claim('abcde fghjk', CLIENT, AGENT) === 'ok');
 const stored = JSON.parse(fs.readFileSync(path.join(ownerDir, OWNER_FILE), 'utf8')) as Record<string, string>;
-check('owner.json holds hashes, never the tokens', stored.clientHash === hashToken(CLIENT) && !JSON.stringify(stored).includes(CLIENT) && !JSON.stringify(stored).includes(AGENT));
+check('owner.json holds hashes, never the tokens', stored.clientHash.startsWith('scrypt$') && stored.agentHash === hashToken(AGENT) && !JSON.stringify(stored).includes(CLIENT) && !JSON.stringify(stored).includes(AGENT));
 check('a second claim is refused', unclaimed.claim('abcde fghjk', 'other-client-token-xyz', AGENT) === 'already_claimed');
-check('after a restart the relay is still claimed', new Owner(ownerDir).credentials?.agentHash === hashToken(AGENT));
+check('after a restart the relay is still claimed', new Owner(ownerDir).credentials?.agentHash === hashToken(AGENT) && new Owner(ownerDir).passwordMatches(CLIENT));
+
+// A relay claimed before scrypt keeps working; the first sign-in replaces its SHA-256 hash of the password
+const oldDir = tmp();
+fs.writeFileSync(path.join(oldDir, OWNER_FILE), JSON.stringify({ clientHash: hashToken(CLIENT), agentHash: hashToken(AGENT), claimedAt: '2026-01-01T00:00:00.000Z' }));
+const old = new Owner(oldDir);
+check('old owner.json: wrong password refused, hash kept', old.credentials !== null && !old.passwordMatches('wrong-password-0123')
+    && JSON.parse(fs.readFileSync(path.join(oldDir, OWNER_FILE), 'utf8')).clientHash === hashToken(CLIENT));
+check('old owner.json: right password signs in', old.passwordMatches(CLIENT));
+const upgraded = JSON.parse(fs.readFileSync(path.join(oldDir, OWNER_FILE), 'utf8')) as Record<string, string>;
+check('old owner.json: rewritten with scrypt, the rest kept', upgraded.clientHash.startsWith('scrypt$') && upgraded.agentHash === hashToken(AGENT)
+    && upgraded.claimedAt === '2026-01-01T00:00:00.000Z' && new Owner(oldDir).passwordMatches(CLIENT));
 
 // ---- a relay with tokens, in this process
 const owned = await startRelay({ port: 0, host: '127.0.0.1', clientToken: CLIENT, agentToken: AGENT, dataDir: tmp(), wake: wakeOff, log: quiet });

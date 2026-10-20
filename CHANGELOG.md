@@ -5,6 +5,10 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+### Security
+- The relay keeps passwords (`USER_PASSWORD`, the claimed password, the passwords of further accounts) as salted
+  scrypt hashes instead of SHA-256. Existing hashes keep working and are replaced on the next sign-in with the password.
+
 ## [0.1.1] - 2026-10-20
 
 ### Fixed

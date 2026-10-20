@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
-import { Accounts } from './accounts.ts';
+import { hashToken } from './auth.ts';
+import { ACCOUNTS_FILE, Accounts } from './accounts.ts';
 import { startRelay } from './relay.ts';
 import { parseWakeConfig } from './wakeup.ts';
 
@@ -30,6 +31,13 @@ check('short password refused', store.update('kunde-mueller', { password: 'short
 check('password set and checked', store.update('kunde-mueller', { password: 'a-long-enough-password' }) === 'ok'
     && store.passwordMatches('kunde-mueller', 'a-long-enough-password') && !store.passwordMatches('kunde-mueller', 'wrong-password-xyz'));
 check('main has no password here (it is the relay\'s)', store.update('main', { password: 'a-long-enough-password' }) === 'invalid' && !store.passwordMatches('main', 'a-long-enough-password'));
+const legacyDir = tmp();
+fs.writeFileSync(path.join(legacyDir, ACCOUNTS_FILE), JSON.stringify({ accounts: [{ id: 'alt', name: 'Alt', admin: false, created: '', hash: hashToken('an-old-sha256-password') }] }));
+const legacy = new Accounts(legacyDir);
+const storedHash = () => (JSON.parse(fs.readFileSync(path.join(legacyDir, ACCOUNTS_FILE), 'utf8')) as { accounts: { id: string; hash?: string }[] }).accounts.find((a) => a.id === 'alt')?.hash ?? '';
+check('password from before scrypt: wrong one refused, hash kept', !legacy.passwordMatches('alt', 'wrong-password-xyz') && storedHash() === hashToken('an-old-sha256-password'));
+check('password from before scrypt: signs in, rewritten with scrypt', legacy.passwordMatches('alt', 'an-old-sha256-password') && storedHash().startsWith('scrypt$')
+    && new Accounts(legacyDir).passwordMatches('alt', 'an-old-sha256-password'));
 check('main cannot be deleted', !store.remove('main'));
 check('deleted account leaves a tombstone', store.remove('kunde-mueller') && store.deletedIds().includes('kunde-mueller') && !store.get('kunde-mueller'));
 const again = store.create('Kunde Müller');

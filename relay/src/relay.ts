@@ -588,7 +588,7 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
             const ua = String(req.headers['user-agent'] ?? '');
             wss.handleUpgrade(req, socket, head, (ws) => {
                 wss.emit('connection', ws, req);
-                clientLogin(ws, ip, ua, signedIn, c);
+                clientLogin(ws, ip, ua, signedIn);
             });
             return;
         }
@@ -604,7 +604,7 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
      * the password of an account ('main' without `account`). After a pairing or password login the relay issues a
      * device key; the browser stores only that. TOTP_SECRET is the owner's second factor and guards 'main' only.
      */
-    function clientLogin(ws: WebSocket, ip: string, ua: string, signedIn: () => void, c: Credentials): void {
+    function clientLogin(ws: WebSocket, ip: string, ua: string, signedIn: () => void): void {
         const timer = setTimeout(() => ws.close(4001, 'Login timed out'), 10_000);
         const reject = (code: MessageCode, message: string, extra: AuthReply = {}, countsAsFailure = true) => {
             if (countsAsFailure) recordFailure(ip);
@@ -707,7 +707,7 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 return;
             }
             const password = f.type === 'auth' && typeof f.token === 'string' ? f.token : '';
-            const passwordOk = !!account && !!password && (account === MAIN ? tokenMatches(c.clientHash, password) : accounts.passwordMatches(account, password));
+            const passwordOk = !!account && !!password && (account === MAIN ? owner.passwordMatches(password) : accounts.passwordMatches(account, password));
             const totpOk = !needsCode || totpVerifyOnce(totp.secret, String(f.totp ?? ''));
             if (!account || !passwordOk || !totpOk) {
                 reject('wrong_password', needsCode ? 'Wrong password or code.' : 'Wrong password.', { totp: needsCode });

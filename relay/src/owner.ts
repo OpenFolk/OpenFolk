@@ -1,4 +1,4 @@
-// Who the relay belongs to: the password of the web app and the token of the backends, kept only as SHA-256 hashes.
+// Who the relay belongs to: the password of the web app and the token of the backends, kept only as hashes.
 // They come from the environment (USER_PASSWORD, AGENT_TOKEN) or from a claim: a relay started without them waits,
 // prints a setup code to its log, and the first backend that sends that code together with its own two tokens
 // (npm run claim) owns it. The code is in the log only, so only whoever runs the relay can hand it on.
@@ -6,7 +6,7 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { hashToken, tokenEquals, tokenMatches } from './auth.ts';
+import { checkPassword, hashPassword, hashToken, isLegacyHash, PASSWORD_HASH, tokenEquals, tokenMatches } from './auth.ts';
 
 export interface Credentials {
     clientHash: string;
@@ -60,7 +60,7 @@ export class Owner {
                 this.warning = `USER_PASSWORD has fewer than ${MIN_TOKEN_LENGTH} characters; choose a longer one (pairing links make it rarely needed).`;
             }
             if (agentToken.length < MIN_TOKEN_LENGTH) throw new Error(`AGENT_TOKEN needs at least ${MIN_TOKEN_LENGTH} characters.`);
-            this.credentials = { clientHash: hashToken(clientToken), agentHash: hashToken(agentToken) };
+            this.credentials = { clientHash: hashPassword(clientToken), agentHash: hashToken(agentToken) };
             return;
         }
         this.credentials = this.load();
@@ -72,8 +72,7 @@ export class Owner {
     private load(): Credentials | null {
         try {
             const v = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<Credentials>;
-            const hex = /^[0-9a-f]{64}$/;
-            return typeof v.clientHash === 'string' && hex.test(v.clientHash) && typeof v.agentHash === 'string' && hex.test(v.agentHash)
+            return typeof v.clientHash === 'string' && PASSWORD_HASH.test(v.clientHash) && typeof v.agentHash === 'string' && /^[0-9a-f]{64}$/.test(v.agentHash)
                 ? { clientHash: v.clientHash, agentHash: v.agentHash } : null;
         } catch {
             return null;
@@ -84,12 +83,31 @@ export class Owner {
         if (this.credentials) return 'already_claimed';
         if (!tokenEquals(normalizeCode(code), normalizeCode(this.setupCode))) return 'wrong_code';
         if (!validToken(clientToken) || !validToken(agentToken)) return 'invalid';
-        const credentials = { clientHash: hashToken(clientToken), agentHash: hashToken(agentToken) };
-        fs.mkdirSync(path.dirname(this.file), { recursive: true });
-        fs.writeFileSync(this.file, JSON.stringify({ ...credentials, claimedAt: new Date().toISOString() }, null, 2), { mode: 0o600 });
+        const credentials = { clientHash: hashPassword(clientToken), agentHash: hashToken(agentToken) };
+        this.save({ ...credentials, claimedAt: new Date().toISOString() });
         this.credentials = credentials;
         this.setupCode = '';
         return 'ok';
+    }
+
+    /** The web app's password; a claim's SHA-256 hash from before scrypt is replaced by the first sign-in with it. */
+    passwordMatches(raw: string): boolean {
+        const c = this.credentials;
+        if (!c || !checkPassword(c.clientHash, raw)) return false;
+        if (isLegacyHash(c.clientHash)) {
+            c.clientHash = hashPassword(raw);
+            let stored: Record<string, unknown> = {};
+            try {
+                stored = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Record<string, unknown>;
+            } catch { /* rewritten below */ }
+            this.save({ ...stored, clientHash: c.clientHash });
+        }
+        return true;
+    }
+
+    private save(data: object): void {
+        fs.mkdirSync(path.dirname(this.file), { recursive: true });
+        fs.writeFileSync(this.file, JSON.stringify(data, null, 2), { mode: 0o600 });
     }
 }
 

@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 export function tokenEquals(a: string | undefined, b: string): boolean {
     if (!a || !b) return false;
@@ -7,7 +7,7 @@ export function tokenEquals(a: string | undefined, b: string): boolean {
     return ba.length === bb.length && timingSafeEqual(ba, bb);
 }
 
-/** The relay keeps passwords and agent tokens only as this hash, whether they came from the environment or a claim. */
+/** The relay keeps random tokens only as this hash; a password may be chosen by a person and gets hashPassword. */
 export function hashToken(raw: string): string {
     return createHash('sha256').update(raw).digest('hex');
 }
@@ -15,6 +15,30 @@ export function hashToken(raw: string): string {
 /** Whether `raw` is the token behind `hash`; false if either is empty. */
 export function tokenMatches(hash: string, raw: string | undefined): boolean {
     return !!hash && !!raw && tokenEquals(hashToken(raw), hash);
+}
+
+/**
+ * Passwords as `scrypt$<salt>$<hash>`: a person picks them, so a leaked data folder must not hand them to a dictionary
+ * attack the way an unsalted SHA-256 would.
+ */
+export function hashPassword(raw: string): string {
+    const salt = randomBytes(16);
+    return `scrypt$${salt.toString('base64url')}$${scryptSync(raw, salt, 32).toString('base64url')}`;
+}
+
+/** A hash from hashPassword, or a SHA-256 one from before it, which checkPassword still accepts. */
+export const PASSWORD_HASH = /^(?:[0-9a-f]{64}|scrypt\$[\w-]{22}\$[\w-]{43})$/;
+
+/** A password hash from before scrypt, to be replaced once a sign-in has proven the password. */
+export const isLegacyHash = (stored: string): boolean => !stored.startsWith('scrypt$');
+
+/** Whether `raw` is the password behind `stored`; false if either is empty. */
+export function checkPassword(stored: string, raw: string | undefined): boolean {
+    if (!stored || !raw) return false;
+    if (isLegacyHash(stored)) return tokenMatches(stored, raw);
+    const [, salt, hash] = stored.split('$');
+    const want = Buffer.from(hash ?? '', 'base64url');
+    return want.length === 32 && timingSafeEqual(scryptSync(raw, Buffer.from(salt ?? '', 'base64url'), 32), want);
 }
 
 /** Login throttle: after MAX failed attempts per IP, block for WINDOW milliseconds. */

@@ -1,14 +1,14 @@
 // Accounts on the relay: people or roles that share it, each with its own devices, bots and chats. The relay only
 // routes by account; the data of an account lives on the backends. 'main' is the owner: its password is the
 // relay's (USER_PASSWORD or the claim, owner.ts), and it is always an admin. Further accounts keep their password
-// here as a SHA-256 hash; their first device comes through a pairing link.
+// here as a scrypt hash; their first device comes through a pairing link.
 //
 // A deleted account leaves a tombstone, which the relay hands every backend on connect so a machine that was asleep
 // removes its data too. Its id is never given out again: a backend would take the new account's data for the old one.
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { hashToken, tokenMatches } from './auth.ts';
+import { checkPassword, hashPassword, isLegacyHash } from './auth.ts';
 import { MIN_TOKEN_LENGTH } from './owner.ts';
 import type { RelayAccount } from '../../shared/protocol.ts';
 
@@ -112,7 +112,7 @@ export class Accounts {
         if (change.password !== undefined) {
             // The owner's password belongs to the relay's setup (owner.ts), not to this file
             if (id === MAIN || change.password.length < MIN_TOKEN_LENGTH || change.password.length > 256) return 'invalid';
-            a.hash = hashToken(change.password);
+            a.hash = hashPassword(change.password);
         }
         if (change.admin !== undefined && id !== MAIN) a.admin = change.admin;
         this.save();
@@ -127,10 +127,18 @@ export class Accounts {
         return true;
     }
 
-    /** The password of an account other than 'main'; one without a password set cannot sign in with one. */
+    /**
+     * The password of an account other than 'main'; one without a password set cannot sign in with one. A SHA-256
+     * hash from before scrypt is replaced by the first sign-in that proves the password.
+     */
     passwordMatches(id: string, password: string): boolean {
-        const hash = this.list.find((x) => x.id === id)?.hash;
-        return !!hash && tokenMatches(hash, password);
+        const a = this.list.find((x) => x.id === id);
+        if (!a?.hash || !checkPassword(a.hash, password)) return false;
+        if (isLegacyHash(a.hash)) {
+            a.hash = hashPassword(password);
+            this.save();
+        }
+        return true;
     }
 }
 
