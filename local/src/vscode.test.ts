@@ -11,7 +11,8 @@ type HistoryPart = import('./vscode.ts').HistoryPart;
 let failures = 0;
 const check = (name: string, ok: boolean) => { console.log(`${ok ? 'ok    ' : 'FAILED'} ${name}`); if (!ok) failures++; };
 
-const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-project-'));
+// Resolved like the SDK's listSessions does; a temp folder under an 8.3 short name (CI runners) would differ
+const folder = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-project-')));
 const VS = { entrypoint: 'claude-vscode', promptSource: 'sdk', turnOrigin: 'human', cwd: folder };
 let n = 0;
 const ts = () => new Date(Date.UTC(2026, 9, 8, 10, 0, n++)).toISOString();

@@ -68,12 +68,27 @@ export function parseStatus(raw: string, max = MAX_FILES): Omit<GitRepo, 'name' 
     return repo;
 }
 
+/**
+ * The path as git reports it: Windows 8.3 short names, junctions and links resolved. Without this a bot folder given
+ * as C:\Users\RUNNER~1\… or through a junction never matches the repo root git names. A missing tail is kept as
+ * given below its deepest existing parent.
+ */
+function canonical(p: string): string {
+    const abs = path.resolve(p);
+    try {
+        return fs.realpathSync.native(abs);
+    } catch {
+        const parent = path.dirname(abs);
+        return parent === abs ? abs : path.join(canonical(parent), path.basename(abs));
+    }
+}
+
 /** Repos in the folder; `path` is relative to the folder ('' = the folder itself or the repo it lives in). */
 export async function findRepos(folder: string): Promise<{ root: string; name: string; path: string }[]> {
-    const base = path.resolve(folder);
+    const base = canonical(folder);
     if (!fs.existsSync(base)) throw new Error(t('git.folderMissing', { folder }));
     const roots: string[] = [];
-    const own = await git(base, ['rev-parse', '--show-toplevel']).then((o) => path.resolve(o.trim()), () => null);
+    const own = await git(base, ['rev-parse', '--show-toplevel']).then((o) => canonical(o.trim()), () => null);
     if (own) roots.push(own);
     for (const p of subRepos(base)) if (!roots.includes(p)) roots.push(p);
     return roots.map((root) => {
@@ -85,7 +100,7 @@ export async function findRepos(folder: string): Promise<{ root: string; name: s
 
 /** git and Node may spell the same Windows path with a different drive letter case or slashes. */
 function samePath(a: string, b: string): boolean {
-    const norm = (p: string) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
+    const norm = (p: string) => (process.platform === 'win32' ? canonical(p).toLowerCase() : canonical(p));
     return norm(a) === norm(b);
 }
 
@@ -119,8 +134,8 @@ function isInside(p: string, folder: string): boolean {
  * shortest folder there), otherwise the one with the deepest folder containing the repo.
  */
 export function owner(root: string, folders: { id: string; folder: string }[]): string | undefined {
-    const r = path.resolve(root);
-    const all = folders.map((o) => ({ id: o.id, f: path.resolve(o.folder) }));
+    const r = canonical(root);
+    const all = folders.map((o) => ({ id: o.id, f: canonical(o.folder) }));
     const inside = all.filter((o) => isInside(o.f, r)).sort((a, b) => a.f.length - b.f.length);
     if (inside.length) return inside[0].id;
     return all.filter((o) => isInside(r, o.f)).sort((a, b) => b.f.length - a.f.length)[0]?.id;
@@ -295,8 +310,8 @@ export async function pullRepos(bots: { id: string; folder: string }[], skip: (r
 
 /** Whether two folders overlap (one inside the other); a bot working in either may be disturbed by a pull. */
 export function overlaps(a: string, b: string): boolean {
-    const ra = path.resolve(a);
-    const rb = path.resolve(b);
+    const ra = canonical(a);
+    const rb = canonical(b);
     return isInside(ra, rb) || isInside(rb, ra);
 }
 

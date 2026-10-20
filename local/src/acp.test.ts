@@ -242,7 +242,7 @@ const job = async (run: InstanceType<typeof AcpRun>, text: string | Record<strin
         delete process.env.OPENCODE_BIN;
     }
     check(`OpenCode as ACP server${installed ? '' : ' (not installed, binary not checked)'}`, b.args.join(' ') === 'acp' && /opencode(\.exe)?$/.test(b.command) && (!installed || fs.existsSync(b.command)), b.command);
-    check('no API keys, secrets or foreign config for OpenCode', !b.env.GEMINI_API_KEY && !b.env.AWS_ACCESS_KEY_ID && !b.env.AGENT_TOKEN && !b.env.OPENCODE_CONFIG && b.env.OPENFOLK_KEEP === 'stays' && !!b.env.PATH);
+    check('no API keys, secrets or foreign config for OpenCode', !b.env.GEMINI_API_KEY && !b.env.AWS_ACCESS_KEY_ID && !b.env.AGENT_TOKEN && !b.env.OPENCODE_CONFIG && b.env.OPENFOLK_KEEP === 'stays' && !!(b.env.PATH ?? b.env.Path));
     const perm = JSON.parse(b.env.OPENCODE_CONFIG_CONTENT ?? '{}').permission ?? {};
     check('OpenCode asks before edits and commands', perm.edit === 'ask' && perm.bash === 'ask', perm);
     for (const k of ['GEMINI_API_KEY', 'AWS_ACCESS_KEY_ID', 'AGENT_TOKEN', 'OPENCODE_CONFIG', 'OPENFOLK_KEEP']) delete process.env[k];

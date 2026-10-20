@@ -39,7 +39,8 @@ process.env.OPENFOLK_CONTAINER = '1';
 check('container: nothing offered', handoverTargets().length === 0);
 delete process.env.OPENFOLK_CONTAINER;
 const signIn = signInCommand() ?? '';
-check('sign-in terminal: Claude Code in the home folder, nothing to resume', signIn.includes(home) && /claude/i.test(signIn) && !signIn.includes('--resume'), signIn);
+// Linux names no folder: openSignInTerminal runs the command in the home folder
+check('sign-in terminal: Claude Code in the home folder, nothing to resume', (signIn.includes(home) || process.platform === 'linux') &&/claude/i.test(signIn) && !signIn.includes('--resume'), signIn);
 process.env.HANDOVER_TERMINAL = 'my-term -- claude -r {session}';
 check('sign-in terminal: an own handover template does not change it', signInCommand() === signIn);
 delete process.env.HANDOVER_TERMINAL;

@@ -149,7 +149,7 @@ check('pull button: unknown repo rejected', message.includes('not found'), messa
 
 pushFromA('from a 6');
 let results = await pullRepos([{ id: 'x', folder: tmp }, { id: 'y', folder: other }], (root) => overlaps(path.join(other, 'src'), root));
-check('all repos: the one a working bot sits in stays', !results.some((r) => path.resolve(r.root) === path.resolve(other)) && head(other) === 'from a 5', results.map((r) => r.name));
+check('all repos: the one a working bot sits in stays', !results.some((r) => fs.realpathSync.native(r.root) === fs.realpathSync.native(other)) && head(other) === 'from a 5', results.map((r) => r.name));
 results = await pullRepos([{ id: 'x', folder: tmp }, { id: 'y', folder: other }]);
 check('all repos: each repo once, other pulled', results.filter((r) => r.name === 'other').length === 1 && head(other) === 'from a 6', results.map((r) => `${r.name}:${JSON.stringify(r.outcome)}`));
 check('overlaps: inside either way, not siblings', overlaps(path.join(w, 'a'), path.join(w, 'a', 'b')) && overlaps(path.join(w, 'a', 'b'), path.join(w, 'a')) && !overlaps(path.join(w, 'a'), path.join(w, 'ab')));

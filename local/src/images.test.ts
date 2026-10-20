@@ -1,4 +1,4 @@
-// The backend image pins the Claude Code CLI (for the sign-in) to the version the Agent SDK bundles; when Dependabot
+// The backend image pins the Claude Code CLI (for the sign-in) to the version the Agent SDK bundles; when an update
 // raises the SDK, this test fails until the ARG in local/Dockerfile follows.  node local/src/images.test.ts
 import fs from 'node:fs';
 import { createRequire } from 'node:module';

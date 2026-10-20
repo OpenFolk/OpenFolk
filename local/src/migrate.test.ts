@@ -62,7 +62,7 @@ write('neustart.schnell', '');
 write('notes/anna.md.migriert', '- old notes');
 write('sessions.json', { anna: 'abc' });
 write('vapid.json', { publicKey: 'p', privateKey: 'q' });
-write('e2e-key', 'k');
+write('e2e-key', Buffer.alloc(32, 7).toString('base64'));
 
 // ---------------------------------------------------------------- migrate
 const { migrateDataDir, dataVersion, migratePeerData, migrateSnapshot, DATA_VERSION } = await import('./migrate.ts');
