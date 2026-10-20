@@ -13,12 +13,10 @@ Browser bekommen automatisch Deutsch, umstellen lässt es sich in den Einstellun
 Neben dem Browser (als PWA installierbar) gibt es Desktop-Apps für Windows, Linux und macOS (Electron,
 `desktop/`) und Apps für iOS und Android (Capacitor, `mobile/`), alle um dieselbe Web-App herum.
 
-```
-App / Browser ──wss──▶ Relay (beliebiger Host, Docker) ◀──wss (ausgehend)── Lokales Backend (eigener Rechner)
-                         liefert die Web-App aus                               eine Session je Bot, Verlauf,
-                         prüft USER_PASSWORD / AGENT_TOKEN                     Routinen, Push, Freigaben
-                         reicht Frames nur durch
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="architecture-dark.svg">
+  <img src="architecture.svg" alt="Die drei Wege, OpenFolk zu betreiben: Relay und Backend auf dem eigenen PC, ein eigenes Relay auf einem Server mit dem Backend auf dem PC, oder beides auf einem Server. Geräte verbinden sich über das Relay mit dem Backend, das die KI-Engines mit deren eigener Anmeldung startet." width="940">
+</picture>
 
 Das Relay sieht keine Zugangsdaten zu den Modellen und speichert keine Nachrichten. Das Backend verbindet sich
 ausgehend, am Router wird nichts geöffnet. Die Ende-zu-Ende-Verschlüsselung ist ab dem ersten Start an, das Relay

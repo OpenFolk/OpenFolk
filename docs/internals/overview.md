@@ -1,5 +1,10 @@
 # Architecture
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../architecture-dark.svg">
+  <img src="../architecture.svg" alt="The three ways to run OpenFolk: relay and backend on your PC, a relay of your own on a server with the backend on your PC, or both on a server." width="940">
+</picture>
+
 Everything that matters happens on the user's machines. A backend (`local/`) owns the agent sessions, the history,
 the knowledge, the uploads, git and the approvals of the bots on that machine. The relay (`relay/`) connects
 browsers and apps with the backends and is deliberately dumb: it stores no messages, keeps no model credentials

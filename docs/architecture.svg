@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 940 600" width="940" height="600" font-family='-apple-system, "Segoe UI", Helvetica, Arial, sans-serif' role="img" aria-label="The three ways to run OpenFolk. Devices (phone, browser, desktop app for Windows, macOS and Linux) connect through the relay to the backend; the backend starts the AI engines Claude Code, Codex, Cursor, Copilot, Antigravity and OpenCode with their own subscription logins. Way 1: relay and backend on your PC. Way 2: a relay of your own on a server, the backend on your PC. Way 3: relay and backend together on a server.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#1d2622"/>
+    </marker>
+    <!-- Shared by ways 2 and 3: three devices and their arrows to the relay -->
+    <g id="devices">
+      <rect x="20" y="88" width="76" height="40" rx="6" fill="#ffffff"/>
+      <text x="58" y="113" stroke="none" text-anchor="middle" fill="#1d2622">Phone</text>
+      <rect x="112" y="88" width="76" height="40" rx="6" fill="#ffffff"/>
+      <text x="150" y="113" stroke="none" text-anchor="middle" fill="#1d2622">Browser</text>
+      <rect x="204" y="88" width="76" height="40" rx="6" fill="#ffffff"/>
+      <text x="242" y="106" stroke="none" text-anchor="middle" fill="#1d2622" font-size="11.5">Desktop app</text>
+      <text x="242" y="120" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="10">Win · Mac · Linux</text>
+      <line x1="58" y1="128" x2="104" y2="210" marker-end="url(#arrow)"/>
+      <line x1="150" y1="128" x2="150" y2="210" marker-end="url(#arrow)"/>
+      <line x1="242" y1="128" x2="196" y2="210" marker-end="url(#arrow)"/>
+      <text x="156" y="170" stroke="none" fill="#5f6b66" font-size="11">wss, E2E</text>
+    </g>
+  </defs>
+  <rect width="940" height="600" fill="#f6f7f5"/>
+  <g fill="none" stroke="#1d2622" stroke-width="1.3" font-size="12">
+
+    <!-- Way 1: on this computer -->
+    <g transform="translate(20 0)">
+      <text x="150" y="28" stroke="none" text-anchor="middle" fill="#1d2622" font-size="14" font-weight="600">1 · On this computer</text>
+      <text x="150" y="46" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11.5">desktop app or npm start</text>
+      <rect x="105" y="58" width="185" height="454" rx="10" stroke="#c9d1cc"/>
+      <text x="197" y="76" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11" letter-spacing=".04em">YOUR PC</text>
+      <rect x="118" y="88" width="160" height="44" rx="6" fill="#ffffff"/>
+      <text x="198" y="106" stroke="none" text-anchor="middle" fill="#1d2622" font-size="11.5">Desktop app (Win, Mac, Linux)</text>
+      <text x="198" y="122" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="10.5">or the browser with npm start</text>
+      <rect x="118" y="228" width="160" height="48" rx="6" fill="#d7efe7" stroke="#0b8f71" stroke-width="1.6"/>
+      <text x="198" y="248" stroke="none" text-anchor="middle" fill="#1d2622" font-weight="600">Relay, embedded</text>
+      <text x="198" y="265" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11">127.0.0.1 only</text>
+      <rect x="118" y="368" width="160" height="48" rx="6" fill="#ffffff"/>
+      <text x="198" y="388" stroke="none" text-anchor="middle" fill="#1d2622" font-weight="600">Backend</text>
+      <text x="198" y="405" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11">bots, keys, history</text>
+      <line x1="198" y1="132" x2="198" y2="226" marker-end="url(#arrow)"/>
+      <text x="206" y="184" stroke="none" fill="#5f6b66" font-size="11">ws, E2E</text>
+      <line x1="198" y1="368" x2="198" y2="278" marker-end="url(#arrow)"/>
+      <text x="206" y="328" stroke="none" fill="#5f6b66" font-size="11">in process</text>
+      <line x1="198" y1="416" x2="198" y2="438" marker-end="url(#arrow)"/>
+      <rect x="118" y="440" width="160" height="60" rx="6" fill="#f1ece2" stroke="#c9d1cc"/>
+      <text x="198" y="458" stroke="none" text-anchor="middle" fill="#1d2622" font-size="11.5" font-weight="600">AI engines, your login</text>
+      <text x="198" y="474" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="10.5">Claude Code · Codex · Cursor</text>
+      <text x="198" y="489" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="10.5">Copilot · Antigravity · OpenCode</text>
+      <rect x="10" y="88" width="80" height="40" rx="6" fill="#ffffff" stroke="#5f6b66"/>
+      <text x="50" y="113" stroke="none" text-anchor="middle" fill="#1d2622">Phone</text>
+      <path d="M50 128 L50 252 L116 252" stroke-dasharray="5 4" stroke="#5f6b66" marker-end="url(#arrow)"/>
+      <text x="56" y="200" stroke="none" fill="#5f6b66" font-size="11">Tailscale</text>
+      <text x="56" y="214" stroke="none" fill="#5f6b66" font-size="11">(optional)</text>
+      <text x="150" y="542" stroke="none" text-anchor="middle" fill="#1d2622" font-size="12" font-family='Consolas, Menlo, "DejaVu Sans Mono", monospace'>"Start on this computer" · npm start</text>
+      <text x="150" y="560" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11">no server; the PC has to be on</text>
+    </g>
+
+    <!-- Way 2: a relay of your own -->
+    <g transform="translate(320 0)">
+      <text x="150" y="28" stroke="none" text-anchor="middle" fill="#1d2622" font-size="14" font-weight="600">2 · A relay of your own</text>
+      <text x="150" y="46" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11.5">Docker, Coolify, Unraid, home server</text>
+      <use xlink:href="#devices" href="#devices"/>
+      <rect x="40" y="170" width="220" height="120" rx="10" stroke="#c9d1cc"/>
+      <text x="150" y="188" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11" letter-spacing=".04em">SERVER · HTTPS</text>
+      <rect x="60" y="212" width="180" height="48" rx="6" fill="#d7efe7" stroke="#0b8f71" stroke-width="1.6"/>
+      <text x="150" y="232" stroke="none" text-anchor="middle" fill="#1d2622" font-weight="600">Relay</text>
+      <text x="150" y="249" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11">claimed with a code; hashes only</text>
+      <rect x="40" y="320" width="220" height="192" rx="10" stroke="#c9d1cc"/>
+      <text x="150" y="338" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11" letter-spacing=".04em">YOUR PC · WINDOWS, MACOS, LINUX</text>
+      <rect x="60" y="368" width="180" height="48" rx="6" fill="#ffffff"/>
+      <text x="150" y="388" stroke="none" text-anchor="middle" fill="#1d2622" font-weight="600">Backend</text>
+      <text x="150" y="405" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11">bots, keys, history</text>
+      
+      <line x1="150" y1="416" x2="150" y2="438" marker-end="url(#arrow)"/>
+      <rect x="60" y="440" width="180" height="60" rx="6" fill="#f1ece2" stroke="#c9d1cc"/>
+      <text x="150" y="458" stroke="none" text-anchor="middle" fill="#1d2622" font-size="11.5" font-weight="600">AI engines, your login</text>
+      <text x="150" y="474" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="10.5">Claude Code · Codex · Cursor</text>
+      <text x="150" y="489" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="10.5">Copilot · Antigravity · OpenCode</text>
+      <line x1="150" y1="368" x2="150" y2="262" marker-end="url(#arrow)"/>
+      <text x="158" y="296" stroke="none" fill="#5f6b66" font-size="11">wss, outbound</text>
+      <text x="158" y="310" stroke="none" fill="#5f6b66" font-size="11">(Tailscale optional)</text>
+      <text x="150" y="542" stroke="none" text-anchor="middle" fill="#1d2622" font-size="12" font-family='Consolas, Menlo, "DejaVu Sans Mono", monospace'>app: "Move to a relay" · npm run claim</text>
+      <text x="150" y="560" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11">phone from anywhere, push, wake machines</text>
+    </g>
+
+    <!-- Way 3: everything on a server -->
+    <g transform="translate(620 0)">
+      <text x="150" y="28" stroke="none" text-anchor="middle" fill="#1d2622" font-size="14" font-weight="600">3 · Everything on a server</text>
+      <text x="150" y="46" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11.5">docker-compose.server.yml</text>
+      <use xlink:href="#devices" href="#devices"/>
+      <rect x="40" y="170" width="220" height="342" rx="10" stroke="#c9d1cc"/>
+      <text x="150" y="188" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11" letter-spacing=".04em">SERVER · HTTPS · DOCKER</text>
+      <rect x="60" y="212" width="180" height="48" rx="6" fill="#d7efe7" stroke="#0b8f71" stroke-width="1.6"/>
+      <text x="150" y="232" stroke="none" text-anchor="middle" fill="#1d2622" font-weight="600">Relay</text>
+      <text x="150" y="249" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11">claimed by the backend itself</text>
+      <rect x="60" y="368" width="180" height="48" rx="6" fill="#ffffff"/>
+      <text x="150" y="388" stroke="none" text-anchor="middle" fill="#1d2622" font-weight="600">Backend, container</text>
+      <text x="150" y="405" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11">around the clock, repos in /work</text>
+      
+      <line x1="150" y1="416" x2="150" y2="438" marker-end="url(#arrow)"/>
+      <rect x="60" y="440" width="180" height="60" rx="6" fill="#f1ece2" stroke="#c9d1cc"/>
+      <text x="150" y="458" stroke="none" text-anchor="middle" fill="#1d2622" font-size="11.5" font-weight="600">AI engines in the container</text>
+      <text x="150" y="474" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="10.5">Claude Code · Codex · Copilot</text>
+      <text x="150" y="489" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="10.5">device-code login</text>
+      <line x1="150" y1="368" x2="150" y2="262" marker-end="url(#arrow)"/>
+      <text x="158" y="308" stroke="none" fill="#5f6b66" font-size="11">ws, Docker network</text>
+      <text x="150" y="542" stroke="none" text-anchor="middle" fill="#1d2622" font-size="12" font-family='Consolas, Menlo, "DejaVu Sans Mono", monospace'>docker compose -f …server.yml up -d</text>
+      <text x="150" y="560" stroke="none" text-anchor="middle" fill="#5f6b66" font-size="11">runs while every PC is off</text>
+    </g>
+
+    <!-- Legend -->
+    <g transform="translate(20 582)" font-size="11">
+      <rect x="0" y="-9" width="14" height="10" rx="2" fill="#d7efe7" stroke="#0b8f71" stroke-width="1.4"/>
+      <text x="20" y="0" stroke="none" fill="#5f6b66" font-size="11">Relay: routes encrypted frames, stores no messages</text>
+      <rect x="300" y="-9" width="14" height="10" rx="2" fill="#f1ece2" stroke="#c9d1cc"/>
+      <text x="320" y="0" stroke="none" fill="#5f6b66" font-size="11">AI engines: the login stays on the backend machine</text>
+      <line x1="600" y1="-4" x2="622" y2="-4" marker-end="url(#arrow)"/>
+      <text x="630" y="0" stroke="none" fill="#5f6b66" font-size="11">connection, always opened by the device or the backend</text>
+    </g>
+  </g>
+</svg>

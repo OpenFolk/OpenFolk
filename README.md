@@ -15,12 +15,10 @@ Bots run on the **Claude Agent SDK** (Claude Code) by default. A bot or a single
 Besides the browser (installable as PWA) there are desktop apps for Windows, Linux and macOS (Electron,
 `desktop/`) and apps for iOS and Android (Capacitor, `mobile/`), all around the same web app.
 
-```
-App / browser ──wss──▶ Relay (any host, Docker) ◀──wss (outbound)── Local backend (your machine)
-                         serves the web app                           one session per bot, history,
-                         checks USER_PASSWORD / AGENT_TOKEN           routines, push, approvals
-                         only passes frames through
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
+  <img src="docs/architecture.svg" alt="The three ways to run OpenFolk: relay and backend on your PC, a relay of your own on a server with the backend on your PC, or both on a server. Devices connect through the relay to the backend, which starts the AI engines with their own logins." width="940">
+</picture>
 
 The relay never sees model credentials and stores no messages. The backend connects outbound, so nothing has to
 be opened on your router. End-to-end encryption is on from the first start, so the relay only sees routing
@@ -127,7 +125,7 @@ openfolk/
 ├── deploy/unraid/       Unraid template for the relay
 ├── tests/browser/       Playwright tests of the web app against a scripted relay and backend
 ├── scripts/             test runner, desktop bundle and smoke test, screenshots, a WebSocket test client
-├── docs/                running.md, tailscale.md, README.de.md, internals/ (architecture decisions)
+├── docs/                running.md, tailscale.md, README.de.md, architecture.svg, internals/ (architecture decisions)
 └── AGENTS.md            read first when changing OpenFolk
 ```
 
