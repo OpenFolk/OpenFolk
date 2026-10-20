@@ -1,0 +1,39 @@
+{
+  "name": "openfolk",
+  "private": true,
+  "license": "MIT",
+  "version": "0.1.0",
+  "description": "Messenger-style web app for running AI coding agents (Claude Code, Codex, ACP) on your own machines",
+  "homepage": "https://github.com/OpenFolk/OpenFolk#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/OpenFolk/OpenFolk.git" },
+  "bugs": { "url": "https://github.com/OpenFolk/OpenFolk/issues" },
+  "workspaces": [
+    "local",
+    "relay"
+  ],
+  "scripts": {
+    "start": "npm run start -w local",
+    "pair": "node local/tools/e2e.mjs link",
+    "env": "node local/tools/e2e.mjs env",
+    "claim": "node local/tools/claim.mjs",
+    "join": "node local/tools/join.mjs",
+    "cli": "npm run cli -w local",
+    "local": "npm run start -w local",
+    "restart": "node local/src/request-restart.ts --wait",
+    "relay": "npm run start -w relay",
+    "typecheck": "npm run typecheck -w local && npm run typecheck -w relay && tsc -p webapp",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "lint": "oxlint webapp/js webapp/i18n local/src relay/src shared tests/browser mobile/scripts",
+    "test": "npm run test -w local && npm run test -w relay && npm run test:browser",
+    "test:browser": "node tests/browser/run.mjs",
+    "desktop": "npm --prefix desktop start",
+    "mobile": "npm --prefix mobile run sync"
+  },
+  "devDependencies": {
+    "oxlint": "^1.87.0",
+    "playwright": "^1.58.2"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

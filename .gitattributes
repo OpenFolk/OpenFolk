@@ -1,0 +1,20 @@
+# Line endings: LF in the repository and in every checkout, on Windows too (the backend is developed there).
+# Git decides what is text by content; the lists below pin the files where that guess could go wrong.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.p8 binary
+*.pfx binary
+*.jar binary
+*.keystore binary
+
+# Windows tools keep CRLF: PowerShell and batch files
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Shell scripts run inside Linux containers; CRLF would break the shebang
+*.sh text eol=lf
+mobile/android/gradlew text eol=lf

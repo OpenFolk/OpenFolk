@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!-- Unraid template for the OpenFolk relay: Docker > Add Container > Template, or copy this file to
+     /boot/config/plugins/dockerMan/templates-user/. The relay starts unclaimed; the setup code is in the container's
+     log; the backend claims it with npm run claim, followed by the HTTPS address of this relay and the setup code. -->
+<Container version="2">
+  <Name>openfolk-relay</Name>
+  <Repository>ghcr.io/openfolk/openfolk:latest</Repository>
+  <Registry>https://github.com/OpenFolk/OpenFolk/pkgs/container/openfolk</Registry>
+  <Network>bridge</Network>
+  <Support>https://github.com/OpenFolk/OpenFolk/issues</Support>
+  <Project>https://github.com/OpenFolk/OpenFolk</Project>
+  <Overview>Relay of OpenFolk, a messenger for the coding agents on your own computers. It passes end-to-end encrypted frames between your devices and your backends and stores no messages. Put it behind a reverse proxy with HTTPS, or reach it through Tailscale.</Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8787]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/OpenFolk/OpenFolk/main/deploy/unraid/openfolk-relay.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/OpenFolk/OpenFolk/main/webapp/icons/icon-512.png</Icon>
+  <Config Name="Web UI and backends" Target="8787" Default="8787" Mode="tcp" Description="Port of the web app and of the backends' connection; put HTTPS in front of it." Type="Port" Display="always" Required="true" Mask="false">8787</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/openfolk-relay" Mode="rw" Description="Owner (hashes of the tokens), signed-in devices, machines seen, wake schedule." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/openfolk-relay</Config>
+  <Config Name="RELAY_SETUP_CODE" Target="RELAY_SETUP_CODE" Default="" Mode="" Description="Optional: a fixed setup code (10 or more letters and digits). Empty: a new one on every start, in the log." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="TRUST_PROXY" Target="TRUST_PROXY" Default="" Mode="" Description="Reverse proxies in front of the relay whose X-Forwarded-For counts. Empty: one proxy at a private address." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="AGENT_ALLOWED_FROM" Target="AGENT_ALLOWED_FROM" Default="" Mode="" Description="Only backends from these addresses, e.g. 100.64.0.0/10 for Tailscale." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="WAKE_METHOD" Target="WAKE_METHOD" Default="" Mode="" Description="Waking machines: wol, command, service or none (relay/.env.sample). wol needs the network type host, a bridge does not pass the broadcast." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="WAKE_MACHINES" Target="WAKE_MACHINES" Default="" Mode="" Description="For wol: desktop=AA:BB:CC:DD:EE:FF,laptop=11:22:33:44:55:66 (names as the backends' MACHINE_NAME)." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>

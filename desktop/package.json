@@ -1,0 +1,42 @@
+{
+  "name": "openfolk-desktop",
+  "productName": "OpenFolk",
+  "private": true,
+  "license": "MIT",
+  "version": "0.1.0",
+  "description": "OpenFolk as a desktop app for Windows, Linux and macOS: the bots on this computer or a relay of your own",
+  "homepage": "https://github.com/OpenFolk/OpenFolk",
+  "main": "main.js",
+  "desktopName": "openfolk.desktop",
+  "scripts": {
+    "start": "electron .",
+    "build": "npm run bundle && electron-builder --win",
+    "build:portable": "npm run bundle && electron-builder --win portable",
+    "build:linux": "npm run bundle && electron-builder --linux",
+    "build:mac": "npm run bundle && electron-builder --mac",
+    "bundle": "node ../scripts/desktop-bundle.mjs",
+    "smoke": "node ../scripts/desktop-smoke.mjs"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "io.openfolk.app",
+    "productName": "OpenFolk",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "backend.js", "handover.js", "task.js", "updater.js", "preload.js", "setup.html", "setup.js", "build/icon.png", "build/tray.png"],
+    "extraFiles": [{ "from": "../LICENSE", "to": "LICENSE.txt" }],
+    "extraResources": [{ "from": "build/openfolk", "to": "openfolk" }, { "from": "build/openfolk/node_modules", "to": "openfolk/node_modules" }, { "from": "task.ps1", "to": "task.ps1" }],
+    "publish": [{ "provider": "github", "owner": "OpenFolk", "repo": "OpenFolk" }],
+    "win": { "target": ["nsis"], "icon": "build/icon.png" },
+    "linux": { "target": ["AppImage", "deb"], "icon": "build/icon.png", "category": "Development", "executableName": "openfolk", "syncDesktopName": true, "maintainer": "OpenFolk", "description": "A messenger for the coding agents on your own machines", "artifactName": "OpenFolk-${version}-${arch}.${ext}" },
+    "mac": { "target": ["dmg", "zip"], "icon": "build/icon.png", "category": "public.app-category.productivity", "darkModeSupport": true, "hardenedRuntime": true, "gatekeeperAssess": false, "entitlements": "build/entitlements.mac.plist", "entitlementsInherit": "build/entitlements.mac.plist", "extendInfo": { "NSMicrophoneUsageDescription": "OpenFolk records voice messages for your bots.", "NSCameraUsageDescription": "OpenFolk scans QR codes to sign in devices." } },
+    "dmg": { "contents": [{ "x": 130, "y": 220 }, { "x": 410, "y": 220, "type": "link", "path": "/Applications" }] },
+    "deb": { "packageName": "openfolk" },
+    "nsis": { "artifactName": "${productName}-Setup-${version}.${ext}", "oneClick": false, "perMachine": true, "allowToChangeInstallationDirectory": true, "multiLanguageInstaller": true, "installerLanguages": ["en_US", "de_DE"] }
+  }
+}

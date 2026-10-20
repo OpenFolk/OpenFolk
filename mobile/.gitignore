@@ -1,0 +1,3 @@
+node_modules/
+# Copied from ../webapp by scripts/copy-web.mjs
+www/

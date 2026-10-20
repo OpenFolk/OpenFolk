@@ -1,0 +1,99 @@
+name: Bug report
+description: Something does not work the way the documentation says
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Security problems go to security@openfolk.app, not here (see SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Tap …
+        3. See …
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part
+      multiple: true
+      options:
+        - Web app in the browser
+        - Desktop app (Windows or macOS)
+        - Mobile app (iOS or Android)
+        - Backend (local/)
+        - Relay
+        - An engine (Claude Code, Codex, Cursor, Copilot, Antigravity, OpenCode)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The release, or the commit of `main` the backend and the relay run (`git rev-parse --short HEAD`).
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system of the machine
+      description: Where the backend runs, with version, e.g. "Windows 11 24H2", "macOS 15.4", "Ubuntu 24.04".
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node -v` on that machine.
+      placeholder: v22.18.0
+    validations:
+      required: true
+  - type: dropdown
+    id: claude-auth
+    attributes:
+      label: Claude sign-in
+      description: How Claude Code signs in (Settings, the machine's "Sign-in" under Claude).
+      options:
+        - subscription (default)
+        - apikey
+        - Not using Claude Code
+    validations:
+      required: true
+  - type: dropdown
+    id: relay
+    attributes:
+      label: Relay host
+      description: Where your relay runs.
+      options:
+        - Same machine as the backend (localhost)
+        - Own server, Docker image
+        - Own server, Node without Docker
+        - Coolify or another platform
+        - Reached through Tailscale
+        - Other (describe below)
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Browser or phone
+      description: Where you see the problem, e.g. "Chrome 141 on Windows", "iPhone app, iOS 26".
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines from `local/data/local.log` or the relay's output. Remove tokens and keys.
+      render: text
+    validations:
+      required: true

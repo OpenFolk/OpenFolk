@@ -1,0 +1,17 @@
+# Optional: local transcription of voice messages (local/tools/transcribe.py). Everything else in OpenFolk is
+# Node; without this, voice messages are still recorded and sent, only not turned into text.
+#
+# Easiest: "Set up voice messages" in the settings of the machine (local/src/voice-setup.ts) creates an environment
+# in the data folder and installs this list, with the CUDA libraries on a machine with an NVIDIA card. By hand:
+#
+#   python -m venv local/tools/.venv
+#   local/tools/.venv/Scripts/pip install -r local/tools/requirements-voice.txt     (Windows)
+#   local/tools/.venv/bin/pip install -r local/tools/requirements-voice.txt         (macOS, Linux)
+#
+# The backend finds this environment by itself (or set WHISPER_PYTHON).
+faster-whisper>=1.1
+av>=12
+numpy
+# With an NVIDIA graphics card (WHISPER_DEVICE=cuda or auto), additionally:
+# nvidia-cublas-cu12
+# nvidia-cudnn-cu12==9.*

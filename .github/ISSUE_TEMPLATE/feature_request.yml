@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose something OpenFolk should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that OpenFolk makes hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How could it work? Where in the app, which setting, which engine?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: markdown
+    attributes:
+      value: |
+        Bigger changes start with an agreement on the approach before anyone writes code; see CONTRIBUTING.md.

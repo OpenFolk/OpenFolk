@@ -1,0 +1,33 @@
+{
+  "name": "openfolk-mobile",
+  "productName": "OpenFolk",
+  "private": true,
+  "license": "MIT",
+  "version": "0.1.0",
+  "description": "OpenFolk as iOS and Android app: Capacitor around the web app, with native push, Keychain/Keystore and share sheet",
+  "type": "module",
+  "scripts": {
+    "web": "node scripts/copy-web.mjs",
+    "sync": "node scripts/copy-web.mjs && cap sync",
+    "android": "npm run sync && cap open android",
+    "ios": "npm run sync && cap open ios",
+    "run:android": "npm run sync && cap run android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/barcode-scanner": "^3.1.3",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/filesystem": "8.1.4",
+    "@capacitor/ios": "8.5.3",
+    "@capacitor/push-notifications": "8.1.3",
+    "@capacitor/share": "8.0.3",
+    "openfolk-native": "file:./plugin"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

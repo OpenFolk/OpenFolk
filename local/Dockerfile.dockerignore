@@ -1,0 +1,19 @@
+# Used instead of the root .dockerignore when building local/Dockerfile (BuildKit). Only what the backend runs.
+**/node_modules
+.git
+.github
+.claude
+.env
+.env.*
+!.env.sample
+local/data
+work
+local/tools/.venv
+relay
+webapp
+desktop
+mobile
+tests
+docs
+**/*.log
+**/__pycache__

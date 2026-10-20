@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#111b21">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>OpenFolk</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<script src="theme.js"></script>
+<link rel="stylesheet" href="chat.css">
+</head>
+<body>
+
+<!-- Start page: a page of its own, not a dialog over the app. The fields hide with their labels (CSS :has). -->
+<div id="login" class="start" hidden>
+    <form class="start-card" id="login-form">
+        <img src="icons/icon.svg" alt="" width="84" height="84">
+        <h1>OpenFolk</h1>
+        <p class="tagline" data-i18n="login.tagline"></p>
+        <p class="start-intro" id="login-intro"></p>
+        <input type="text" name="username" autocomplete="username" value="openfolk" hidden>
+        <label>
+            <span data-i18n="login.relay"></span>
+            <input type="text" id="login-relay" data-i18n-placeholder="login.relayPlaceholder" autocomplete="url" inputmode="url" autocapitalize="off" spellcheck="false">
+        </label>
+        <label>
+            <span data-i18n="login.account"></span>
+            <input id="login-account" data-i18n-placeholder="login.accountPlaceholder" maxlength="60" autocomplete="off" autocapitalize="off" spellcheck="false" hidden>
+        </label>
+        <label>
+            <span data-i18n="login.password"></span>
+            <input type="password" id="login-token" autocomplete="current-password">
+        </label>
+        <!-- Only when the relay asks for a second factor (its /health, or a refused sign-in) -->
+        <label id="login-totp-field" hidden>
+            <span data-i18n="login.totp"></span>
+            <input id="login-totp" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+        </label>
+        <label>
+            <span data-i18n="login.deviceName"></span>
+            <input id="login-name" data-i18n-placeholder="login.deviceNamePlaceholder" maxlength="60" autocomplete="off">
+        </label>
+        <!-- The account field only for those who need it: one person alone signs in to main -->
+        <button type="button" class="link" id="login-other-account" data-i18n="login.otherAccount"></button>
+        <p class="error" id="login-error" hidden></p>
+        <button type="submit" class="primary" data-i18n="login.submit"></button>
+        <!-- Only while adding an account: back to the account this device was signed in to -->
+        <button type="button" class="btn" id="login-cancel" data-i18n="accounts.addCancel" hidden></button>
+        <!-- Without the password: the app scans a signed-in device's pairing code, any device shows its own code -->
+        <button type="button" class="btn" id="login-scan" data-i18n="qr.scanPair" hidden></button>
+        <div class="login-qr" id="login-qr" hidden>
+            <p class="login-or" data-i18n="qr.or"></p>
+            <div class="pair-qr" id="login-qr-code"></div>
+            <p class="start-help" data-i18n="qr.loginHint"></p>
+            <button type="button" class="link" id="login-qr-renew" data-i18n="qr.renew"></button>
+            <!-- Only while the main account has no device: the code a backend in a container prints to its log -->
+            <div class="login-first" id="login-first" hidden>
+                <p class="login-or" data-i18n="first.title"></p>
+                <label>
+                    <span data-i18n="first.label"></span>
+                    <input id="login-first-code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="40">
+                </label>
+                <button type="button" class="btn" id="login-first-send" data-i18n="first.send"></button>
+                <p class="start-help" data-i18n="first.hint"></p>
+            </div>
+        </div>
+        <p class="start-help" data-i18n="qr.pairHint"></p>
+        <p class="start-help" data-i18n-html="login.help"></p>
+    </form>
+</div>
+
+<div id="app" class="app">
+    <aside class="sidebar">
+        <header class="bar">
+            <!-- Logo and name open the settings -->
+            <button type="button" class="title title-button brand" id="btn-settings" data-i18n-title="settings.buttonTitle">
+                <img class="logo" src="icons/icon.svg" alt="" width="34" height="34">
+                <span class="brand-text">
+                    <strong>OpenFolk</strong>
+                    <span class="status" id="agent-status"><i></i><span></span></span>
+                </span>
+            </button>
+            <!-- The account this device is signed in to, with the others to switch to; hidden while there is only main -->
+            <button type="button" class="account-switch" id="account-switch" aria-haspopup="menu" hidden><span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></button>
+            <div class="menu account-menu" id="account-menu" hidden></div>
+            <button class="round" id="btn-theme">
+                <svg viewBox="0 0 24 24" id="theme-icon"></svg>
+            </button>
+            <button class="round" id="btn-new" data-i18n-title="newMenu.title" data-i18n-aria-label="newMenu.label">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <div class="menu" id="new-menu" hidden></div>
+        </header>
+        <div class="search-box closed" id="search-box">
+            <span class="field-x"><input type="search" id="search" data-i18n-placeholder="search.allChats" autocomplete="off" enterkeyhint="search" data-i18n-aria-label="search.allChats"><button type="button" class="field-clear" data-i18n-title="search.clear" data-i18n-aria-label="search.clear" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M8 8l8 8M16 8l-8 8"/></svg></button></span>
+        </div>
+        <ul class="search-results" id="search-results" hidden></ul>
+        <ul class="chat-list" id="chat-list"></ul>
+        <footer class="footer closed" id="footer">
+            <button type="button" class="footer-handle" id="footer-handle" aria-expanded="false"></button>
+            <button type="button" class="git-total" id="git-total" hidden></button>
+            <div class="machines" id="machines" hidden></div>
+            <div class="usage" id="usage" hidden></div>
+            <div class="footer-row">
+                <span id="account"></span>
+            </div>
+        </footer>
+    </aside>
+
+    <main class="chat" id="chat">
+        <div class="empty" id="chat-empty">
+            <img src="icons/icon.svg" alt="" width="96" height="96">
+            <p data-i18n-html="chat.emptyHint"></p>
+        </div>
+        <div class="chat-content git-page" id="git-page" hidden>
+            <header class="bar">
+                <button class="round" id="git-back" data-i18n-aria-label="common.back" data-i18n-title="common.back">
+                    <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+                </button>
+                <div class="title">
+                    <strong id="git-title" data-i18n="git.openChanges"></strong>
+                    <span id="git-sub"></span>
+                </div>
+            </header>
+            <div class="git-page-content" id="git-page-content"></div>
+        </div>
+        <div class="panes" id="panes"></div>
+        <button type="button" class="pane-add" id="pane-add" data-i18n-title="pane.add" data-i18n-aria-label="pane.add" hidden>
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <div class="menu message-menu" id="message-menu" hidden></div>
+        <!-- One chat column; panes.js clones it for every pane, the elements are found by data-el -->
+        <template id="pane-template">
+            <div class="chat-content pane" hidden>
+                <div class="pane-empty">
+                    <p data-i18n="pane.emptyHint"></p>
+                    <button type="button" class="btn pane-empty-close" data-i18n="pane.close"></button>
+                </div>
+                <header class="bar">
+                    <button class="round back" data-el="btn-back" data-i18n-aria-label="common.back">
+                        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+                    </button>
+                    <div class="avatar" data-el="chat-avatar"></div>
+                    <button class="title title-button" data-el="chat-title">
+                        <strong data-el="chat-name"></strong>
+                        <span data-el="chat-sub"></span>
+                    </button>
+                    <!-- Model and machine of a bot: a tap opens the switch right below the header -->
+                    <button type="button" class="model-badge" data-el="chat-model" data-i18n-title="header.switchModel" hidden></button>
+                    <button type="button" class="machine-badge" data-el="chat-machine" data-i18n-title="header.switchMachine" hidden></button>
+                    <div class="menu header-menu" data-el="header-menu" hidden></div>
+                    <button class="round pane-close" data-el="btn-close" data-i18n-title="pane.close" data-i18n-aria-label="pane.close" hidden>
+                        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                    </button>
+                </header>
+                <div class="chat-search" data-el="chat-search" hidden>
+                    <span class="field-x"><input type="search" data-el="cs-text" data-i18n-placeholder="search.thisChat" autocomplete="off" enterkeyhint="search" data-i18n-aria-label="search.thisChat"><button type="button" class="field-clear" data-i18n-title="search.clear" data-i18n-aria-label="search.clear" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M8 8l8 8M16 8l-8 8"/></svg></button></span>
+                    <span class="cs-count" data-el="cs-count"></span>
+                    <button type="button" class="round" data-el="cs-older" data-i18n-title="search.older" data-i18n-aria-label="search.older"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+                    <button type="button" class="round" data-el="cs-newer" data-i18n-title="search.newer" data-i18n-aria-label="search.newer"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+                    <button type="button" class="round" data-el="cs-close" data-i18n-title="search.close" data-i18n-aria-label="search.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                </div>
+                <div class="pinned-bar" data-el="pinned-bar" hidden>
+                    <button type="button" class="fx-text" data-el="fx-text" data-i18n-title="pinned.jump"></button>
+                    <button type="button" class="round fx-unpin" data-el="fx-unpin" data-i18n-title="message.unpin" data-i18n-aria-label="pinned.unpin">
+                        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                    </button>
+                </div>
+                <div class="messages-frame">
+                    <div class="loading-bar" data-el="loading-bar" role="progressbar" data-i18n-aria-label="chat.loading" hidden></div>
+                    <div class="messages" data-el="messages"></div>
+                    <button type="button" class="to-bottom" data-el="to-bottom" data-i18n-title="chat.toBottom" data-i18n-aria-label="chat.toBottomLabel" hidden>
+                        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                    </button>
+                </div>
+                <div class="working-line" data-el="working" hidden>
+                    <span class="working-star" data-el="working-star">✻</span><span data-el="working-text" aria-live="polite"></span>
+                    <!-- Stop here instead of next to send and microphone, so it is not hit by accident -->
+                    <button type="button" class="stop" data-el="btn-stop" data-i18n-title="chat.interrupt" hidden>
+                        <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span data-i18n="chat.stop"></span>
+                    </button>
+                </div>
+                <div class="sleep" data-el="sleep" hidden>
+                    <span data-el="sleep-text"></span>
+                    <button type="button" class="primary" data-el="sleep-wake"></button>
+                </div>
+                <div class="mention" data-el="mention" role="listbox" data-i18n-aria-label="mention.label" hidden></div>
+                <div class="queue" data-el="queue" hidden>
+                    <button type="button" class="queue-head" data-el="queue-head" aria-expanded="false"></button>
+                    <ol class="queue-list" data-el="queue-list" hidden></ol>
+                </div>
+                <div class="members" data-el="members" hidden></div>
+                <div class="attachments" data-el="attachments" hidden></div>
+                <div class="reply-bar" data-el="reply-bar" hidden>
+                    <div class="quote"><strong data-el="rb-who"></strong><span data-el="rb-text"></span></div>
+                    <button type="button" class="round" data-el="rb-cancel" data-i18n-title="reply.cancel" data-i18n-aria-label="reply.cancel">
+                        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                    </button>
+                </div>
+                <form class="composer" data-el="composer">
+                    <button type="button" class="round" data-el="btn-attach" data-i18n-title="composer.attach" data-i18n-aria-label="composer.attach">
+                        <svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l8-8"/></svg>
+                    </button>
+                    <input type="file" data-el="file-input" multiple hidden>
+                    <textarea data-el="text" rows="1" data-i18n-placeholder="composer.placeholder" enterkeyhint="send"></textarea>
+                    <button type="submit" class="round send" data-el="btn-send" data-i18n-title="composer.send">
+                        <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7z"/></svg>
+                    </button>
+                    <button type="button" class="round send" data-el="btn-mic" data-i18n-title="composer.record" data-i18n-aria-label="composer.record" hidden>
+                        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                    </button>
+                    <div class="recording" data-el="recording" hidden>
+                        <button type="button" class="round" data-el="rec-discard" data-i18n-title="composer.discard" data-i18n-aria-label="composer.discardLabel">
+                            <svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+                        </button>
+                        <span class="rec-dot" data-el="rec-dot"></span>
+                        <span class="rec-time" data-el="rec-time">0:00</span>
+                        <span class="rec-level" data-el="rec-level"></span>
+                        <button type="button" class="round" data-el="rec-pause" data-i18n-title="voice.pause" data-i18n-aria-label="composer.pauseLabel">
+                            <svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg>
+                        </button>
+                        <button type="button" class="round send" data-el="rec-send" data-i18n-title="composer.sendVoice" data-i18n-aria-label="composer.sendVoice">
+                            <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7z"/></svg>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </template>
+    </main>
+    <!-- Bot info: an overlay, on wide screens a column of its own (.app.info-docked) -->
+    <div id="info" class="overlay side page" hidden>
+        <section class="dialog panel" id="info-panel">
+            <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+            <header class="panel-head">
+                <div class="avatar large" id="info-avatar"></div>
+                <div>
+                    <h2 id="info-name"></h2>
+                    <p id="info-area" hidden></p>
+                    <p id="info-role"></p>
+                </div>
+                <button class="round" data-close data-i18n-aria-label="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </header>
+            <!-- What the ⋮ menu of the chat held (renderInfoChat in menus.js): switches, open changes, actions, archive -->
+            <div class="menu menu-inline" id="info-switches"></div>
+            <h3 data-i18n="git.openChanges"></h3>
+            <div class="git-page git-inline" id="info-git"></div>
+            <div class="menu menu-inline" id="info-actions"></div>
+            <h3 id="info-archive-head" data-i18n="info.archive" hidden></h3>
+            <div class="menu menu-inline" id="info-archive"></div>
+            <dl class="facts" id="info-facts"></dl>
+            <h3 data-i18n="info.routines"></h3>
+            <ul class="routines" id="info-routines"></ul>
+            <button class="btn" id="info-routine-new" data-i18n="info.addRoutine"></button>
+            <h3><span data-i18n="info.knowledge"></span> <small data-i18n="info.knowledgeNote"></small></h3>
+            <div class="knowledge-tabs" id="info-knowledge-tabs" role="tablist"></div>
+            <p class="hint" id="info-knowledge-hint"></p>
+            <ul class="routines knowledge" id="info-knowledge"></ul>
+            <button class="btn" id="info-knowledge-new" data-i18n="info.addFact"></button>
+            <h3 data-i18n="info.skills"></h3>
+            <p class="skills" id="info-skills"></p>
+            <details>
+                <summary data-i18n="info.claudeMd"></summary>
+                <pre id="info-claude"></pre>
+            </details>
+            <div class="actions">
+                <button class="btn" id="info-edit" data-i18n="menu.editBot"></button>
+            </div>
+        </section>
+    </div>
+    <!-- Settings: appearance, language, bots, machines, notifications, devices and accounts. On wide screens a
+         pane next to the chats with a header like theirs (panes.js moves it there), on the phone a page over everything -->
+    <div id="settings" class="overlay page" hidden>
+        <header class="bar settings-bar">
+            <div class="title"><strong data-i18n="settings.title"></strong></div>
+            <button type="button" class="round pane-close" data-close data-i18n-title="common.close" data-i18n-aria-label="common.close">
+                <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+        </header>
+        <section class="dialog">
+            <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+            <h2 data-i18n="settings.title"></h2>
+            <h3 data-i18n="settings.appearance"></h3>
+            <label><span data-i18n="settings.colorScheme"></span>
+                <select id="settings-theme">
+                    <option value="auto" data-i18n="theme.auto"></option>
+                    <option value="light" data-i18n="theme.light"></option>
+                    <option value="dark" data-i18n="theme.dark"></option>
+                </select>
+            </label>
+            <label><span data-i18n="settings.language"></span>
+                <select id="settings-language">
+                    <option value="" data-i18n="settings.languageAuto"></option>
+                    <option value="en" data-i18n="settings.languageEn"></option>
+                    <option value="de" data-i18n="settings.languageDe"></option>
+                </select>
+            </label>
+            <p class="hint" data-i18n="settings.languageHint"></p>
+            <!-- Only on a device signed in to several accounts -->
+            <label class="check" id="settings-all-accounts-field" hidden><input type="checkbox" id="settings-all-accounts"> <span data-i18n="settings.allAccounts"></span></label>
+            <!-- Shared by all machines of the account; needs a machine that is awake -->
+            <div id="settings-bots">
+                <h3 data-i18n="settings.bots"></h3>
+                <p class="hint" id="settings-bots-asleep" data-i18n="settings.botsAsleep" hidden></p>
+                <label><span data-i18n="settings.avatarModel"></span>
+                    <select id="settings-avatar-model">
+                        <option value="gemini-3.1-flash-image" data-i18n="settings.avatarGeminiFlash"></option>
+                        <option value="gemini-3-pro-image" data-i18n="settings.avatarGeminiPro"></option>
+                        <option value="gpt-image-1" data-i18n="settings.avatarOpenai"></option>
+                    </select>
+                </label>
+                <p class="hint" data-i18n="settings.avatarHint"></p>
+                <div class="settings-key" data-key="gemini"></div>
+                <div class="settings-key" data-key="openai"></div>
+                <label><span data-i18n="settings.voiceLanguage"></span>
+                    <select id="settings-voice-language">
+                        <option value="" data-i18n="settings.voiceLanguageAuto"></option>
+                        <option value="en" data-i18n="settings.languageEn"></option>
+                        <option value="de" data-i18n="settings.languageDe"></option>
+                    </select>
+                </label>
+                <label><span data-i18n="settings.pushPreview"></span>
+                    <select id="settings-push-preview">
+                        <option value="title" data-i18n="settings.pushPreviewTitle"></option>
+                        <option value="full" data-i18n="settings.pushPreviewFull"></option>
+                        <option value="none" data-i18n="settings.pushPreviewNone"></option>
+                    </select>
+                </label>
+                <p class="hint" data-i18n="settings.pushPreviewHint"></p>
+                <label class="check"><input type="checkbox" id="settings-git-pull"> <span data-i18n="settings.gitAutoPull"></span></label>
+                <p class="hint" data-i18n="settings.gitAutoPullHint"></p>
+            </div>
+            <h3 data-i18n="settings.machines"></h3>
+            <p class="hint" data-i18n-html="settings.autologonHint"></p>
+            <ul class="settings-machines" id="settings-machines"></ul>
+            <!-- Main account only: an invitation for one more machine (the backend builds the link with the key) -->
+            <div class="actions left" id="machine-add-row" hidden>
+                <button type="button" class="btn" id="machine-add" data-i18n="machines.add"></button>
+            </div>
+            <div id="machine-join" class="pair-box" hidden></div>
+            <!-- Notifications: priority per kind and muted chats, applies to all devices -->
+            <div id="settings-push" class="settings-block">
+                <h3>🔔 <span data-i18n="push.title"></span></h3>
+                <p id="push-status"></p>
+                <div class="actions left">
+                    <button type="button" class="btn" id="push-enable" data-i18n="push.enable" hidden></button>
+                </div>
+                <h4 data-i18n="push.whenTitle"></h4>
+                <p class="hint" data-i18n-html="push.whenHint"></p>
+                <div class="push-kinds" id="push-kinds"></div>
+                <h4 data-i18n="push.mutedTitle"></h4>
+                <p class="hint" data-i18n="push.mutedHint"></p>
+                <ul class="push-chats" id="push-chats"></ul>
+            </div>
+            <!-- Paired devices, the end-to-end key and the second factor -->
+            <div id="settings-devices" class="settings-block">
+                <h3>🔐 <span data-i18n="devices.title"></span></h3>
+                <p data-i18n="devices.intro"></p>
+                <ul class="device-list" id="device-list"></ul>
+                <div class="actions left">
+                    <button type="button" class="btn" id="pair-create" data-i18n="pair.create"></button>
+                    <button type="button" class="btn" id="devices-scan" data-i18n="qr.scanApprove" hidden></button>
+                </div>
+                <div id="pair-box" class="pair-box" hidden></div>
+                <p class="hint" id="devices-scan-hint"></p>
+                <!-- A backend that runs the relay itself: claim a relay on a server and move there -->
+                <div id="relay-claim-box" hidden>
+                    <h4 data-i18n="relayClaim.title"></h4>
+                </div>
+                <h4 data-i18n="e2e.title"></h4>
+                <p id="e2e-status"></p>
+                <div class="actions left">
+                    <button type="button" class="btn" id="e2e-enter" data-i18n="e2e.enterKey"></button>
+                    <button type="button" class="btn danger" id="e2e-delete" data-i18n="e2e.deleteKey"></button>
+                </div>
+                <!-- Second factor of the main account, kept by the relay; hidden for other accounts and older relays -->
+                <h4 data-i18n="totp.title" id="totp-title" hidden></h4>
+                <div id="totp-box" class="totp-box" hidden></div>
+            </div>
+            <!-- Accounts on the relay: one's own (name, password), for admins all of them, new ones with an invitation link; hidden for relays without accounts -->
+            <div id="settings-accounts" class="settings-block" hidden>
+                <h3>👥 <span data-i18n="accounts.title"></span></h3>
+                <p data-i18n="accounts.intro"></p>
+                <h4 data-i18n="accounts.own"></h4>
+                <label><span data-i18n="accounts.name"></span><input id="accounts-own-name" maxlength="60" autocomplete="off"></label>
+                <label><span data-i18n="accounts.newPassword"></span><input type="password" id="accounts-password" autocomplete="new-password" data-i18n-placeholder="accounts.passwordPlaceholder"></label>
+                <p class="hint" id="accounts-own-hint"></p>
+                <div class="actions left">
+                    <button type="button" class="btn" id="accounts-own-save" data-i18n="common.save"></button>
+                    <button type="button" class="btn" id="accounts-add" data-i18n="accounts.add"></button>
+                </div>
+                <div id="accounts-admin" hidden>
+                    <h4 data-i18n="accounts.all"></h4>
+                    <ul class="device-list" id="accounts-list"></ul>
+                    <h4 data-i18n="accounts.create"></h4>
+                    <label><span data-i18n="accounts.name"></span><input id="accounts-new-name" maxlength="60" autocomplete="off" data-i18n-placeholder="accounts.newNamePlaceholder"></label>
+                    <label class="check"><input type="checkbox" id="accounts-new-admin"> <span data-i18n="accounts.adminRight"></span></label>
+                    <div class="actions left">
+                        <button type="button" class="btn" id="accounts-create" data-i18n="accounts.createButton"></button>
+                    </div>
+                    <div id="invite-box" class="pair-box" hidden></div>
+                </div>
+                <p class="error" id="accounts-error" hidden></p>
+            </div>
+            <div class="actions settings-close-row">
+                <button type="button" class="btn" data-close data-i18n="common.close"></button>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- Create / edit a bot -->
+<!-- The bot editor; moving a bot to another machine uses it as a small dialog with only the .on-move parts -->
+<div id="editor" class="overlay page" hidden>
+    <form class="dialog" id="editor-form">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 id="editor-title" class="on-move" data-i18n="editor.newBot"></h2>
+        <label id="editor-template-field"><span data-i18n="editor.template"></span>
+            <select id="editor-template"></select>
+        </label>
+        <div class="avatar-picker">
+            <div class="avatar large" id="editor-avatar"></div>
+            <label class="btn"><span data-i18n="editor.chooseImage"></span><input type="file" id="editor-image" accept="image/*" hidden></label>
+            <button type="button" class="btn" id="editor-image-remove" data-i18n="editor.removeImage"></button>
+            <button type="button" class="btn" id="editor-avatar-ai" data-i18n="editor.aiAvatar" data-i18n-title="editor.aiAvatarTitle"></button>
+        </div>
+        <label><span data-i18n="editor.name"></span>
+            <span class="with-button"><input id="editor-name" required maxlength="40" data-i18n-placeholder="editor.namePlaceholder"><button type="button" class="btn small" id="editor-name-suggest" data-i18n="editor.suggest" data-i18n-title="editor.suggestNameTitle"></button></span>
+        </label>
+        <div class="suggestions" id="editor-name-suggestions" hidden></div>
+        <label><span data-i18n="editor.area"></span>
+            <input id="editor-area" maxlength="40" data-i18n-placeholder="editor.areaPlaceholder">
+        </label>
+        <label><span data-i18n="editor.role"></span>
+            <span class="with-button"><input id="editor-role" maxlength="80" data-i18n-placeholder="editor.rolePlaceholder"><button type="button" class="btn small" id="editor-role-suggest" data-i18n="editor.suggest" data-i18n-title="editor.suggestRoleTitle"></button></span>
+        </label>
+        <label><span data-i18n="editor.machine"></span>
+            <select id="editor-machine"></select>
+        </label>
+        <!-- Folder and repository: each fills the other where it can (the folder's origin, the folder a clone goes to) -->
+        <label class="on-move"><span data-i18n="editor.folder"></span>
+            <input id="editor-folder" data-i18n-placeholder="editor.folderPlaceholder" spellcheck="false" autocapitalize="off">
+        </label>
+        <label class="on-move"><span data-i18n="editor.repo"></span>
+            <input id="editor-repo" data-i18n-placeholder="editor.repoPlaceholder" spellcheck="false" autocapitalize="off">
+        </label>
+        <p class="hint on-move" id="editor-folder-hint"></p>
+        <div class="two-columns">
+            <label><span data-i18n="editor.model"></span>
+                <select id="editor-model">
+                    <option value="default" data-i18n="editor.modelDefault"></option>
+                    <option value="fable">Fable</option>
+                    <option value="opus">Opus</option>
+                    <option value="sonnet">Sonnet</option>
+                    <option value="haiku">Haiku</option>
+                    <option value="codex" data-i18n="editor.modelCodex"></option>
+                    <option value="cursor" data-i18n="editor.modelCursor"></option>
+                    <option value="copilot" data-i18n="editor.modelCopilot"></option>
+                    <option value="antigravity" data-i18n="editor.modelAntigravity"></option>
+                    <option value="opencode" data-i18n="editor.modelOpencode"></option>
+                    <option value="custom" data-i18n="editor.modelCustom"></option>
+                </select>
+            </label>
+            <label><span data-i18n="editor.approvals"></span>
+                <select id="editor-approval">
+                    <option value="risky" data-i18n="approval.policy.risky"></option>
+                    <option value="write" data-i18n="approval.policy.write"></option>
+                    <option value="never" data-i18n="approval.policy.never"></option>
+                </select>
+            </label>
+        </div>
+        <input id="editor-model-custom" data-i18n-placeholder="editor.modelCustomPlaceholder" hidden spellcheck="false">
+        <label><span data-i18n="editor.tone"></span><textarea id="editor-tone" rows="4" data-i18n-placeholder="editor.tonePlaceholder"></textarea></label>
+        <p class="hint" data-i18n="editor.riskyHint"></p>
+        <label><span data-i18n="editor.canMessage"></span>
+            <select id="editor-can-message">
+                <option value="all" data-i18n="editor.canMessageAll"></option>
+                <option value="some" data-i18n="editor.canMessageSome"></option>
+                <option value="none" data-i18n="editor.canMessageNone"></option>
+            </select>
+        </label>
+        <fieldset class="choice" id="editor-can-message-bots" hidden><legend data-i18n="editor.canMessageBots"></legend></fieldset>
+        <p class="hint" data-i18n="editor.canMessageHint"></p>
+        <p class="error on-move" id="editor-error" hidden></p>
+        <div class="actions on-move">
+            <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
+            <button type="submit" class="primary" data-i18n="common.save"></button>
+        </div>
+    </form>
+</div>
+
+<!-- Create / edit a group -->
+<div id="group-editor" class="overlay page" hidden>
+    <form class="dialog" id="group-form">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 id="group-title" data-i18n="group.new"></h2>
+        <div class="avatar-picker">
+            <div class="avatar large" id="group-avatar"></div>
+            <label class="btn"><span data-i18n="editor.chooseImage"></span><input type="file" id="group-image" accept="image/*" hidden></label>
+        </div>
+        <label><span data-i18n="editor.name"></span><input id="group-name" required maxlength="40" data-i18n-placeholder="group.namePlaceholder"></label>
+        <fieldset class="choice" id="group-members"><legend data-i18n="group.members"></legend></fieldset>
+        <div class="menu menu-inline" id="group-actions" hidden></div>
+        <p class="error" id="group-error" hidden></p>
+        <div class="actions">
+            <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
+            <button type="submit" class="primary" data-i18n="common.save"></button>
+        </div>
+    </form>
+</div>
+
+
+<!-- Sessions from VS Code: list, history to watch along, continue as a conversation -->
+<div id="vscode" class="overlay side page" hidden>
+    <section class="dialog panel vscode">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <header class="vs-head">
+            <button type="button" class="round" id="vs-back" data-i18n-aria-label="vscode.toList" hidden><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+            <div class="vs-title">
+                <h2 id="vs-title" data-i18n="vscode.title"></h2>
+                <p id="vs-sub"></p>
+            </div>
+            <button type="button" class="round" data-close data-i18n-aria-label="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </header>
+        <button type="button" class="btn" id="vs-show" data-i18n="vscode.showIde" hidden></button>
+        <button type="button" class="btn" id="vs-terminal" data-i18n="vscode.showTerminal" hidden></button>
+        <ul class="vs-list" id="vs-list"></ul>
+        <div class="vs-history messages" id="vs-history" hidden></div>
+        <p class="error" id="vs-error" hidden></p>
+        <div class="vs-footer" id="vs-footer" hidden>
+            <p class="hint" id="vs-hint" data-i18n="vscode.adoptHint"></p>
+            <button type="button" class="primary" id="vs-adopt" data-i18n="vscode.continueHere"></button>
+        </div>
+    </section>
+</div>
+
+<!-- Create / edit a routine -->
+<div id="routine-editor" class="overlay page" hidden>
+    <form class="dialog" id="routine-form">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 id="routine-title" data-i18n="routine.newTitle"></h2>
+        <label><span data-i18n="editor.name"></span><input id="routine-name" required maxlength="60" data-i18n-placeholder="routine.namePlaceholder"></label>
+        <div class="two-columns">
+            <label><span data-i18n="routine.when"></span>
+                <select id="routine-kind">
+                    <option value="daily" data-i18n="routine.kind.daily"></option>
+                    <option value="weekdays" data-i18n="routine.kind.weekdays"></option>
+                    <option value="weekly" data-i18n="routine.kind.weekly"></option>
+                    <option value="hourly" data-i18n="routine.kind.hourly"></option>
+                    <option value="cron" data-i18n="routine.kind.cron"></option>
+                </select>
+            </label>
+            <label id="routine-time-field"><span data-i18n="routine.time"></span><input type="time" id="routine-time" value="07:30"></label>
+        </div>
+        <label id="routine-day-field" hidden><span data-i18n="routine.weekday"></span>
+            <select id="routine-day">
+                <option value="1" data-i18n="routine.weekday.mon"></option><option value="2" data-i18n="routine.weekday.tue"></option><option value="3" data-i18n="routine.weekday.wed"></option>
+                <option value="4" data-i18n="routine.weekday.thu"></option><option value="5" data-i18n="routine.weekday.fri"></option><option value="6" data-i18n="routine.weekday.sat"></option><option value="0" data-i18n="routine.weekday.sun"></option>
+            </select>
+        </label>
+        <label id="routine-cron-field" hidden><span data-i18n="routine.cron"></span><input id="routine-cron" placeholder="30 7 * * 1-5" spellcheck="false"></label>
+        <label><span data-i18n="routine.prompt"></span><textarea id="routine-prompt" rows="5" required data-i18n-placeholder="routine.promptPlaceholder"></textarea></label>
+        <label class="check"><input type="checkbox" id="routine-enabled" checked> <span data-i18n="routine.enabled"></span></label>
+        <label class="check"><input type="checkbox" id="routine-wake"> <span data-i18n="routine.wake"></span></label>
+        <p class="hint" data-i18n="routine.hint"></p>
+        <p class="error" id="routine-error" hidden></p>
+        <div class="actions">
+            <button type="button" class="btn danger" id="routine-delete" data-i18n="common.delete" hidden></button>
+            <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
+            <button type="submit" class="primary" data-i18n="common.save"></button>
+        </div>
+    </form>
+</div>
+
+<!-- Create / edit a fact in a bot's knowledge -->
+<div id="knowledge-editor" class="overlay page" hidden>
+    <form class="dialog" id="knowledge-form">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 id="knowledge-title" data-i18n="knowledge.newFact"></h2>
+        <p class="hint" id="knowledge-location"></p>
+        <div class="two-columns">
+            <label><span data-i18n="editor.name"></span><input id="knowledge-name" required maxlength="40" pattern="[a-z0-9][a-z0-9\-]*" spellcheck="false" data-i18n-placeholder="knowledge.namePlaceholder"></label>
+            <label><span data-i18n="knowledge.kind"></span>
+                <select id="knowledge-type">
+                    <option value="user" data-i18n="knowledge.type.user"></option>
+                    <option value="workstyle" data-i18n="knowledge.type.workstyle"></option>
+                    <option value="project" data-i18n="knowledge.type.project"></option>
+                    <option value="reference" data-i18n="knowledge.type.reference"></option>
+                    <option value="note" data-i18n="knowledge.type.note"></option>
+                </select>
+            </label>
+        </div>
+        <label><span data-i18n="knowledge.description"></span><input id="knowledge-description" maxlength="200" data-i18n-placeholder="knowledge.descriptionPlaceholder"></label>
+        <label><span data-i18n="knowledge.text"></span><textarea id="knowledge-text" rows="7" required maxlength="4000" data-i18n-placeholder="knowledge.textPlaceholder"></textarea></label>
+        <p class="error" id="knowledge-error" hidden></p>
+        <div class="actions">
+            <button type="button" class="btn danger" id="knowledge-delete" data-i18n="common.delete" hidden></button>
+            <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
+            <button type="submit" class="primary" data-i18n="common.save"></button>
+        </div>
+    </form>
+</div>
+
+<!-- Key for the end-to-end encryption -->
+<div id="key-dialog" class="overlay" hidden>
+    <form class="dialog" id="key-form">
+        <h2 data-i18n="key.title"></h2>
+        <p id="key-text" data-i18n-html="key.text"></p>
+        <input id="key-input" data-i18n-placeholder="key.placeholder" autocomplete="off" spellcheck="false" required>
+        <p class="error" id="key-error" hidden></p>
+        <div class="actions">
+            <button type="button" class="btn" data-close data-i18n="key.later"></button>
+            <button type="submit" class="primary" data-i18n="common.save"></button>
+        </div>
+    </form>
+</div>
+
+<!-- One line of text instead of prompt() (rename a conversation, commit message), see askText() in menus.js -->
+<div id="text-dialog" class="overlay page" hidden>
+    <form class="dialog" id="text-form">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 id="text-title"></h2>
+        <p id="text-hint" hidden></p>
+        <input id="text-input" autocomplete="off" enterkeyhint="done" required>
+        <div class="actions">
+            <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
+            <button type="submit" class="primary" id="text-submit"></button>
+        </div>
+    </form>
+</div>
+
+<script src="vendor/marked.umd.js"></script>
+<script src="vendor/purify.min.js"></script>
+<script src="vendor/qrcode.js"></script>
+<!-- The app as ES modules; js/main.js fixes the evaluation order (i18n first, start last) -->
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

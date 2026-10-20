@@ -1,0 +1,26 @@
+{
+  "name": "openfolk-relay",
+  "private": true,
+  "license": "MIT",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start:dist": "node dist/relay/src/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node ../scripts/test.mjs src"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.16",
+    "jsqr": "^1.4.0",
+    "marked": "^17.0.6",
+    "qrcode-generator": "^2.0.4",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.3"
+  }
+}

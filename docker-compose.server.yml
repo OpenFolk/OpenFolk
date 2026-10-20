@@ -1,0 +1,69 @@
+# Relay and backend on one server: the bots run there around the clock, browsers and phones connect to the relay.
+# Also usable as a Docker Compose resource in Coolify (it asks for the two required values).
+#   docker compose -f docker-compose.server.yml up -d
+#   docker compose -f docker-compose.server.yml logs local                             the code for the first device: the
+#                                                                                      sign-in page takes it while no
+#                                                                                      device is signed in
+#   docker compose -f docker-compose.server.yml exec -u node local claude              sign in to Claude (or an API key
+#                                                                                      in the first steps)
+#   docker compose -f docker-compose.server.yml exec -u node local npm run pair        a pairing link instead of the code
+#
+# Required, e.g. in a .env next to this file:
+#   APP_URL           the public HTTPS address of the relay (your domain behind the reverse proxy); pairing links
+#                     carry it
+#   RELAY_SETUP_CODE  any 10 or more letters and digits, e.g. from: openssl rand -hex 8
+#                     The relay starts unclaimed and the backend claims it with this code on its first connection;
+#                     afterwards the code does nothing.
+# Optional: the backend's values from .env.sample (engines, push, git) and the relay's from relay/.env.sample, and
+# WORK_DIR, the host folder for the bots' folders (default ./work next to this file).
+services:
+  relay:
+    image: ${OPENFOLK_RELAY_IMAGE:-ghcr.io/openfolk/openfolk:latest}
+    build:
+      context: .
+      dockerfile: relay/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${RELAY_PUBLISH:-8787}:8787"
+    environment:
+      RELAY_SETUP_CODE: ${RELAY_SETUP_CODE:?set RELAY_SETUP_CODE}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      TOTP_SECRET: ${TOTP_SECRET:-}
+      APNS_KEY: ${APNS_KEY:-}
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_TOPIC: ${APNS_TOPIC:-}
+      APNS_ENV: ${APNS_ENV:-}
+      FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
+    volumes:
+      - relay-data:/data
+
+  local:
+    image: ${OPENFOLK_LOCAL_IMAGE:-ghcr.io/openfolk/openfolk-local:latest}
+    build:
+      context: .
+      dockerfile: local/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - relay
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RELAY_URL: ws://relay:8787/ws/agent
+      RELAY_SETUP_CODE: ${RELAY_SETUP_CODE:?set RELAY_SETUP_CODE}
+      APP_URL: ${APP_URL:?set APP_URL to the public https address of the relay}
+      MACHINE_NAME: ${MACHINE_NAME:-cloud}
+      DATA_DIR: /data
+      ALLOWED_ROOTS: /work
+      AUTOLOGON_METHOD: none
+    volumes:
+      - local-home:/home/node
+      - local-data:/data
+      # The bots' folders as a folder of the host, so you reach them over SSH or VS Code Remote as well
+      - ${WORK_DIR:-./work}:/work
+
+volumes:
+  relay-data:
+  local-home:
+  local-data:

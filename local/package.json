@@ -1,0 +1,36 @@
+{
+  "name": "openfolk-local",
+  "private": true,
+  "license": "MIT",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.ts",
+    "cli": "node src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node ../scripts/test.mjs src",
+    "selftest": "node src/selftest.ts",
+    "restart": "node src/request-restart.ts",
+    "acp-login": "node tools/acp-login.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.291",
+    "dotenv": "^17.2.3",
+    "qrcode": "^1.5.4",
+    "web-push": "^3.6.7",
+    "ws": "^8.22.0",
+    "zod": "^4.6.5"
+  },
+  "optionalDependencies": {
+    "@github/copilot": "1.0.95",
+    "@openai/codex": "0.162.1",
+    "opencode-ai": "1.19.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@types/qrcode": "1.5",
+    "@types/web-push": "^3.6.4",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.3"
+  }
+}

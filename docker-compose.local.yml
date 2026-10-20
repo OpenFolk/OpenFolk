@@ -1,0 +1,32 @@
+# Backend as a container: a machine that never sleeps (docs/running.md).
+#   docker compose -f docker-compose.local.yml up -d            prebuilt image from the GitHub Container Registry
+#   docker compose -f docker-compose.local.yml up -d --build    build from this checkout instead
+# Reads the backend's values from a .env next to this file, the same values as on every other machine
+# (.env.sample; npm run env on the first machine writes them). MACHINE_NAME is the name the app shows for this
+# container. Without AGENT_TOKEN the container generates its own; RELAY_SETUP_CODE (the code from the log of an
+# unclaimed relay) lets it claim that relay on its first connection. WORK_DIR is the host folder for the bots'
+# folders (default ./work next to this file). Its log shows a code for the main account's first device, which the
+# relay's sign-in page takes while no device is signed in.
+services:
+  local:
+    image: ${OPENFOLK_LOCAL_IMAGE:-ghcr.io/openfolk/openfolk-local:latest}
+    build:
+      context: .
+      dockerfile: local/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      RELAY_URL: ${RELAY_URL:?set RELAY_URL}
+      MACHINE_NAME: ${MACHINE_NAME:-cloud}
+      DATA_DIR: /data
+      ALLOWED_ROOTS: /work
+      AUTOLOGON_METHOD: none
+    volumes:
+      - local-home:/home/node
+      - local-data:/data
+      # The bots' folders as a folder of the host, so you reach them over SSH or VS Code Remote as well
+      - ${WORK_DIR:-./work}:/work
+
+volumes:
+  local-home:
+  local-data:

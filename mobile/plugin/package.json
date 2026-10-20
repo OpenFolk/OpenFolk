@@ -1,0 +1,16 @@
+{
+  "name": "openfolk-native",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "OpenFolk's own Capacitor plugin: end-to-end key in the iOS Keychain / Android Keystore, number on the app icon",
+  "main": "index.js",
+  "files": ["index.js", "android/src/main/", "android/build.gradle", "ios/Sources", "Package.swift", "OpenfolkNative.podspec"],
+  "capacitor": {
+    "ios": { "src": "ios" },
+    "android": { "src": "android" }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}

@@ -1,0 +1,5 @@
+{
+    // Build for the container image (npm run build -> dist/); tests stay out
+    "extends": "./tsconfig.json",
+    "exclude": ["src/**/*.test.ts"]
+}

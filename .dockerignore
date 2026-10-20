@@ -1,0 +1,21 @@
+# Only the relay image is built from this context; keep everything else out
+**/node_modules
+.git
+.github
+.claude
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.sample
+!.env.sample
+local/*
+!local/package.json
+desktop
+mobile
+tests
+docs
+relay/data
+relay/dist
+**/*.log
+work

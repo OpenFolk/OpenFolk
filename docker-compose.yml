@@ -1,0 +1,39 @@
+# Relay with Docker Compose (also usable as a Docker Compose resource in Coolify).
+#   docker compose up -d                      prebuilt image from the GitHub Container Registry
+#   docker compose up -d --build              build from this checkout instead
+# Without USER_PASSWORD and AGENT_TOKEN the relay starts unclaimed and prints a setup code to its log; claim it from
+# the machine that runs the backend: npm run claim -- https://<relay address> <setup code>. Or set both tokens in a
+# .env next to this file; all options in relay/.env.sample.
+services:
+  relay:
+    image: ${OPENFOLK_RELAY_IMAGE:-ghcr.io/openfolk/openfolk:latest}
+    build:
+      context: .
+      dockerfile: relay/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${RELAY_PUBLISH:-8787}:8787"
+    environment:
+      USER_PASSWORD: ${USER_PASSWORD:-${CLIENT_TOKEN:-}}
+      AGENT_TOKEN: ${AGENT_TOKEN:-}
+      RELAY_SETUP_CODE: ${RELAY_SETUP_CODE:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      TOTP_SECRET: ${TOTP_SECRET:-}
+      AGENT_ALLOWED_FROM: ${AGENT_ALLOWED_FROM:-}
+      WAKE_METHOD: ${WAKE_METHOD:-}
+      WAKEUP_URL: ${WAKEUP_URL:-}
+      WAKEUP_API_TOKEN: ${WAKEUP_API_TOKEN:-}
+      WAKE_MACHINES: ${WAKE_MACHINES:-}
+      WAKE_COMMAND: ${WAKE_COMMAND:-}
+      # Push to the mobile apps for backends without own credentials (optional, see docs/internals/push.md)
+      APNS_KEY: ${APNS_KEY:-}
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_TOPIC: ${APNS_TOPIC:-}
+      APNS_ENV: ${APNS_ENV:-}
+      FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
+    volumes:
+      - relay-data:/data
+
+volumes:
+  relay-data:

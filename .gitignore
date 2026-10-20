@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+local/data/
+relay/data/
+__pycache__/
+# Private files of the maintainer (plans, local Claude settings, task list, the .env template with 1Password
+# references); they stay on the machine and are not part of this repository
+.claude/
+.env.tpl
+tasks.md
+.venv/
+.test-*/
+desktop/build/openfolk/
+# The bots' folders of a container backend (WORK_DIR in docker-compose.*.yml)
+/work/
