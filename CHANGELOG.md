@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-20
+
+### Fixed
+- Quitting the desktop app no longer asks whether to wait for working bots while an idle backend is still shutting
+  down.
+
 ### Security
 - The relay keeps passwords (`USER_PASSWORD`, the claimed password, the passwords of further accounts) as salted
   scrypt hashes instead of SHA-256. A relay that gets `USER_PASSWORD` from its environment needs nothing. A relay
@@ -115,6 +121,7 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/OpenFolk/OpenFolk/releases/tag/v0.1.0

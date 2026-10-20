@@ -298,7 +298,7 @@ export class AcpConnection extends RpcProcess {
                 protocolVersion: 1,
                 // The agent handles files and terminals itself
                 clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-                clientInfo: { name: 'openfolk', title: 'OpenFolk', version: '0.1.1' },
+                clientInfo: { name: 'openfolk', title: 'OpenFolk', version: '0.1.2' },
             }),
             new Promise<never>((_, fail) => setTimeout(() => fail(new Error(t('acp.noAnswer', { name: this.agent.name, seconds: START_MS / 1000 }))), START_MS).unref()),
         ]);

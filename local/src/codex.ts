@@ -81,7 +81,7 @@ export class CodexConnection extends RpcProcess {
 
     async start(): Promise<void> {
         const r = await this.call<{ userAgent: string }>('initialize', {
-            clientInfo: { name: 'openfolk', title: 'OpenFolk', version: '0.1.1' },
+            clientInfo: { name: 'openfolk', title: 'OpenFolk', version: '0.1.2' },
             // dynamic tools (thread/start.dynamicTools) are still experimental
             capabilities: { experimentalApi: true },
         });

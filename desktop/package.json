@@ -3,7 +3,7 @@
   "productName": "OpenFolk",
   "private": true,
   "license": "MIT",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "OpenFolk as a desktop app for Windows, Linux and macOS: the bots on this computer or a relay of your own",
   "homepage": "https://github.com/OpenFolk/OpenFolk",
   "main": "main.js",
