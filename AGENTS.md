@@ -119,7 +119,8 @@ change done, walk this list and say which entries applied:
 - The user drives bots all day on a phone and notices a dropped frame and a stale label. No animation that
   repaints continuously while nothing happens; the existing pulses stop when the work stops.
 - Fewer dependencies over more. The backend has what the agent SDKs need and little else; the relay has `ws`, plus
-  marked and DOMPurify, which it only serves to browsers: as dependencies Dependabot keeps the sanitizer current.
+  marked and DOMPurify, which it only serves to browsers: as dependencies they are updated with the rest, and the
+  Dependabot alerts report a vulnerable sanitizer.
 
 ## Documentation
 
