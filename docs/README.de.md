@@ -28,6 +28,16 @@ Optional schränkt Tailscale die Verbindung des Backends weiter ein (`docs/tails
 > Windows, macOS und Linux; nur die automatische Anmeldung gibt es ausschließlich unter Windows. Das Relay läuft
 > überall, wo Node 22 oder Docker läuft.
 
+**In zwei Minuten ausprobieren:** die Desktop-App aus den [Releases](https://github.com/OpenFolk/OpenFolk/releases)
+installieren (Windows, macOS, Linux) und „Auf diesem Rechner starten“ wählen, oder aus dem Quelltext mit Node 22:
+
+```sh
+git clone https://github.com/OpenFolk/OpenFolk.git openfolk && cd openfolk && npm install && npm start
+```
+
+Die App öffnet sich im Browser, führt durch die Anmeldung bei Claude Code und den ersten Bot und koppelt das Handy
+per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
+
 ## Funktionen
 
 - **Bots und Vorlagen.** Bot über „+“ anlegen, wahlweise aus einer Vorlage. Je Bot: Ordner, Modell, Freigabe-Stufe

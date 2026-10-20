@@ -30,6 +30,16 @@ Tailscale restricts the backend connection further (`docs/tailscale.md`).
 > via Wake-on-LAN, a wake service or your own command, shutting down on Windows, macOS and Linux; the automatic
 > sign-in is Windows-only. The relay runs anywhere Node 22 or Docker runs.
 
+**Try it in two minutes:** install the desktop app from the [releases](https://github.com/OpenFolk/OpenFolk/releases)
+(Windows, macOS, Linux) and choose "Start on this computer", or from source with Node 22:
+
+```sh
+git clone https://github.com/OpenFolk/OpenFolk.git openfolk && cd openfolk && npm install && npm start
+```
+
+The app opens in the browser, walks you through signing in to Claude Code and creating the first bot, and pairs your
+phone with a QR code. Everything else is in [Getting started](#getting-started).
+
 ## Features
 
 - **Bots and templates.** Create a bot with "+", optionally from a template. Per bot: folder, model (default,
