@@ -77,6 +77,12 @@ export function renderSettings() {
     const joined = (state.machineTokens || []).map((x) => x.machine);
     const hosts = [...new Set([...state.online, ...(st ? Object.keys(st.hosts || {}) : []), ...joined])].sort();
     el.machineAddRow.hidden = !state.machineTokens || !state.online.length;
+    // A click opens <details> at once but fires 'toggle' a task later; a render in between would close it again
+    for (const d of el.settingsMachines.querySelectorAll('details.settings-machine')) {
+        const host = /** @type {HTMLDetailsElement} */ (d).dataset.host ?? '';
+        if (/** @type {HTMLDetailsElement} */ (d).open) openMachines.add(host);
+        else openMachines.delete(host);
+    }
     el.settingsMachines.innerHTML = '';
     if (!hosts.length) el.settingsMachines.appendChild(node('li', 'empty-small', t('settings.noMachine')));
     for (const h of hosts) {
@@ -395,6 +401,7 @@ function machineForm(host, ms) {
     const s = ms.settings;
     const set = (patch) => sendMachine(host, patch);
     const details = /** @type {HTMLDetailsElement} */ (node('details', 'settings-machine'));
+    details.dataset.host = host;
     details.open = openMachines.has(host);
     details.addEventListener('toggle', () => { if (details.open) openMachines.add(host); else openMachines.delete(host); });
     details.appendChild(node('summary', '', t('settings.machineMore')));

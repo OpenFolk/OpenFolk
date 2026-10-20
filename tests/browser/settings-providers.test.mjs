@@ -23,6 +23,16 @@ export default async function ({ start, check }) {
     await machineSettings({});
     await h.wait(100);
     await p.click('#settings-machines details summary');
+    // A message from the backend between the click and the 'toggle' event renders the list anew
+    const reopened = await p.evaluate(async () => {
+        const d = () => document.querySelector('#settings-machines details');
+        d().querySelector('summary').click();
+        await new Promise((r) => setTimeout(r, 50));
+        d().querySelector('summary').click();
+        window.renderSettings();
+        return d().open;
+    });
+    check('opened and rendered before the toggle event: stays open', reopened);
     const form = () => p.evaluate(() => {
         const d = document.querySelector('#settings-machines details');
         const part = (e) => d.querySelector(`.settings-engine[data-engine="${e}"]`);
