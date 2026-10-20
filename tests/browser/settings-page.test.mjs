@@ -59,8 +59,12 @@ export default async function ({ start, check }) {
     await p.evaluate(() => document.querySelector('.back')?.click());
     await h.wait(200);
     await p.click('#btn-settings');
-    await h.wait(200);
-    const narrow = await p.locator('#settings > .dialog').boundingBox();
+    // The page slides in; on a slow CI runner it is still moving after a fixed wait
+    let narrow = null;
+    for (let i = 0; i < 30 && narrow?.x !== 0; i++) {
+        await h.wait(100);
+        narrow = await p.locator('#settings > .dialog').boundingBox();
+    }
     check('narrow: over the whole screen', narrow && narrow.x === 0 && narrow.width === 400
         && await p.evaluate(() => getComputedStyle(document.getElementById('settings')).position === 'fixed'), narrow);
 

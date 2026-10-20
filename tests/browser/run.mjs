@@ -41,7 +41,10 @@ for (const file of files) {
         const rejected = open.flatMap((h) => h.sent).filter((f) => !RELAY_FRAMES.has(f.type)).map(checkClientFrame).filter((r) => !r.ok);
         if (rejected.length) check('backend accepts every frame the app sent', false, rejected.map((r) => r.problem));
     } catch (e) {
-        check('ran through', false, e.message.split('\n')[0]);
+        const [first, ...log] = e.message.split('\n');
+        check('ran through', false, first);
+        // Playwright's call log says what an action waited for (visible, stable, covered …); CI has nothing else
+        for (const line of log.filter((l) => l.trim()).slice(0, 15)) console.log(`       ${line.trim()}`);
     } finally {
         for (const h of open) await h.close().catch(() => undefined);
     }
