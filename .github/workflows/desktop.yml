@@ -139,12 +139,15 @@ jobs:
 
       - name: Smoke test (Linux)
         if: matrix.os == 'linux'
+        timeout-minutes: 15
         # Ubuntu 24.04 forbids unprivileged user namespaces, which Chromium's sandbox needs
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           xvfb-run --auto-servernum node scripts/desktop-smoke.mjs --exe ${{ matrix.exe }}
       - name: Smoke test
         if: matrix.os != 'linux'
+        # A native dialog nobody answers would otherwise hold the job for six hours
+        timeout-minutes: 15
         run: node scripts/desktop-smoke.mjs --exe "${{ matrix.exe }}"
       - uses: actions/upload-artifact@v4
         with:

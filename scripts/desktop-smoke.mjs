@@ -64,8 +64,13 @@ async function launch(config) {
 /** Quits like the user: the app asks its backend to end and waits for it. */
 async function quit(run) {
     await run.app.evaluate(({ app: a }) => a.quit()).catch(() => undefined);
-    await new Promise((r) => setTimeout(r, 12_000));
-    await run.app.close().catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 15_000));
+    // A native dialog nobody answers keeps the app open; end it so the run reports instead of hanging
+    const closed = await Promise.race([run.app.close().then(() => true, () => true), new Promise((r) => setTimeout(() => r(false), 30_000))]);
+    if (!closed) {
+        check('the app quits by itself', false);
+        run.app.process().kill('SIGKILL');
+    }
 }
 
 const machineConnected = (win) => win.waitForFunction(() => document.querySelector('.welcome-steps li:nth-child(1)')?.classList.contains('done'), null, { timeout: 60_000 })

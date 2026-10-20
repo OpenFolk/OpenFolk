@@ -210,10 +210,11 @@ function guardQuit(getBackend, ask) {
             app.quit();
         };
         backend.stop().then(quit);
-        // An idle backend ends within about seven seconds (restart.ts waits for five quiet ones)
+        // An idle backend needs up to about eight seconds (restart.ts checks every 2 s, then waits for five quiet ones)
+        // plus closing down; asking earlier showed "bots still working" on a slower machine where none was
         setTimeout(async () => {
             if (!done && (await ask())) backend.kill().then(quit);
-        }, 8000);
+        }, 12_000);
     });
 }
 
