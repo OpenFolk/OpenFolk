@@ -34,10 +34,8 @@ check('main has no password here (it is the relay\'s)', store.update('main', { p
 const legacyDir = tmp();
 fs.writeFileSync(path.join(legacyDir, ACCOUNTS_FILE), JSON.stringify({ accounts: [{ id: 'alt', name: 'Alt', admin: false, created: '', hash: hashToken('an-old-sha256-password') }] }));
 const legacy = new Accounts(legacyDir);
-const storedHash = () => (JSON.parse(fs.readFileSync(path.join(legacyDir, ACCOUNTS_FILE), 'utf8')) as { accounts: { id: string; hash?: string }[] }).accounts.find((a) => a.id === 'alt')?.hash ?? '';
-check('password from before scrypt: wrong one refused, hash kept', !legacy.passwordMatches('alt', 'wrong-password-xyz') && storedHash() === hashToken('an-old-sha256-password'));
-check('password from before scrypt: signs in, rewritten with scrypt', legacy.passwordMatches('alt', 'an-old-sha256-password') && storedHash().startsWith('scrypt$')
-    && new Accounts(legacyDir).passwordMatches('alt', 'an-old-sha256-password'));
+check('password from before scrypt: no longer signs in', !legacy.passwordMatches('alt', 'an-old-sha256-password'));
+check('password from before scrypt: an admin sets it again', legacy.update('alt', { password: 'a-new-long-password' }) === 'ok' && legacy.passwordMatches('alt', 'a-new-long-password'));
 check('main cannot be deleted', !store.remove('main'));
 check('deleted account leaves a tombstone', store.remove('kunde-mueller') && store.deletedIds().includes('kunde-mueller') && !store.get('kunde-mueller'));
 const again = store.create('Kunde Müller');

@@ -6,7 +6,7 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkPassword, hashPassword, hashToken, isLegacyHash, PASSWORD_HASH, tokenEquals, tokenMatches } from './auth.ts';
+import { checkPassword, hashPassword, hashToken, PASSWORD_HASH, tokenEquals, tokenMatches } from './auth.ts';
 
 export interface Credentials {
     clientHash: string;
@@ -64,6 +64,10 @@ export class Owner {
             return;
         }
         this.credentials = this.load();
+        if (this.credentials && !this.credentials.clientHash) {
+            this.warning = `${OWNER_FILE} holds the password as SHA-256 from before 0.1.2, which no longer signs in. Devices pair with a link `
+                + '(npm run pair); for a password, set USER_PASSWORD and AGENT_TOKEN, or delete the file and claim the relay again.';
+        }
         if (this.credentials) return;
         if (setupCode && normalizeCode(setupCode).length < 10) throw new Error('RELAY_SETUP_CODE needs at least 10 letters or digits.');
         this.setupCode = setupCode.trim() || newSetupCode();
@@ -72,8 +76,9 @@ export class Owner {
     private load(): Credentials | null {
         try {
             const v = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<Credentials>;
-            return typeof v.clientHash === 'string' && PASSWORD_HASH.test(v.clientHash) && typeof v.agentHash === 'string' && /^[0-9a-f]{64}$/.test(v.agentHash)
-                ? { clientHash: v.clientHash, agentHash: v.agentHash } : null;
+            if (typeof v.agentHash !== 'string' || !/^[0-9a-f]{64}$/.test(v.agentHash) || typeof v.clientHash !== 'string') return null;
+            // A password hash from before scrypt keeps the relay claimed and its backends connected, without a password
+            return { clientHash: PASSWORD_HASH.test(v.clientHash) ? v.clientHash : '', agentHash: v.agentHash };
         } catch {
             return null;
         }
@@ -90,19 +95,9 @@ export class Owner {
         return 'ok';
     }
 
-    /** The web app's password; a claim's SHA-256 hash from before scrypt is replaced by the first sign-in with it. */
+    /** The web app's password. */
     passwordMatches(raw: string): boolean {
-        const c = this.credentials;
-        if (!c || !checkPassword(c.clientHash, raw)) return false;
-        if (isLegacyHash(c.clientHash)) {
-            c.clientHash = hashPassword(raw);
-            let stored: Record<string, unknown> = {};
-            try {
-                stored = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Record<string, unknown>;
-            } catch { /* rewritten below */ }
-            this.save({ ...stored, clientHash: c.clientHash });
-        }
-        return true;
+        return !!this.credentials && checkPassword(this.credentials.clientHash, raw);
     }
 
     private save(data: object): void {

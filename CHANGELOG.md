@@ -7,7 +7,10 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ### Security
 - The relay keeps passwords (`USER_PASSWORD`, the claimed password, the passwords of further accounts) as salted
-  scrypt hashes instead of SHA-256. Existing hashes keep working and are replaced on the next sign-in with the password.
+  scrypt hashes instead of SHA-256. A relay that gets `USER_PASSWORD` from its environment needs nothing. A relay
+  claimed with `npm run claim` stays claimed and keeps its backends, but its old password no longer signs in: pair
+  devices with a link (`npm run pair`), or set `USER_PASSWORD` and `AGENT_TOKEN`, or delete `owner.json` and claim it
+  again; the relay's start log says so. An admin sets the password of a further account again.
 - The web app no longer lets a chat or machine id like `__proto__` from a frame reach `Object.prototype`, and answers
   to name suggestions only call the suggestion buttons it knows.
 

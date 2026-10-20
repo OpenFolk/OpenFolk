@@ -26,16 +26,12 @@ export function hashPassword(raw: string): string {
     return `scrypt$${salt.toString('base64url')}$${scryptSync(raw, salt, 32).toString('base64url')}`;
 }
 
-/** A hash from hashPassword, or a SHA-256 one from before it, which checkPassword still accepts. */
-export const PASSWORD_HASH = /^(?:[0-9a-f]{64}|scrypt\$[\w-]{22}\$[\w-]{43})$/;
+/** A hash from hashPassword. */
+export const PASSWORD_HASH = /^scrypt\$[\w-]{22}\$[\w-]{43}$/;
 
-/** A password hash from before scrypt, to be replaced once a sign-in has proven the password. */
-export const isLegacyHash = (stored: string): boolean => !stored.startsWith('scrypt$');
-
-/** Whether `raw` is the password behind `stored`; false if either is empty. */
+/** Whether `raw` is the password behind `stored`; false if either is empty or `stored` is no hashPassword hash. */
 export function checkPassword(stored: string, raw: string | undefined): boolean {
-    if (!stored || !raw) return false;
-    if (isLegacyHash(stored)) return tokenMatches(stored, raw);
+    if (!raw || !PASSWORD_HASH.test(stored)) return false;
     const [, salt, hash] = stored.split('$');
     const want = Buffer.from(hash ?? '', 'base64url');
     return want.length === 32 && timingSafeEqual(scryptSync(raw, Buffer.from(salt ?? '', 'base64url'), 32), want);

@@ -8,7 +8,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkPassword, hashPassword, isLegacyHash } from './auth.ts';
+import { checkPassword, hashPassword } from './auth.ts';
 import { MIN_TOKEN_LENGTH } from './owner.ts';
 import type { RelayAccount } from '../../shared/protocol.ts';
 
@@ -128,17 +128,12 @@ export class Accounts {
     }
 
     /**
-     * The password of an account other than 'main'; one without a password set cannot sign in with one. A SHA-256
-     * hash from before scrypt is replaced by the first sign-in that proves the password.
+     * The password of an account other than 'main'; one without a password set cannot sign in with one, nor one
+     * whose SHA-256 hash dates from before 0.1.2 (an admin sets it again).
      */
     passwordMatches(id: string, password: string): boolean {
-        const a = this.list.find((x) => x.id === id);
-        if (!a?.hash || !checkPassword(a.hash, password)) return false;
-        if (isLegacyHash(a.hash)) {
-            a.hash = hashPassword(password);
-            this.save();
-        }
-        return true;
+        const hash = this.list.find((x) => x.id === id)?.hash;
+        return !!hash && checkPassword(hash, password);
     }
 }
 
