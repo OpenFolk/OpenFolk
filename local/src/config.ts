@@ -59,13 +59,18 @@ export function envVar(name: string, legacy?: string): string | undefined {
     return process.env[name] || (legacy ? process.env[legacy] : undefined) || undefined;
 }
 
+/** The relay takes 1 to 32 characters of a-z, 0-9 and '-'; longer host names (macOS CI runners, some Macs) are cut. */
+export function machineName(raw: string): string {
+    return raw.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32).replace(/-+$/, '') || 'home';
+}
+
 /** Port of the relay embedded in this backend (no RELAY_URL). */
 const embeddedPort = Number(process.env.RELAY_PORT) || 8787;
 
 export const config = {
     dataDir: process.env.DATA_DIR ?? path.join(projectRoot, 'local', 'data'),
     /** Name of this machine as the relay and the wake service know it (e.g. 'workstation'). */
-    machine: (envVar('MACHINE_NAME', 'RECHNER') || process.env.COMPUTERNAME || os.hostname()).toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+    machine: machineName(envVar('MACHINE_NAME', 'RECHNER') || process.env.COMPUTERNAME || os.hostname()),
     /** Folders in which bots may be created; default is the user's home directory. */
     allowedRoots: (process.env.ALLOWED_ROOTS || os.homedir()).split(';').filter(Boolean).map((p) => path.resolve(p)),
     /** Sign-in of the sessions: the Claude Code login, or the API key stored on this machine (machine settings). */

@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { machineName } from './config.ts';
 import { parseMachineConfig } from './machine-config.ts';
 import { cleanMachineSettings } from './machine-settings.ts';
 import { MACHINE_SETTINGS_DEFAULT } from '../../shared/protocol.ts';
@@ -82,6 +83,13 @@ check('command: restart without SHUTDOWN_RESTART_COMMAND refused, nothing shut d
 const restartOnly = parseMachineConfig({ SHUTDOWN_COMMAND: `${node} -e "process.exit(3)"`, SHUTDOWN_RESTART_COMMAND: `${node} -e "process.exit({seconds} === 30 ? 0 : 4)"` }).shutdown;
 check('command: restart runs SHUTDOWN_RESTART_COMMAND with placeholders', canRestart(restartOnly)
     && await shutdown(false, 30, false, restartOnly, true).then((x) => Math.abs(Date.parse(x.at ?? '') - Date.now() - 30_000) < 5000, () => false));
+
+// Machine name: what the relay accepts (1 to 32 of a-z, 0-9, '-')
+const runner = machineName('sat12-dp150-51a9f79f-36ef-4c6f-9b9e-506e8a9e9f00-d254c4687e0a.local');
+check('machine name: a long host name is cut to what the relay accepts', /^[a-z0-9-]{1,32}$/.test(runner) && runner.startsWith('sat12-dp150-'), runner);
+check('machine name: no dash at the end after the cut', machineName(`${'a'.repeat(31)}.local`) === 'a'.repeat(31));
+check('machine name: lower case, other characters as dashes', machineName('Marcos MacBook.local') === 'marcos-macbook-local');
+check('machine name: nothing usable is "home"', machineName('---') === 'home');
 
 fs.rmSync(withScripts, { recursive: true, force: true });
 if (failed) {
