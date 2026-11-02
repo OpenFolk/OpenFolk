@@ -230,6 +230,8 @@ registerDictionary('en', {
     'status.relayRestarting': 'Relay is restarting …',
     'status.connected': '{machines} connected',
     'status.allOff': 'all machines off',
+    'status.viaLocal': 'local',
+    'status.viaRelay': 'via {host}',
     'login.loggedOut': 'This device was signed out. Enter the password to sign in again.',
     'login.failed': 'Sign-in failed',
     'code.deviceLoggedOut': 'This device is not (or no longer) signed in.',

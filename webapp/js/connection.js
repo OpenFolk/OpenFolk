@@ -9,7 +9,7 @@ import { BACKEND_GONE_MS, renderMachines, scheduleWakePoll } from './machines.js
 import { historyUnchanged, markSeen, noteIncoming, receiveSeen, renderEntry, renderHistory, renderPinned, scroll, setRead } from './chat-features.js';
 import { approvalsToBottom, attachmentBar, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
 import { imageRequested, playback, removeVoicePending, startPlayback } from './voice.js';
-import { isNative, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
+import { connectionVia, isNative, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
 import { closeDialog, gitError, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
 import { receiveVscodeHistory, receiveVscodeSessions, renderVscodeAdoptButton, showVscodeList, vs, vscodeError, vscodeShown } from './vscode.js';
 import {
@@ -229,7 +229,7 @@ async function handleIncoming(f) {
 export function setAgentStatus(online, text) {
     state.agentOnline = online;
     el.agentStatus.className = 'status ' + (online ? 'online' : 'offline');
-    el.agentStatus.querySelector('span').textContent = text || (online ? t('status.connected', { machines: state.online.map(upper).join(', ') }) : t('status.allOff'));
+    el.agentStatus.querySelector('span').textContent = text || (online ? t('status.connected', { machines: state.online.map(upper).join(', ') }) + connectionVia() : t('status.allOff'));
     updateSendAllowed();
 }
 

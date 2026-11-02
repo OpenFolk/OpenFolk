@@ -30,6 +30,18 @@ export function relayAddress() {
     return isNative ? readSetting(RELAY_KEY) : location.origin;
 }
 
+/**
+ * Where this device is connected, for the status lines: ' · local' for the relay on this computer (the desktop app's own,
+ * 127.0.0.1), ' · via <host>' for a relay elsewhere; '' while there is no address.
+ */
+export function connectionVia() {
+    let host = '';
+    try { host = new URL(relayAddress()).hostname; } catch { return ''; }
+    if (!host) return '';
+    const local = host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '[::1]';
+    return ' · ' + (local ? t('status.viaLocal') : t('status.viaRelay', { host }));
+}
+
 /** The mobile app has no relay address yet; the login form asks for it. */
 export const needsRelayAddress = () => isNative && !relayAddress();
 

@@ -230,6 +230,8 @@ registerDictionary('de', {
     'status.relayRestarting': 'Relay startet neu …',
     'status.connected': '{machines} verbunden',
     'status.allOff': 'alle Rechner aus',
+    'status.viaLocal': 'lokal',
+    'status.viaRelay': 'über {host}',
     'login.loggedOut': 'Dieses Gerät wurde abgemeldet. Zum erneuten Anmelden das Passwort eingeben.',
     'login.failed': 'Anmeldung fehlgeschlagen',
     'code.deviceLoggedOut': 'Dieses Gerät ist nicht (mehr) angemeldet.',
