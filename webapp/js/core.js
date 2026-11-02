@@ -56,7 +56,7 @@ export const el = {
     infoKnowledgeHint: $('info-knowledge-hint'), infoKnowledge: $('info-knowledge'), infoKnowledgeNew: /** @type {HTMLButtonElement} */ ($('info-knowledge-new')),
     infoSwitches: $('info-switches'), infoGit: $('info-git'), infoActions: $('info-actions'), infoArchiveHead: $('info-archive-head'), infoArchive: $('info-archive'),
     gActions: $('group-actions'),
-    infoSkills: $('info-skills'), infoClaude: $('info-claude'), infoEdit: /** @type {HTMLButtonElement} */ ($('info-edit')),
+    infoSkills: $('info-skills'), infoClaude: $('info-claude'), infoEdit: /** @type {HTMLButtonElement} */ ($('info-edit')), infoEditTop: $('info-edit-top'),
     rEditor: $('routine-editor'), rForm: /** @type {HTMLFormElement} */ ($('routine-form')), rTitle: $('routine-title'), rName: /** @type {HTMLInputElement} */ ($('routine-name')), rKind: /** @type {HTMLSelectElement} */ ($('routine-kind')),
     rTimeField: $('routine-time-field'), rTime: /** @type {HTMLInputElement} */ ($('routine-time')), rDayField: $('routine-day-field'), rDay: /** @type {HTMLSelectElement} */ ($('routine-day')),
     rCronField: $('routine-cron-field'), rCron: /** @type {HTMLInputElement} */ ($('routine-cron')), rPrompt: /** @type {HTMLTextAreaElement} */ ($('routine-prompt')), rEnabled: /** @type {HTMLInputElement} */ ($('routine-enabled')), rWake: /** @type {HTMLInputElement} */ ($('routine-wake')),

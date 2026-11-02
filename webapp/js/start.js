@@ -505,7 +505,7 @@ el.gForm.addEventListener('submit', (ev) => {
 // Info panel
 el.infoKnowledgeNew.addEventListener('click', () => openKnowledgeEditor(knowledgeSection(), null));
 el.infoRoutineNew.addEventListener('click', () => openRoutineEditor(null));
-el.infoEdit.addEventListener('click', () => { const b = bot(state.infoBot); if (closeDialog(el.info) && b) openEditor(b); });
+for (const button of [el.infoEdit, el.infoEditTop]) button.addEventListener('click', () => { const b = bot(state.infoBot); if (closeDialog(el.info) && b) openEditor(b); });
 
 // Routine editor
 el.rKind.addEventListener('change', routineFields);

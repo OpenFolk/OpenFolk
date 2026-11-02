@@ -235,6 +235,8 @@
     <!-- Bot info: an overlay, on wide screens a column of its own (.app.info-docked) -->
     <div id="info" class="overlay side page" hidden>
         <section class="dialog panel" id="info-panel">
+            <!-- Back, avatar, name and the buttons stay in view while the page scrolls -->
+            <div class="panel-top">
             <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
             <header class="panel-head">
                 <div class="avatar large" id="info-avatar"></div>
@@ -243,8 +245,10 @@
                     <p id="info-area" hidden></p>
                     <p id="info-role"></p>
                 </div>
+                <button class="round" id="info-edit-top" data-i18n-aria-label="menu.editBot" data-i18n-title="menu.editBot"><svg viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
                 <button class="round" data-close data-i18n-aria-label="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </header>
+            </div>
             <!-- What the ⋮ menu of the chat held (renderInfoChat in menus.js): switches, open changes, actions, archive -->
             <div class="menu menu-inline" id="info-switches"></div>
             <h3 data-i18n="git.openChanges"></h3>

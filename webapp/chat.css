@@ -733,7 +733,10 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .page-back { display: none; }
 @keyframes page-in { from { transform: translateX(100%); } }
 .dialog.panel { max-width: 440px; height: 100dvh; max-height: 100dvh; border-radius: 0; padding-top: calc(18px + env(safe-area-inset-top)); }
-.panel-head { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; }
+.panel-head { display: grid; grid-template-columns: auto 1fr; grid-auto-flow: column; grid-auto-columns: auto; gap: 14px; align-items: center; }
+/* The bot's page: head with the back arrow stays at the top, the rest scrolls. The padding sits in the head, so it can stick to the edge. */
+#info-panel { padding-top: 0; }
+.panel-top { position: sticky; top: 0; z-index: 2; background: var(--surface); display: flex; flex-direction: column; padding: calc(18px + env(safe-area-inset-top)) 0 12px; border-bottom: 1px solid var(--line); }
 .panel-head h2 { margin: 0; }
 .panel-head p { margin: 2px 0 0; }
 #info-area { color: var(--accent); font-weight: 600; }
@@ -903,6 +906,7 @@ details summary { cursor: pointer; }
         animation: page-in .2s ease-out;
     }
     .overlay.page .page-back { display: inline-flex; flex: 0 0 auto; align-self: flex-start; margin: 0 0 -6px -10px; }
+    .overlay.page .panel-top { padding-top: calc(8px + env(safe-area-inset-top)); }
     .overlay.page .panel-head > [data-close], .overlay.page .vs-head > [data-close], .overlay.page #vs-back { display: none; }
     /* The long-press menu of the list is a page of its own, over the whole screen with a head (list.js) */
     #row-menu.menu-page {
