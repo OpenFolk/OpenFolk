@@ -18,7 +18,7 @@ export default async function ({ start, check }) {
         footer: document.getElementById('footer-handle').getAttribute('aria-label'),
     }));
     let s = await texts();
-    check('German browser: German UI and <html lang="de">', s.lang === 'de' && s.settings.startsWith('Einstellungen:') && s.status === 'DESK, WORKSTATION verbunden', s);
+    check('German browser: German UI and <html lang="de">', s.lang === 'de' && s.settings.startsWith('Einstellungen:') && s.status === 'DESK, WORKSTATION verbunden · über test.local', s);
     check('data-i18n texts, placeholders, titles and aria labels in German', s.search === 'In allen Chats suchen' && s.searchLabel === 'In allen Chats suchen'
         && s.newTitle === 'Neue Unterhaltung, neuer Bot oder neue Gruppe' && s.empty.startsWith('Wähle links einen Bot') && s.footer === 'Mehr anzeigen', s);
 
@@ -41,7 +41,7 @@ export default async function ({ start, check }) {
     const frames = h.sent.filter((f) => f.type === 'language');
     check('`language` frame to every machine that is awake', frames.length === 2 && frames.every((f) => f.language === 'en') && frames.map((f) => f.machine).sort().join() === 'desk,workstation', frames);
     s = await texts();
-    check('re-rendered in English without a reload', s.lang === 'en' && s.settings.startsWith('Settings:') && s.search === 'Search all chats' && s.status === 'DESK, WORKSTATION connected'
+    check('re-rendered in English without a reload', s.lang === 'en' && s.settings.startsWith('Settings:') && s.search === 'Search all chats' && s.status === 'DESK, WORKSTATION connected · via test.local'
         && s.newTitle === 'New conversation, new bot or new group' && s.footer === 'Show more', s);
     check('the open settings dialog is English too', (await p.textContent('#settings h2')) === 'Settings'
         && (await p.locator('#settings-language option').allTextContents()).join('|') === 'Automatic|English|Deutsch');
