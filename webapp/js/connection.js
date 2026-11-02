@@ -184,8 +184,11 @@ export function checkConnection() {
     }, ALIVE_TIMEOUT_MS);
 }
 
-/** Frames that arrive unencrypted even with end-to-end encryption: the relay's own (RelayFrame) and errors. */
-const PLAIN_TYPES = new Set(['agents', 'auth', 'devices', 'accounts', 'account_created', 'account_invite', 'pair_request', 'pair_approved', 'machine_status', 'wake_result', 'error']);
+/**
+ * Frames that arrive unencrypted even with end-to-end encryption: the relay's own (RelayFrame) and errors. pair_wait and
+ * pair_first are RelayFrames too, but they only reach the sign-in page (qr-login.js), which has its own socket.
+ */
+const PLAIN_TYPES = new Set(['agents', 'auth', 'devices', 'totp', 'totp_setup', 'machine_tokens', 'accounts', 'account_created', 'account_invite', 'pair_request', 'pair_approved', 'machine_status', 'wake_result', 'error']);
 let plainWarned = false;
 
 async function handleIncoming(f) {
