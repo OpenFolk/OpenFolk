@@ -1,0 +1,60 @@
+// The colour of the own messages: not WhatsApp green by default, chosen in the settings among a few colours, kept per
+// device in the browser's storage only (nothing goes to the backend), readable in light and dark.
+import { bot } from './harness.mjs';
+
+const lum = (rgb) => { const c = rgb.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+const parse = (s) => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+
+export default async function ({ start, check }) {
+    const h = await start({ bots: [bot('pdf', 'PDF-Reader')] });
+    const p = h.page;
+    const mine = () => p.evaluate(() => {
+        const probe = document.createElement('div');
+        probe.className = 'bubble me';
+        document.body.append(probe);
+        const s = getComputedStyle(probe);
+        const r = { bg: s.backgroundColor, text: s.color };
+        probe.remove();
+        return r;
+    });
+    const first = await mine();
+    check('default is not the green of WhatsApp', first.bg !== 'rgb(217, 253, 211)' && first.bg === 'rgb(248, 211, 191)', first);
+
+    await p.click('#btn-settings');
+    await h.wait(100);
+    const names = await p.$$eval('#settings-bubble .swatch', (n) => n.map((x) => x.dataset.bubble));
+    check('six colours to choose from, the default marked', names.length === 6 && (await p.getAttribute('#settings-bubble [data-bubble=peach]', 'aria-checked')) === 'true', names);
+    const sentBefore = h.sent.length;
+
+    const seen = {};
+    for (const name of names) {
+        await p.click(`#settings-bubble [data-bubble=${name}]`);
+        await h.wait(50);
+        seen[name] = {};
+        for (const theme of ['light', 'dark']) {
+            await p.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
+            const c = await mine();
+            seen[name][theme] = { bg: c.bg, ratio: Number(contrast(parse(c.bg), parse(c.text)).toFixed(1)) };
+        }
+    }
+    const weak = Object.entries(seen).flatMap(([n, v]) => Object.entries(v).filter(([, x]) => x.ratio < 4.5).map(([t, x]) => `${n}/${t}: ${x.ratio}`));
+    check('text on every colour readable in light and dark (contrast 4.5 and more)', weak.length === 0, weak.length ? weak : seen);
+    check('every colour differs from the others, in light and in dark', new Set(Object.values(seen).map((v) => v.light.bg)).size === 6 && new Set(Object.values(seen).map((v) => v.dark.bg)).size === 6, seen);
+
+    await p.click('#settings-bubble [data-bubble=blue]');
+    await h.wait(50);
+    check('choice kept in the browser only', await p.evaluate(() => localStorage.getItem('openfolk-bubble') === 'blue' && document.documentElement.dataset.bubble === 'blue'));
+    check('nothing sent to a backend', h.sent.length === sentBefore || h.sent.slice(sentBefore).every((f) => !JSON.stringify(f).includes('blue')), h.sent.slice(sentBefore));
+    check('the chosen swatch is marked', (await p.getAttribute('#settings-bubble [data-bubble=blue]', 'aria-checked')) === 'true' && (await p.getAttribute('#settings-bubble [data-bubble=peach]', 'aria-checked')) === 'false');
+
+    await p.reload();
+    await h.wait(500);
+    check('applied again after a reload, before the app starts', await p.evaluate(() => document.documentElement.dataset.bubble === 'blue'));
+
+    await p.evaluate(() => localStorage.setItem('openfolk-bubble', 'nonsense'));
+    await p.reload();
+    await h.wait(500);
+    check('an unknown name falls back to the default colour', (await mine()).bg === 'rgb(248, 211, 191)');
+    await h.close();
+}

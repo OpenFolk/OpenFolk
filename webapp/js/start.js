@@ -22,7 +22,7 @@ import {
     repoChanged, repoTyped, requestSuggestion, routineCron, routineFields, submitEditor,
 } from './editors.js';
 import { checkPush, renderPushSettings, subscribePush } from './push.js';
-import { askMachineJoin, chooseAllAccounts, chooseLanguage, chooseShared, openSettings, renderAvatarKeys, renderSettings, showE2eStatus } from './settings.js';
+import { askMachineJoin, chooseAllAccounts, chooseBubble, chooseLanguage, chooseShared, openSettings, renderAvatarKeys, renderSettings, showE2eStatus } from './settings.js';
 import { addAccount, cancelAddAccount, createAccount, openAccountMenu, openAccounts, saveOwnAccount, showAccountField, switchAccount } from './accounts.js';
 import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, startQrLogin, stopQrLogin } from './qr-login.js';
 
@@ -561,6 +561,7 @@ el.settingsTheme.addEventListener('change', () => {
     applyTheme(el.settingsTheme.value);
     toast(t('settings.saved'));
 });
+el.settingsBubble.addEventListener('click', (ev) => { const k = closest(ev, '.swatch'); if (k) chooseBubble(k.dataset.bubble); });
 el.settingsLanguage.addEventListener('change', () => chooseLanguage(el.settingsLanguage.value));
 el.settingsAvatarModel.addEventListener('change', () => {
     chooseShared('avatarModel', el.settingsAvatarModel.value);

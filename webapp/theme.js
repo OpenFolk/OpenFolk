@@ -3,4 +3,7 @@
 try {
     const t = localStorage.getItem('openfolk-theme');
     if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    // color of the own messages; an unknown name has no rule and leaves the default
+    const b = localStorage.getItem('openfolk-bubble');
+    if (b && /^[a-z]+$/.test(b)) document.documentElement.dataset.bubble = b;
 } catch { /* private mode */ }

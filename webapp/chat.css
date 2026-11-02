@@ -1,3 +1,10 @@
+/* Color of the own messages, chosen per device (settings, data-bubble on <html>, theme.js); the swatches of the settings use the same values */
+:root, .swatch[data-bubble="peach"] { --bubble-me-l: #f8d3bf; --bubble-me-d: #7a412a; }
+:root[data-bubble="blue"], .swatch[data-bubble="blue"] { --bubble-me-l: #cfe1f8; --bubble-me-d: #21507f; }
+:root[data-bubble="lilac"], .swatch[data-bubble="lilac"] { --bubble-me-l: #ddd1f7; --bubble-me-d: #50407f; }
+:root[data-bubble="teal"], .swatch[data-bubble="teal"] { --bubble-me-l: #c9e9e6; --bubble-me-d: #1b5654; }
+:root[data-bubble="gray"], .swatch[data-bubble="gray"] { --bubble-me-l: #d9dee2; --bubble-me-d: #3f4a54; }
+:root[data-bubble="green"], .swatch[data-bubble="green"] { --bubble-me-l: #d9fdd3; --bubble-me-d: #005c4b; }
 :root {
     --bg: #eef1f4;
     --surface: #ffffff;
@@ -8,7 +15,7 @@
     --line: #e1e5e9;
     --accent: #d97757;
     --accent-text: #ffffff;
-    --bubble-me: #d9fdd3;
+    --bubble-me: var(--bubble-me-l);
     --bubble-routine: #fdf3d0;
     --bubble-bot: #ffffff;
     --bubble-job: #eef2ff;
@@ -35,7 +42,7 @@
         --text: #e9edef;
         --muted: #8696a0;
         --line: #2a3942;
-        --bubble-me: #005c4b;
+        --bubble-me: var(--bubble-me-d);
         --bubble-routine: #4a3b10;
         --bubble-bot: #202c33;
         --bubble-job: #1e2747;
@@ -56,7 +63,7 @@
     --text: #e9edef;
     --muted: #8696a0;
     --line: #2a3942;
-    --bubble-me: #005c4b;
+    --bubble-me: var(--bubble-me-d);
     --bubble-routine: #4a3b10;
     --bubble-bot: #202c33;
     --bubble-job: #1e2747;
@@ -742,6 +749,13 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .dialog h3 small { font-weight: 400; color: var(--muted); }
 .dialog p { margin: 0; color: var(--muted); }
 .dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.dialog .swatch-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; padding: 0; cursor: pointer; border: 2px solid var(--line); background: var(--bubble-me-l); }
+.swatch[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.swatch:hover { border-color: var(--accent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .swatch { background: var(--bubble-me-d); } }
+:root[data-theme="dark"] .swatch { background: var(--bubble-me-d); }
 .dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
 .dialog input:not([type=checkbox]), .dialog select, .dialog textarea {
     font: inherit; color: var(--text); background: var(--bar-bg); border: 1px solid var(--line);

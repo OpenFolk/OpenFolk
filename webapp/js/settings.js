@@ -1,6 +1,6 @@
 /* OpenFolk web app: settings (appearance, language, autologin per machine, entry to notifications and devices). */
 import { BACKEND_LANGUAGE_KEY, LANGUAGE_KEY, i18n, isLanguage, locale, readSetting, resolveLanguage, setLanguage, t, writeSetting } from './i18n.js';
-import { THEME_KEY, deviceAccounts, el, node, state, storage, toast } from './core.js';
+import { BUBBLE_DEFAULT, BUBBLE_KEY, THEME_KEY, deviceAccounts, el, node, state, storage, toast } from './core.js';
 import { clockTime, e2e, send, upper } from './e2e.js';
 import { askAutologon, machineCan } from './machines.js';
 import { setShowAllAccounts, showAllAccounts } from './others.js';
@@ -29,7 +29,27 @@ export function settingsSaveFailed() {
     savePending.clear();
 }
 
+/** The swatch of the color in use is marked. */
+function renderBubbleChoice() {
+    const current = document.documentElement.dataset.bubble || BUBBLE_DEFAULT;
+    for (const k of el.settingsBubble.querySelectorAll('.swatch')) k.setAttribute('aria-checked', String(/** @type {HTMLElement} */ (k).dataset.bubble === current));
+}
+
+/** Color of the own messages: per device, in the browser's storage only. */
+export function chooseBubble(name) {
+    if (!name || name === BUBBLE_DEFAULT) {
+        delete document.documentElement.dataset.bubble;
+        storage.remove(BUBBLE_KEY);
+    } else {
+        document.documentElement.dataset.bubble = name;
+        storage.set(BUBBLE_KEY, name);
+    }
+    renderBubbleChoice();
+    toast(t('settings.saved'));
+}
+
 export function openSettings() {
+    renderBubbleChoice();
     el.settingsTheme.value = storage.get(THEME_KEY) || 'auto';
     el.settingsLanguage.value = readSetting(LANGUAGE_KEY);
     el.settingsAllAccountsField.hidden = deviceAccounts().length < 2;

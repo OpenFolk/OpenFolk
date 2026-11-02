@@ -29,7 +29,7 @@ export const el = {
     devicesScan: /** @type {HTMLButtonElement} */ ($('devices-scan')), devicesScanHint: $('devices-scan-hint'),
     settingsPush: $('settings-push'), pushStatus: $('push-status'), pushEnable: /** @type {HTMLButtonElement} */ ($('push-enable')),
     pushKinds: $('push-kinds'), pushChats: $('push-chats'),
-    btnSettings: /** @type {HTMLButtonElement} */ ($('btn-settings')), settings: $('settings'), settingsTheme: /** @type {HTMLSelectElement} */ ($('settings-theme')), settingsLanguage: /** @type {HTMLSelectElement} */ ($('settings-language')),
+    btnSettings: /** @type {HTMLButtonElement} */ ($('btn-settings')), settings: $('settings'), settingsTheme: /** @type {HTMLSelectElement} */ ($('settings-theme')), settingsBubble: $('settings-bubble'), settingsLanguage: /** @type {HTMLSelectElement} */ ($('settings-language')),
     settingsMachines: $('settings-machines'), machineAddRow: $('machine-add-row'), machineAdd: /** @type {HTMLButtonElement} */ ($('machine-add')),
     machineJoin: $('machine-join'), settingsBots: $('settings-bots'), settingsBotsAsleep: $('settings-bots-asleep'),
     settingsAvatarModel: /** @type {HTMLSelectElement} */ ($('settings-avatar-model')), settingsVoiceLanguage: /** @type {HTMLSelectElement} */ ($('settings-voice-language')),
@@ -192,6 +192,9 @@ export const storage = {
 export const TOKEN_KEY = 'openfolk-token';
 export const DEVICE_KEY = 'openfolk-device';
 export const THEME_KEY = 'openfolk-theme';
+/** Color of the own messages (a name of the palette in chat.css); missing = the default. */
+export const BUBBLE_KEY = 'openfolk-bubble';
+export const BUBBLE_DEFAULT = 'peach';
 export const FOOTER_OPEN_KEY = 'openfolk-footer-open';
 /**
  * The accounts this device is signed in to, [{ id, name, admin, device }] with each one's device key (they all belong
