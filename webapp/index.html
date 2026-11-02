@@ -428,7 +428,7 @@
             <button type="button" class="btn" id="editor-image-remove" data-i18n="editor.removeImage"></button>
             <button type="button" class="btn" id="editor-avatar-ai" data-i18n="editor.aiAvatar" data-i18n-title="editor.aiAvatarTitle"></button>
         </div>
-        <label><span data-i18n="editor.name"></span>
+        <label class="required"><span data-i18n="editor.name"></span>
             <span class="with-button"><input id="editor-name" required maxlength="40" data-i18n-placeholder="editor.namePlaceholder"><button type="button" class="btn small" id="editor-name-suggest" data-i18n="editor.suggest" data-i18n-title="editor.suggestNameTitle"></button></span>
         </label>
         <div class="suggestions" id="editor-name-suggestions" hidden></div>
@@ -442,11 +442,12 @@
             <select id="editor-machine"></select>
         </label>
         <!-- Folder and repository: each fills the other where it can (the folder's origin, the folder a clone goes to) -->
-        <label class="on-move"><span data-i18n="editor.folder"></span>
-            <input id="editor-folder" data-i18n-placeholder="editor.folderPlaceholder" spellcheck="false" autocapitalize="off">
+        <p class="hint on-move" data-i18n="editor.requiredNote"></p>
+        <label class="on-move required"><span data-i18n="editor.folder"></span>
+            <input id="editor-folder" aria-required="true" data-i18n-placeholder="editor.folderPlaceholder" spellcheck="false" autocapitalize="off">
         </label>
-        <label class="on-move"><span data-i18n="editor.repo"></span>
-            <input id="editor-repo" data-i18n-placeholder="editor.repoPlaceholder" spellcheck="false" autocapitalize="off">
+        <label class="on-move required"><span data-i18n="editor.repo"></span>
+            <input id="editor-repo" aria-required="true" data-i18n-placeholder="editor.repoPlaceholder" spellcheck="false" autocapitalize="off">
         </label>
         <p class="hint on-move" id="editor-folder-hint"></p>
         <div class="two-columns">

@@ -742,6 +742,8 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .dialog h3 small { font-weight: 400; color: var(--muted); }
 .dialog p { margin: 0; color: var(--muted); }
 .dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+/* Required fields: a star after the label; folder and repository both carry it because one of the two is needed */
+.dialog label.required > span[data-i18n]::after { content: " *"; color: var(--accent); font-weight: 600; }
 .dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
 .dialog input:not([type=checkbox]), .dialog select, .dialog textarea {
     font: inherit; color: var(--text); background: var(--bar-bg); border: 1px solid var(--line);

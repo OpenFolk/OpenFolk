@@ -75,6 +75,7 @@ registerDictionary('de', {
     'editor.repoClone': 'Beim Speichern wird das Repository auf {machine} nach {folder} geklont.',
     'editor.repoThere': 'Das Repository liegt auf {machine} schon in {folder}.',
     'editor.folderOrRepo': 'Gib einen Ordner oder ein Repository an.',
+    'editor.requiredNote': '* Pflichtfeld. Für den Arbeitsordner genügt ein Ordner oder ein Repository.',
     'editor.repoInvalid': 'Das ist keine Repository-Adresse (https://…, ssh://… oder git@host:team/repo).',
     'editor.cloning': 'Klont …',
     'editor.checkingFolder': 'Prüft Ordner …',

@@ -75,6 +75,7 @@ registerDictionary('en', {
     'editor.repoClone': 'Saving clones the repository on {machine} into {folder}.',
     'editor.repoThere': 'The repository is on {machine} already, in {folder}.',
     'editor.folderOrRepo': 'Enter a folder or a repository.',
+    'editor.requiredNote': '* Required. For the working folder, a folder or a repository is enough.',
     'editor.repoInvalid': 'That is no repository address (https://…, ssh://… or git@host:team/repo).',
     'editor.cloning': 'Cloning …',
     'editor.checkingFolder': 'Checking folder …',
