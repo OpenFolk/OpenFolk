@@ -412,8 +412,15 @@ function dataUrlToBlob(url) {
     return new Blob([bytes], { type: m[1] || 'application/octet-stream' });
 }
 
+/**
+ * The backend refuses a folder outside its ALLOWED_ROOTS with a plain message and no code (bots.folderNotAllowed in
+ * local/src/i18n.ts, English or German by its language), so the text is what tells it apart.
+ */
+const folderNotAllowed = (text) => /not\s+under|nicht\s+unter/i.test(text);
+
 function showEditorError(text) {
     el.editorError.textContent = text;
+    if (folderNotAllowed(text)) el.editorError.append(node('span', 'error-hint', t('editor.folderNotAllowedHint')));
     el.editorError.hidden = false;
 }
 

@@ -75,6 +75,7 @@ registerDictionary('en', {
     'editor.repoClone': 'Saving clones the repository on {machine} into {folder}.',
     'editor.repoThere': 'The repository is on {machine} already, in {folder}.',
     'editor.folderOrRepo': 'Enter a folder or a repository.',
+    'editor.folderNotAllowedHint': 'Bots only work in the folders the machine allows (named above). To allow more, set ALLOWED_ROOTS on that machine, several paths separated by ";", and restart the backend or the app.\nDesktop app on Windows: add a line ALLOWED_ROOTS=C:\\Projects;D:\\Work to %APPDATA%\\OpenFolk\\.env, or set it as a user environment variable.\nDocker: the bots work in /work, the host folder WORK_DIR of the .env next to the compose file; point it at your folder.',
     'editor.repoInvalid': 'That is no repository address (https://…, ssh://… or git@host:team/repo).',
     'editor.cloning': 'Cloning …',
     'editor.checkingFolder': 'Checking folder …',
