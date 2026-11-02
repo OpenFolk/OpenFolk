@@ -164,7 +164,12 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .brand-text { display: flex; flex-direction: column; min-width: 0; }
 /* not a sub line: the name keeps the size and colour of a title */
 .bar .title .brand-text { font-size: inherit; color: inherit; }
-.brand:hover strong { color: var(--accent); }
+/* A button, not a heading: the gear is always there, hover and keyboard focus light the whole entry up */
+.bar .title.brand { padding: 4px 8px; margin: -4px 0 -4px -8px; border-radius: 10px; }
+.brand .gear { width: 14px; height: 14px; margin-left: 6px; vertical-align: -1px; color: var(--muted); }
+.brand:hover, .brand:focus-visible { background: var(--hover); }
+.brand:hover strong, .brand:hover .gear, .brand:focus-visible strong, .brand:focus-visible .gear { color: var(--accent); }
+.brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .status { display: inline-flex; align-items: center; gap: 6px; }
 .status i { width: 8px; height: 8px; border-radius: 50%; background: #9aa5ad; }
 .status.online i { background: #25d366; }
