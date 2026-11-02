@@ -157,7 +157,7 @@ el.btnNew.addEventListener('click', (ev) => {
 /** "New conversation": the "+" menu shows the bots; sleeping ones (no responsible machine awake) are disabled. */
 function chooseNewConversation() {
     const info = node('div', 'menu-info');
-    info.append(node('strong', '', t('conversation.new')), node('span', '', t('newMenu.whichBot')));
+    info.append(node('strong', '', t('conversation.new')), node('span', '', t('newMenu.explain')), node('span', '', t('newMenu.whichBot')));
     const buttons = state.bots.map((b) => {
         const awake = Boolean(responsibleMachine(b));
         const k = menuButton('bot', awake ? b.name : `${b.name} · ${t('machine.asleep')}`);

@@ -382,6 +382,9 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .menu .danger { color: var(--danger); }
 .menu-info { display: flex; flex-direction: column; gap: 3px; padding: 8px 12px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
 .menu-info strong { color: var(--text); font-weight: 600; }
+/* the hint of an empty conversation: gone once a message or an answer is in the list */
+.conversation-hint { align-self: center; max-width: 420px; margin: auto; padding: 12px 16px; text-align: center; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.messages > .conversation-hint:not(:only-child) { display: none; }
 .menu-info.large strong { color: var(--warning); }
 /* Model switch at the top of the chat menu: chips side by side, the active one filled */
 .model-switch { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
