@@ -180,6 +180,16 @@ export function socketUrl(path) {
     return url.href;
 }
 
+/**
+ * An iPhone or iPad in a Safari tab: not the app of the home screen (it has storage of its own, so the device has to be
+ * paired there again, and only it can receive Web Push) and not the native app. iPadOS reports a Mac with a touch screen.
+ */
+export function iosBrowserTab() {
+    if (isNative) return false;
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    return ios && !(/** @type {any} */ (navigator).standalone === true || matchMedia('(display-mode: standalone)').matches);
+}
+
 // ================================================================ Push notifications
 
 const pushPlugin = () => plugin('PushNotifications');

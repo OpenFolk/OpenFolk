@@ -6,7 +6,7 @@ import { askAutologon, machineCan } from './machines.js';
 import { setShowAllAccounts, showAllAccounts } from './others.js';
 import { qrSvg } from './qr-login.js';
 import { layoutPanes } from './panes.js';
-import { relayAddress } from './platform.js';
+import { iosBrowserTab, relayAddress } from './platform.js';
 import { loadPushSettings } from './push.js';
 import { loadAccounts } from './accounts.js';
 import { relayClaimForm } from './relay-claim.js';
@@ -30,6 +30,8 @@ export function settingsSaveFailed() {
 }
 
 export function openSettings() {
+    // Only an iPhone or iPad in a Safari tab needs the notes on the home screen app
+    for (const note of el.settings.querySelectorAll('.ios-hint')) /** @type {HTMLElement} */ (note).hidden = !iosBrowserTab();
     el.settingsTheme.value = storage.get(THEME_KEY) || 'auto';
     el.settingsLanguage.value = readSetting(LANGUAGE_KEY);
     el.settingsAllAccountsField.hidden = deviceAccounts().length < 2;

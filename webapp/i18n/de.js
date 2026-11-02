@@ -622,6 +622,8 @@ registerDictionary('de', {
     'push.status.denied': 'Auf diesem Gerät im Browser blockiert. Erlauben lässt es sich in den Website-Einstellungen des Browsers.',
     'push.status.default': 'Auf diesem Gerät noch aus.',
     'push.status.impossible': 'Dieser Browser kann keine Benachrichtigungen empfangen (auf dem iPhone nur aus der installierten App, sonst nur über HTTPS oder localhost).',
+    'ios.pushHint': 'Auf dem iPhone funktionieren Benachrichtigungen nur in der App vom Home-Bildschirm („Zum Home-Bildschirm“), nicht in einem Safari-Tab.',
+    'ios.devicesHint': 'Nach „Zum Home-Bildschirm“ hat die Home-Bildschirm-App einen eigenen Speicher, getrennt von Safari: Koppele dieses Gerät dort noch einmal.',
     'push.status.noBackend': 'Benachrichtigungen sind erlaubt, aber noch kein Backend kann an diese App senden: APNs (iPhone) bzw. FCM (Android) ist in seiner .env nicht eingerichtet.',
     'push.noBots': 'Noch keine Bots.',
     // Einstellungen

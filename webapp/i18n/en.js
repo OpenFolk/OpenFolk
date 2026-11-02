@@ -622,6 +622,8 @@ registerDictionary('en', {
     'push.status.denied': 'Blocked in the browser on this device. You can allow it in the browser\'s site settings.',
     'push.status.default': 'Still off on this device.',
     'push.status.impossible': 'This browser cannot receive notifications (on the iPhone only from the installed app, otherwise only via HTTPS or localhost).',
+    'ios.pushHint': 'On the iPhone, notifications only work in the app from the home screen ("Add to Home Screen"), not in a Safari tab.',
+    'ios.devicesHint': 'After "Add to Home Screen" the home screen app has its own storage, separate from Safari: pair this device again there.',
     'push.status.noBackend': 'Notifications are allowed, but no backend can send to this app yet: APNs (iPhone) or FCM (Android) is not set up in its .env.',
     'push.noBots': 'No bots yet.',
     // Settings
