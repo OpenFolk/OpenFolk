@@ -4,20 +4,23 @@ OpenFolk as a program of its own for Windows, Linux and macOS, around the web ap
 builds all three: the Windows installer, the Linux AppImage and .deb, the Mac's .dmg. On Windows and Linux the app
 lives in the tray, on the Mac in the Dock and the menu bar; everything else is the same.
 
-- **First start:** the app asks whether there is an OpenFolk server already. The two ways sit side by side, the
-  server first, because picking "on this computer" where a backend already runs would start a second one with
-  separate bots and chats.
-  - **Start on this computer** ("new to OpenFolk, without a server"): the app runs the backend (`../local/`) itself, with the relay embedded on 127.0.0.1, and
+- **First start:** the app asks how to use OpenFolk and letters the three ways A to C, as alternatives rather than steps: start on this
+  computer, also connect this computer to a relay server, and display only. They stand one below the other, each as
+  wide as the page, with a folded explanation of bot, backend and relay server on top. Only A, the way for newcomers,
+  has the filled button. Picking A where a backend already runs would start a second one with separate bots and
+  chats, so A says to use C then.
+  - **A. Start on this computer** ("new to OpenFolk, without a relay server"): the app runs the backend (`../local/`) itself, with the relay embedded on 127.0.0.1, and
     signs its window in with a pairing link. Nothing to host; the only step left is signing in to Claude Code
     (the first steps in the app show how). Data, keys and the backend's log (`local.log`) live in `data` in the
     profile folder (below); settings that `.env.sample` describes go into `.env` there. Quitting the app ends the
     backend once no bot is working, after asking if that takes a while. "Sign this window in again" (tray menu,
     on the Mac "Window") helps after logging the device out. This is the single-computer setup: your phone, or
     the browser on another device, needs a relay on a server (`../docs/running.md`, linked from the setup page).
-  - **I already have an OpenFolk server:** the app loads the web app from that relay, like the browser, and needs no
+  - **C. Display only, an existing relay server:** the app loads the web app from that relay, like the browser, and needs no
     backend of its own. To test against a local relay, `OPENFOLK_URL=http://localhost:8787` presets it for one
-    start.
-  - **Connect this computer to my server:** the link from "Add machine" (settings of the app on a device that is
+    start. The setup page warns here that this app then starts no backend on this
+    computer, and asks once more ("Yes, no bots run on this computer") unless the app already uses this way.
+  - **B. Also connect this computer to my relay server:** the link from "Add machine" (settings of the app on a device that is
     signed in) joins this computer to that relay: `../local/tools/join.mjs` writes the relay, a token of this
     computer's own and the end-to-end key into the profile's `.env`, and the app runs the backend as "on this
     computer", only with the relay on the server. The window comes from there and signs itself in with a pairing link.
