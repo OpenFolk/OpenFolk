@@ -49,6 +49,15 @@ export default async function ({ start, check }) {
     e = await save();
     check('several allowed folders: one per line, the refused one after the last ": "', e.head === 'This folder is not allowed: D:/Work/site' && e.roots === 'Allowed folders:\nC:/Users/sven\nD:/Projects\nE:/x: y', e);
 
+    // The message as the backend builds it from ALLOWED_ROOTS=C:\Users\sven\OpenFolk;C:\OneDrive\OneDrive - TUBIX …;D:\Work\my-site
+    answer = { ok: false, message: String.raw`Folder is not under C:\Users\sven\OpenFolk, C:\OneDrive\OneDrive - TUBIX Computer Systeme\Projekte, D:\Work\my-site: D:/Work/site` };
+    e = await save();
+    check('Windows folders with spaces and hyphens: every folder gets its own line, whole', e.head === 'This folder is not allowed: D:/Work/site'
+        && e.roots === String.raw`Allowed folders:
+C:\Users\sven\OpenFolk
+C:\OneDrive\OneDrive - TUBIX Computer Systeme\Projekte
+D:\Work\my-site`, e);
+
     answer = { ok: false, message: 'Folder is not under somewhere' };
     e = await save();
     check('a message that cannot be split stays as it is, the note remains', e.text.startsWith('Folder is not under somewhere') && e.roots === '' && e.hint.includes('ALLOWED_ROOTS'), e);
