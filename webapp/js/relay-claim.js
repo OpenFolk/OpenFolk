@@ -2,8 +2,18 @@
    it with the setup code from its log ("relay_claim"), answers with a pairing link there and moves over; this page
    then opens the link and is signed in at the new relay, with the end-to-end key. */
 import { t } from './i18n.js';
-import { node, state } from './core.js';
+import { node, startParams, state, toast } from './core.js';
 import { send, upper } from './e2e.js';
+
+/**
+ * The page at the new relay is another origin and cannot read what this one stored, so the link it opens carries a
+ * "moved" mark behind the '#' (never sent to a server). The new page keeps it for the tab, because a first sign-in
+ * may reload it, and shows the message once it is signed in.
+ */
+const MOVED_KEY = 'openfolk-moved';
+if (startParams.get('moved') === '1') {
+    try { sessionStorage.setItem(MOVED_KEY, location.host); } catch { /* no storage: no message */ }
+}
 
 /** What is typed: the forms render anew with every state that arrives and must not lose it. */
 const draft = { address: '', code: '', focus: '' };
@@ -77,7 +87,17 @@ export function relayClaimed(machine, url) {
     draft.address = draft.code = '';
     rerender();
     // A moment to read what happens; the backend moves over shortly after its answer
-    setTimeout(() => location.assign(url), 1200);
+    setTimeout(() => location.assign(`${url}${url.includes('#') ? '&' : '#'}moved=1`), 1200);
+}
+
+/** Once, after the first sign-in at the new relay: "Moved to <host>". */
+export function announceMove() {
+    let host = '';
+    try {
+        host = sessionStorage.getItem(MOVED_KEY) || '';
+        sessionStorage.removeItem(MOVED_KEY);
+    } catch { /* no storage */ }
+    if (host) toast(t('relayClaim.moved', { host }), 10_000);
 }
 
 /**

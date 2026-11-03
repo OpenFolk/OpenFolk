@@ -256,8 +256,8 @@ export function node(tag, cls, text) {
 
 let toastTimer = 0;
 
-/** A short message at the bottom of the window, gone after a moment; a new one replaces it. */
-export function toast(text) {
+/** A short message at the bottom of the window, gone after a moment (`ms`); a new one replaces it. */
+export function toast(text, ms = 2500) {
     let box = $('toast');
     if (!box) {
         box = node('div', 'toast');
@@ -268,5 +268,5 @@ export function toast(text) {
     box.textContent = text;
     box.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => { if (box) box.hidden = true; }, 2500);
+    toastTimer = window.setTimeout(() => { if (box) box.hidden = true; }, ms);
 }

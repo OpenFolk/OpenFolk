@@ -307,6 +307,7 @@ registerDictionary('en', {
     'relayClaim.code': 'Setup code from its log',
     'relayClaim.button': 'Claim and move',
     'relayClaim.moving': 'The relay is yours. Switching to it …',
+    'relayClaim.moved': 'Moved to {host}. This computer now works through that relay server.',
     'welcome.docs': 'Everything else is in the <a href="https://github.com/OpenFolk/OpenFolk#readme" target="_blank" rel="noreferrer">README</a>.',
     'list.running': 'Running now',
     'list.favorites': 'Favorites',
