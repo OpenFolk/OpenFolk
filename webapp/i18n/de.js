@@ -142,6 +142,8 @@ registerDictionary('de', {
     'settings.appearance': 'Darstellung',
     'settings.colorScheme': 'Farbschema',
     'settings.bubbleColor': 'Farbe deiner Nachrichten',
+    'bubble.logo': 'Logo-Orange',
+    'bubble.orangedark': 'Orange dunkel',
     'bubble.peach': 'Pfirsich',
     'bubble.blue': 'Blau',
     'bubble.lilac': 'Flieder',

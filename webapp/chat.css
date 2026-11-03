@@ -1,5 +1,10 @@
 /* Color of the own messages, chosen per device (settings, data-bubble on <html>, theme.js); the swatches of the settings use the same values */
-:root, .swatch[data-bubble="peach"] { --bubble-me-l: #f8d3bf; --bubble-me-d: #7a412a; }
+:root[data-bubble="peach"], .swatch[data-bubble="peach"] { --bubble-me-l: #f8d3bf; --bubble-me-d: #7a412a; }
+/* The two oranges carry white text (--bubble-me-fg-*, and --bubble-me-sub for time, ticks and links), the same in light and dark;
+   the other colors keep the text colors of the theme, so they reset the three */
+:root, :root[data-bubble="logo"], .swatch[data-bubble="logo"] { --bubble-me-l: #d97757; --bubble-me-d: #d97757; --bubble-me-fg-l: #ffffff; --bubble-me-fg-d: #ffffff; --bubble-me-sub: #ffffff; }
+:root[data-bubble="orangedark"], .swatch[data-bubble="orangedark"] { --bubble-me-l: #b85a3a; --bubble-me-d: #b85a3a; --bubble-me-fg-l: #ffffff; --bubble-me-fg-d: #ffffff; --bubble-me-sub: #ffffff; }
+:root:is([data-bubble="peach"], [data-bubble="blue"], [data-bubble="lilac"], [data-bubble="teal"], [data-bubble="gray"], [data-bubble="green"]) { --bubble-me-fg-l: initial; --bubble-me-fg-d: initial; --bubble-me-sub: initial; }
 :root[data-bubble="blue"], .swatch[data-bubble="blue"] { --bubble-me-l: #cfe1f8; --bubble-me-d: #21507f; }
 :root[data-bubble="lilac"], .swatch[data-bubble="lilac"] { --bubble-me-l: #ddd1f7; --bubble-me-d: #50407f; }
 :root[data-bubble="teal"], .swatch[data-bubble="teal"] { --bubble-me-l: #c9e9e6; --bubble-me-d: #1b5654; }
@@ -16,6 +21,7 @@
     --accent: #d97757;
     --accent-text: #ffffff;
     --bubble-me: var(--bubble-me-l);
+    --bubble-me-fg: var(--bubble-me-fg-l, var(--text));
     --bubble-routine: #fdf3d0;
     --bubble-bot: #ffffff;
     --bubble-job: #eef2ff;
@@ -43,6 +49,7 @@
         --muted: #8696a0;
         --line: #2a3942;
         --bubble-me: var(--bubble-me-d);
+        --bubble-me-fg: var(--bubble-me-fg-d, var(--text));
         --bubble-routine: #4a3b10;
         --bubble-bot: #202c33;
         --bubble-job: #1e2747;
@@ -64,6 +71,7 @@
     --muted: #8696a0;
     --line: #2a3942;
     --bubble-me: var(--bubble-me-d);
+        --bubble-me-fg: var(--bubble-me-fg-d, var(--text));
     --bubble-routine: #4a3b10;
     --bubble-bot: #202c33;
     --bubble-job: #1e2747;
@@ -495,7 +503,11 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
     box-shadow: var(--shadow); position: relative; overflow-wrap: anywhere;
 }
 .answer .bubble { max-width: 100%; }
-.bubble.me { align-self: flex-end; background: var(--bubble-me); border-bottom-right-radius: 4px; }
+.bubble.me { align-self: flex-end; background: var(--bubble-me); color: var(--bubble-me-fg); border-bottom-right-radius: 4px; }
+/* Time, ticks and the menu dots follow the text color of the bubble when the color brings its own (white on orange) */
+.bubble.me .time, .bubble.me .more { color: var(--bubble-me-sub, var(--muted)); }
+.bubble.me .read-ticks.read { color: var(--bubble-me-sub, #53bdeb); }
+.bubble.me .content a { color: var(--bubble-me-sub, var(--link)); }
 .bubble.me .text { white-space: pre-wrap; }
 .bubble.routine { background: var(--bubble-routine); }
 .bubble.bot { align-self: flex-start; background: var(--bubble-bot); border-bottom-left-radius: 4px; }

@@ -194,7 +194,7 @@ export const DEVICE_KEY = 'openfolk-device';
 export const THEME_KEY = 'openfolk-theme';
 /** Color of the own messages (a name of the palette in chat.css); missing = the default. */
 export const BUBBLE_KEY = 'openfolk-bubble';
-export const BUBBLE_DEFAULT = 'peach';
+export const BUBBLE_DEFAULT = 'logo';
 export const FOOTER_OPEN_KEY = 'openfolk-footer-open';
 /**
  * The accounts this device is signed in to, [{ id, name, admin, device }] with each one's device key (they all belong
