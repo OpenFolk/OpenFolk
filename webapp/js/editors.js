@@ -418,8 +418,23 @@ function dataUrlToBlob(url) {
  */
 const folderNotAllowed = (text) => /not\s+under|nicht\s+unter/i.test(text);
 
+/**
+ * The refusal reads "Folder is not under {roots}: {folder}", which puts the refused folder right behind the list and
+ * looks like one more allowed folder. Split at the last ": " (the folders are joined with ", ") into two parts;
+ * null when the text does not have that shape.
+ * @param {string} text
+ */
+function splitFolderRefusal(text) {
+    const m = /^(?:Folder is not under|Ordner liegt nicht unter)\s+(.+): (.+)$/s.exec(text.trim());
+    if (!m) return null;
+    const roots = m[1].split(', ').map((r) => r.trim()).filter(Boolean);
+    return roots.length ? { roots, folder: m[2].trim() } : null;
+}
+
 function showEditorError(text) {
-    el.editorError.textContent = text;
+    const parts = folderNotAllowed(text) ? splitFolderRefusal(text) : null;
+    el.editorError.textContent = parts ? t('editor.folderNotAllowed', { folder: parts.folder }) : text;
+    if (parts) el.editorError.append(node('span', 'error-roots', t('editor.allowedFolders') + '\n' + parts.roots.join('\n')));
     if (folderNotAllowed(text)) el.editorError.append(node('span', 'error-hint', t('editor.folderNotAllowedHint')));
     el.editorError.hidden = false;
 }
