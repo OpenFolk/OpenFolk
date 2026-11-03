@@ -91,6 +91,8 @@ const TEXTS = {
         setupNoAnswer: 'The server does not answer: {error}',
         setupHint: 'OpenFolk {version} · You can change this later in the menu under “Change setup”.',
         checkUpdates: 'Check for updates …',
+        autoUpdate: 'Check for updates automatically',
+        autoUpdateEnv: 'Check for updates automatically (off: OPENFOLK_NO_UPDATE is set)',
         checkUpdatesTitle: 'Updates',
         updateReadyMenu: 'Restart to update to {version}',
         updateReadyTitle: 'Update ready',
@@ -174,6 +176,8 @@ const TEXTS = {
         setupNoAnswer: 'Der Server antwortet nicht: {error}',
         setupHint: 'OpenFolk {version} · Das lässt sich später im Menü unter „Einrichtung ändern“ anpassen.',
         checkUpdates: 'Nach Updates suchen …',
+        autoUpdate: 'Automatisch nach Updates suchen',
+        autoUpdateEnv: 'Automatisch nach Updates suchen (aus: OPENFOLK_NO_UPDATE ist gesetzt)',
         checkUpdatesTitle: 'Updates',
         updateReadyMenu: 'Neu starten für Version {version}',
         updateReadyTitle: 'Update bereit',
@@ -191,7 +195,7 @@ const TEXTS = {
 const language = () => (app.getLocale().toLowerCase().startsWith('de') ? 'de' : 'en');
 const t = (key) => TEXTS[language()][key] ?? TEXTS.en[key];
 
-/** { mode: 'local' | 'relay', url, localPort, paired (the address this window is signed in at), window: { x, y, width, height } } */
+/** { autoUpdate (false = no automatic checks; absent = on), mode: 'local' | 'relay', url, localPort, paired (the address this window is signed in at), window: { x, y, width, height } } */
 let config = {};
 /** The backend of "on this computer"; null in relay mode. */
 let backend = null;
@@ -540,6 +544,11 @@ if (!app.requestSingleInstanceLock()) {
             t,
             quit,
             window: () => win,
+            auto: () => config.autoUpdate !== false,
+            setAuto: (on) => {
+                config.autoUpdate = on;
+                saveConfig();
+            },
             onChange: () => {
                 createMenu();
                 if (tray) tray.setContextMenu(trayMenu());

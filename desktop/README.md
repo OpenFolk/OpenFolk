@@ -82,7 +82,7 @@ is uploaded by hand; openfolk.app always links to the latest release. File names
 feeds name the files as GitHub stores them.
 
 **Updates:** the installed app updates itself from the GitHub releases (`updater.js`, electron-updater): a check half a
-minute after start and every six hours, the download in the background, then a question "Restart now" or "Later".
+minute after start and every six hours, the download in the background, then a question "Restart now" or "Later". "Check for updates automatically" (same menus) switches the automatic checks and downloads off and on at once, stored as `autoUpdate` in `config.json`; a check from the menu works either way. `OPENFOLK_NO_UPDATE` wins: the entry is then shown off and disabled.
 "Later" installs on the next quit. Either way the app quits as it always does, so a working bot finishes first; only
 then the new version is installed and, after "Restart now", started. "Check for updates …" sits in the tray menu, in
 "Help" and, on the Mac, in the "OpenFolk" menu; a check from there says what it found, the automatic ones stay quiet.
