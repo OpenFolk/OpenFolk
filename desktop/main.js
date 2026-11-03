@@ -196,6 +196,8 @@ let config = {};
 /** The backend of "on this computer"; null in relay mode. */
 let backend = null;
 let win = null;
+/** The setup page is open on top of a working setup ("Change setup"): closing the window without a choice brings the app back. */
+let choosing = false;
 let tray = null;
 let quitting = false;
 
@@ -249,6 +251,7 @@ function normalizeAddress(input) {
 }
 
 function loadWebApp() {
+    choosing = false;
     if (config.mode === 'local') void startLocal();
     else if (config.mode === 'relay' && config.url) win.loadURL(config.url);
     else win.loadFile(SETUP);
@@ -321,6 +324,7 @@ function createWindow() {
         if (quitting) return;
         e.preventDefault();
         win.hide();
+        if (choosing) loadWebApp();
     });
     win.on('closed', () => { win = null; });
 
@@ -369,6 +373,7 @@ function show() {
 
 function changeAddress() {
     show();
+    choosing = Boolean(config.mode);
     win.loadFile(SETUP, { query: { url: config.url || '', choose: '1' } });
 }
 
