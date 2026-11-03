@@ -110,7 +110,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   shutting down with its countdown and
   what happens after wake routines, automatic sign-in, "Open in the IDE / in a terminal", the speech model. A browser
   only learns whether a key is stored; keys travel to the other machines only end-to-end encrypted. What runs
-  commands or draws a security line (scripts, commands, allowed folders) stays in the `.env`.
+  commands or draws a security line (scripts, commands, allowed folders) stays in the `.env`. "About" at the end lists
+  the desktop app's version, the web app's protocol version and, per connected backend, its protocol version and start;
+  software versions of backend and relay do not reach the app.
 
 ## Layout
 

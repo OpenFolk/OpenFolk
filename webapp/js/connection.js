@@ -18,7 +18,7 @@ import {
 } from './editors.js';
 import { checkPush, renderPushSettings } from './push.js';
 import {
-    autologonReported, machineJoinError, settingsSaveFailed, settingsSaved, receiveMachineTokens, receiveSettings, renderDevices, renderMachineJoin, renderPairLink, renderSettings, renderTotp,
+    autologonReported, machineJoinError, settingsSaveFailed, settingsSaved, receiveMachineTokens, receiveSettings, renderDevices, renderMachineJoin, renderAbout, renderPairLink, renderSettings, renderTotp,
     renderTotpSetup, totpError,
 } from './settings.js';
 import { accountError, dropCurrentAccount, receiveAccountCreated, receiveInvite, rememberAccount, renderAccounts } from './accounts.js';
@@ -541,6 +541,7 @@ function receive(f) {
             break;
         case 'backend_status':
             state.backendPerMachine[f.machine || '?'] = f;
+            if (!el.settings.hidden) renderAbout();
             renderGitTotal();
             break;
         case 'setup_status':

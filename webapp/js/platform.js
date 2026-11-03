@@ -9,6 +9,8 @@ const cap = /** @type {any} */ (window).Capacitor;
 export const isNative = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
 /** 'web' | 'desktop' | 'ios' | 'android' */
 export const platformKind = isNative ? cap.getPlatform() : /\bElectron\//.test(navigator.userAgent) ? 'desktop' : 'web';
+/** The desktop app's version: Electron puts "OpenFolk/<version>" into its user agent. '' in the browser and the mobile apps. */
+export const desktopVersion = platformKind === 'desktop' ? /\bOpenFolk\/([\w.+-]+)/.exec(navigator.userAgent)?.[1] ?? '' : '';
 // For CSS, e.g. the desktop apps fill the whole window instead of capping the layout width
 document.documentElement.dataset.platform = platformKind;
 

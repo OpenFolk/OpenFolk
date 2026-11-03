@@ -82,6 +82,7 @@ const TEXTS = {
         zoom: 'Zoom',
         help: 'Help',
         about: 'About OpenFolk',
+        aboutProfile: 'Profile folder',
         notSetUp: 'not set up',
         invalidAddress: 'Please enter a server URL like https://openfolk.example.com.',
         setupTitle: 'Set up OpenFolk',
@@ -165,6 +166,7 @@ const TEXTS = {
         zoom: 'Zoomen',
         help: 'Hilfe',
         about: 'Über OpenFolk',
+        aboutProfile: 'Profilordner',
         notSetUp: 'nicht eingerichtet',
         invalidAddress: 'Bitte eine Server-URL wie https://openfolk.example.com eingeben.',
         setupTitle: 'OpenFolk einrichten',
@@ -432,7 +434,7 @@ function createTray() {
     tray.on('right-click', () => tray.setContextMenu(trayMenu()));
 }
 
-const about = () => dialog.showMessageBox(win, { title: 'OpenFolk', message: `OpenFolk ${app.getVersion()}`, detail: `Server: ${config.mode === 'local' ? t('thisComputer') : config.url || t('notSetUp')}\nElectron ${process.versions.electron}` });
+const about = () => dialog.showMessageBox(win, { title: 'OpenFolk', message: `OpenFolk ${app.getVersion()}`, detail: `Server: ${config.mode === 'local' ? t('thisComputer') : config.url || t('notSetUp')}\n${t('aboutProfile')}: ${app.getPath('userData')}\nElectron ${process.versions.electron}` });
 
 const viewMenu = (label) => ({
     label,

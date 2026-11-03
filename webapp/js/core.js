@@ -13,7 +13,7 @@ export const MIN_BACKEND_PROTOCOL = 0;
 export const el = {
     app: $('app'), login: $('login'), loginForm: /** @type {HTMLFormElement} */ ($('login-form')), loginToken: /** @type {HTMLInputElement} */ ($('login-token')), loginRelay: /** @type {HTMLInputElement} */ ($('login-relay')), loginError: $('login-error'),
     loginTotp: /** @type {HTMLInputElement} */ ($('login-totp')), loginTotpField: $('login-totp-field'), loginName: /** @type {HTMLInputElement} */ ($('login-name')), loginIntro: $('login-intro'),
-    settingsDevices: $('settings-devices'), deviceList: $('device-list'), e2eStatus: $('e2e-status'), relayClaimBox: $('relay-claim-box'),
+    aboutList: $('about-list'), settingsDevices: $('settings-devices'), deviceList: $('device-list'), e2eStatus: $('e2e-status'), relayClaimBox: $('relay-claim-box'),
     loginAccount: /** @type {HTMLInputElement} */ ($('login-account')), loginOtherAccount: $('login-other-account'), loginCancel: /** @type {HTMLButtonElement} */ ($('login-cancel')),
     accountSwitch: /** @type {HTMLButtonElement} */ ($('account-switch')), accountMenu: $('account-menu'),
     settingsAccounts: $('settings-accounts'), accountsOwnName: /** @type {HTMLInputElement} */ ($('accounts-own-name')), accountsPassword: /** @type {HTMLInputElement} */ ($('accounts-password')),

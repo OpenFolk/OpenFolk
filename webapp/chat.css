@@ -681,6 +681,9 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 /* Notifications, devices and accounts: blocks of the settings, laid out like the dialog around them */
 .settings-block { display: flex; flex-direction: column; gap: 12px; }
 .settings-block[hidden] { display: none; }
+.about-list { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 13.5px; }
+.about-list dt { color: var(--muted); }
+.about-list dd { margin: 0; overflow-wrap: anywhere; }
 .settings-block h4 { margin: 4px 0 0; font-size: 13.5px; }
 .settings-block > p:not(.hint):not(.error) { margin: 0; font-size: 13.5px; }
 .settings-machine { margin-top: 6px; }

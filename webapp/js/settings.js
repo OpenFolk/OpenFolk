@@ -1,12 +1,12 @@
 /* OpenFolk web app: settings (appearance, language, autologin per machine, entry to notifications and devices). */
 import { BACKEND_LANGUAGE_KEY, LANGUAGE_KEY, i18n, isLanguage, locale, readSetting, resolveLanguage, setLanguage, t, writeSetting } from './i18n.js';
-import { THEME_KEY, deviceAccounts, el, node, state, storage, toast } from './core.js';
+import { PROTOCOL_VERSION, THEME_KEY, deviceAccounts, el, node, state, storage, toast } from './core.js';
 import { clockTime, e2e, send, upper } from './e2e.js';
 import { askAutologon, machineCan } from './machines.js';
 import { setShowAllAccounts, showAllAccounts } from './others.js';
 import { qrSvg } from './qr-login.js';
 import { layoutPanes } from './panes.js';
-import { relayAddress } from './platform.js';
+import { desktopVersion, relayAddress } from './platform.js';
 import { loadPushSettings } from './push.js';
 import { loadAccounts } from './accounts.js';
 import { relayClaimForm } from './relay-claim.js';
@@ -120,6 +120,25 @@ export function renderSettings() {
     }
     renderSharedSettings();
     renderRelayClaim();
+    renderAbout();
+}
+
+/**
+ * "About": the versions the app really knows. The backends send their protocol version in backend_status (software
+ * versions of backend and relay do not reach the app); the desktop app is named in its user agent.
+ */
+export function renderAbout() {
+    const rows = [];
+    if (desktopVersion) rows.push([t('about.desktop'), desktopVersion]);
+    rows.push([t('about.webapp'), t('about.protocol', { n: PROTOCOL_VERSION })]);
+    const machines = Object.keys(state.backendPerMachine).filter((m) => state.online.includes(m)).sort();
+    for (const machine of machines) {
+        const st = state.backendPerMachine[machine];
+        const protocol = st.protocol ? t('about.protocol', { n: st.protocol }) : t('about.protocolOld');
+        rows.push([t('about.backend', { machine: upper(machine) }), `${protocol} · ${t('about.since', { time: clockTime(st.since) })}`]);
+    }
+    if (!machines.length) rows.push([t('about.backendNone'), '']);
+    el.aboutList.replaceChildren(...rows.flatMap(([label, value]) => [node('dt', '', label), node('dd', '', value)]));
 }
 
 // ---------------------------------------------------------------- Machines joined by invitation
