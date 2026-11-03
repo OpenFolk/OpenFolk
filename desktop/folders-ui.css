@@ -1,0 +1,11 @@
+/* The folder list of folders-ui.js; the pages bring the colors (--border, --muted, --text, --error, --accent) */
+.folder-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.folder-list li { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 6px 6px 6px 12px; }
+.folder-path { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.folder-list button { width: auto; margin: 0; padding: 6px 12px; font-size: 13px; }
+.folder-default { margin: 0 0 8px; font-size: 13px; text-align: left; }
+.folder-add { margin-top: 4px; }
+.folder-standard .folder-tag { color: var(--muted); font-size: 12px; padding-right: 6px; }
+.folder-notes { display: grid; gap: 8px; }
+.folder-notes p { margin: 0 0 4px; font-size: 13px; text-align: left; }
+.folder-notes .note { color: var(--text); }
