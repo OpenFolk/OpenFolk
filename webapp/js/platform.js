@@ -9,6 +9,11 @@ const cap = /** @type {any} */ (window).Capacitor;
 export const isNative = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
 /** 'web' | 'desktop' | 'ios' | 'android' */
 export const platformKind = isNative ? cap.getPlatform() : /\bElectron\//.test(navigator.userAgent) ? 'desktop' : 'web';
+/**
+ * true in the desktop app when it runs the backend itself ("on this computer"); the app marks its user agent then. Only
+ * this app has the menu "Allowed folders …"; a browser or a display-only window has none.
+ */
+export const desktopLocal = platformKind === 'desktop' && /OpenFolkLocal/.test(navigator.userAgent);
 // For CSS, e.g. the desktop apps fill the whole window instead of capping the layout width
 document.documentElement.dataset.platform = platformKind;
 

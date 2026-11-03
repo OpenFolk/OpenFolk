@@ -1,5 +1,6 @@
 /* OpenFolk web app: bot, group and routine editors, info panel, knowledge. */
 import { locale, t } from './i18n.js';
+import { desktopLocal } from './platform.js';
 import { AVATAR_EDGE, TEMPLATES, el, node, state, templateValues } from './core.js';
 import { layoutPanes } from './panes.js';
 import { bot, clockTime, fillAvatar, group, isConversation, responsibleMachine, send, upper } from './e2e.js';
@@ -435,7 +436,8 @@ function showEditorError(text) {
     const parts = folderNotAllowed(text) ? splitFolderRefusal(text) : null;
     el.editorError.textContent = parts ? t('editor.folderNotAllowed', { folder: parts.folder }) : text;
     if (parts) el.editorError.append(node('span', 'error-roots', t('editor.allowedFolders') + '\n' + parts.roots.join('\n')));
-    if (folderNotAllowed(text)) el.editorError.append(node('span', 'error-hint', t('editor.folderNotAllowedHint')));
+    // The desktop app that runs the backend has a menu for it; the .env and the variable stay as the second way
+    if (folderNotAllowed(text)) el.editorError.append(node('span', 'error-hint', (desktopLocal ? t('editor.folderNotAllowedMenu') + '\n' : '') + t('editor.folderNotAllowedHint')));
     el.editorError.hidden = false;
 }
 

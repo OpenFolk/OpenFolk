@@ -65,5 +65,31 @@ D:\Work\my-site`, e);
     answer = { ok: false, message: 'There is no folder D:/Work/site.' };
     e = await save();
     check('another error: no note', e.visible && e.text === 'There is no folder D:/Work/site.' && e.hint === '', e);
+    check('browser: no word about the desktop menu', !(await error()).hint.includes('Allowed folders …'));
     await h.close();
+
+    // The desktop app that runs the backend itself names its menu first; ALLOWED_ROOTS stays as the second way. A
+    // display-only desktop window (no mark in the user agent) is told as the browser is.
+    for (const [mark, menu] of [[' OpenFolkLocal', true], ['', false]]) {
+        const d = await start({
+            online: ['desk'],
+            bots: [bot('web', 'Web Wanda')],
+            before: `Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) OpenFolk/0.1.2 Chrome/140.0.0.0 Electron/44.7.0 Safari/537.36${mark}' });`,
+            async onSend(f, push) {
+                if (f.type === 'folder_check' && f.folder === 'D:/Work/site') await push({ type: 'folder_checked', asked: f.folder, ok: false, message: 'Folder is not under C:/Users/sven/OpenFolk: D:/Work/site' });
+            },
+        });
+        await d.page.evaluate(() => openEditor(null));
+        await d.page.fill('#editor-name', 'Site');
+        await d.page.fill('#editor-folder', 'D:/Work/site');
+        await d.wait(100);
+        await d.page.evaluate(() => document.getElementById('editor-form').requestSubmit());
+        await d.wait(300);
+        const hint = await d.page.evaluate(() => document.querySelector('#editor-error .error-hint')?.textContent || '');
+        const menuAt = hint.indexOf('Allowed folders …');
+        const envAt = hint.indexOf('ALLOWED_ROOTS');
+        check(menu ? 'desktop app on this computer: the menu comes first, then ALLOWED_ROOTS, the Docker note stays' : 'desktop window without a backend of its own: no menu, as in the browser',
+            menu ? menuAt >= 0 && envAt > menuAt && hint.includes('WORK_DIR') : menuAt === -1 && envAt >= 0 && hint.includes('WORK_DIR'), hint);
+        await d.close();
+    }
 }
