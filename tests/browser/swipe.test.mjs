@@ -15,7 +15,8 @@ export default async function ({ start, check }) {
     check('a long swipe closes the chat', !(await open()));
     check('cleaned up afterwards', await h.page.evaluate(() => !document.getElementById('app').classList.contains('swiping') && !document.getElementById('chat').style.transform));
     await h.openChat('PDF');
-    // without pauses between the steps, so the speed is clearly above the threshold even under load
-    await h.swipe(80, 450, 160, 455, 4, 0);
+    // without pauses between the steps, so the speed is clearly above the threshold even under load; each step still
+    // takes some 30 ms over CDP, so 120 px (below a third of the width: only the momentum closes it)
+    await h.swipe(80, 450, 200, 455, 4, 0);
     check('a short swipe with momentum closes the chat', !(await open()));
 }

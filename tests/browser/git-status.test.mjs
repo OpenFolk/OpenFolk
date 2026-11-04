@@ -26,14 +26,14 @@ export default async function ({ start, check }) {
     const head = () => p.evaluate(() => `${document.querySelector('#git-title').textContent} · ${document.querySelector('#git-sub').textContent}`);
     const listVisible = () => p.$eval('#chat-list', (n) => n.getBoundingClientRect().width > 0);
 
-    check('without state: no badge, no row at the bottom', !(await badges()).length && await p.$eval('#git-total', (n) => n.hidden));
+    check('without state: no badge, no row at the bottom', !(await badges()).length && await p.$eval('#tab-repos-badge', (n) => n.hidden));
 
     await h.push({ type: 'git_status', machine: 'desk', status: { skool: [SKOOL], mail: [MAIL, CLEAN] } });
     await h.wait(100);
     check('badge on the bots with open repos (clean ones do not count)', JSON.stringify((await badges()).sort()) === '["mail:1","skool:1"]', await badges());
-    check('row at the bottom left, also collapsed', await p.$eval('#git-total', (n) => !n.hidden && n.offsetHeight > 0 && n.textContent === '2 repos with open changes'));
+    check('repos tab: badge with the count, the summary as its title', await p.$eval('#tab-repos', (n) => n.title === '2 repos with open changes' && !n.querySelector('.tab-badge').hidden && n.querySelector('.tab-badge').textContent === '2'));
 
-    await p.click('#git-total');
+    await p.click('#tab-repos');
     await h.wait(100);
     check('opens the page instead of the list, title at the top', !(await listVisible()) && (await head()) === 'Open changes · all bots');
     const total = await page();
@@ -60,7 +60,7 @@ export default async function ({ start, check }) {
     await p.click('#git-back');
     await h.wait(100);
     check('back at the top left: the list again', (await page()) === null && await listVisible());
-    check('badge and row updated', JSON.stringify(await badges()) === '["skool:1"]' && (await p.textContent('#git-total')) === '1 repo with open changes');
+    check('badge and row updated', JSON.stringify(await badges()) === '["skool:1"]' && (await p.getAttribute('#tab-repos', 'title')) === '1 repo with open changes');
 
     // tapping the badge: page of this bot, the chat does not open
     await p.click('#chat-list li[data-chat="skool"] .git-badge');
@@ -97,7 +97,7 @@ export default async function ({ start, check }) {
     const BROKEN = { name: 'broken', path: 'broken', branch: '', ahead: 0, behind: 0, files: [], more: 0, error: 'dubious ownership' };
     await h.push({ type: 'git_status', machine: 'desk', status: { skool: [SKOOL], mail: [MAIL, BROKEN] } });
     await h.wait(500);
-    await p.click('#git-total');
+    await p.click('#tab-repos');
     await h.wait(100);
     const allButton = p.locator('#git-page .git-all');
     check('button with the number of doable repos', (await allButton.textContent()) === 'Commit & push all (2)');
@@ -122,8 +122,8 @@ export default async function ({ start, check }) {
     await h.push({ type: 'git_status', machine: 'desk', status: {} });
     await h.push({ type: 'backend_status', machine: 'desk', since: new Date().toISOString(), changed: ['local/src/agent.ts', 'shared/protocol.ts'] });
     await h.wait(500);
-    check('no repos, but a restart is needed: row stays', (await p.textContent('#git-total')) === 'DESK: restart needed');
-    await p.click('#git-total');
+    check('no repos, but a restart is needed: row stays', (await p.getAttribute('#tab-repos', 'title')) === 'DESK: restart needed');
+    await p.click('#tab-repos');
     await h.wait(100);
     const hint = () => p.$eval('#git-page .backend-hint', (n) => n.textContent.replace(/\s+/g, ' ').trim()).catch(() => null);
     check('hint with changed files and button', /^DESK: restart backendRunning with old code since \d\d:\d\d [AP]M\. Changed: agent\.ts, protocol\.tsRestart$/.test(await hint()), await hint());
@@ -136,15 +136,15 @@ export default async function ({ start, check }) {
     check('requested: waits, button disabled', (await hint()).includes('waits until no bot is working') && await p.$eval('#git-page .backend-hint .git-button', (k) => k.disabled && k.textContent === 'waiting …'));
     await h.push({ type: 'backend_status', machine: 'desk', since: new Date().toISOString(), changed: [] });
     await h.wait(100);
-    check('after the restart: hint and row gone', (await hint()) === null && await p.$eval('#git-total', (n) => n.hidden));
+    check('after the restart: hint and row gone', (await hint()) === null && await p.$eval('#tab-repos-badge', (n) => n.hidden));
     await p.click('#git-back');
 
     // the backend's own repo is open: the restart button sits in its row instead of a hint
     await h.push({ type: 'git_status', machine: 'desk', status: { skool: [Object.assign({}, SKOOL, { backend: true })] } });
     await h.push({ type: 'backend_status', machine: 'desk', since: new Date().toISOString(), changed: ['local/src/agent.ts'] });
     await h.wait(500);
-    check('row names only the repos', (await p.textContent('#git-total')) === '1 repo with open changes', await p.textContent('#git-total'));
-    await p.click('#git-total');
+    check('row names only the repos', (await p.getAttribute('#tab-repos', 'title')) === '1 repo with open changes', await p.getAttribute('#tab-repos', 'title'));
+    await p.click('#tab-repos');
     await h.wait(100);
     const rowButtons = await p.$$eval('#git-page .git-repo .git-button', (ks) => ks.map((k) => k.textContent));
     check('restart next to commit & push, no hint', JSON.stringify(rowButtons) === '["Commit & push","Restart"]' && (await hint()) === null, rowButtons);
@@ -163,5 +163,5 @@ export default async function ({ start, check }) {
     await h.push({ type: 'agents', online: [] });
     // after tapping into the list it only re-renders 350 ms later
     await h.wait(500);
-    check('without a machine no badge and no row', !(await badges()).length && await p.$eval('#git-total', (n) => n.hidden));
+    check('without a machine no badge and no row', !(await badges()).length && await p.$eval('#tab-repos-badge', (n) => n.hidden));
 }

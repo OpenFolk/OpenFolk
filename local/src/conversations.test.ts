@@ -32,6 +32,14 @@ check('rename: trimmed', bots.findConversation(chatId)?.title === 'Web store rel
 bots.saveBot({ ...bot, name: 'Test 2' });
 check('editor save keeps conversations', bots.findBot('test')!.conversations!.length === 2);
 
+// The voice for reading aloud: chosen, kept by an app without the field, back to guessing with ''
+bots.saveBot({ ...bot, voice: 'male' });
+check('voice chosen', bots.findBot('test')!.voice === 'male');
+bots.saveBot({ ...bot, voice: undefined });
+check('an app without the field leaves the voice', bots.findBot('test')!.voice === 'male');
+bots.saveBot({ ...bot, voice: '' as never });
+check('empty: no voice, the web app guesses', bots.findBot('test')!.voice === undefined);
+
 // Session ids per conversation separate from the main chat
 bots.setSessionId('test', 'main-1');
 bots.setSessionId(chatId, 'side-1');

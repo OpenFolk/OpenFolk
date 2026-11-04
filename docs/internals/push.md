@@ -38,3 +38,8 @@ APNs development builds use the sandbox host; a token that production rejects wi
 there once and then remembered as `sandbox`.
 
 Push is suppressed while a client is visibly watching (`presence`) and for muted chats; approvals always go out.
+
+The link of an app notification carries `account=` for an account other than main and `relay=` with the web app's
+address (`APP_URL`, otherwise the relay's own), because one app can be signed in to several accounts and relays; the
+tag gets both in front, so the same chat id elsewhere does not replace the notification. A browser's push stays
+relative: its service worker belongs to one origin anyway.

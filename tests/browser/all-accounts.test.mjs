@@ -81,7 +81,7 @@ export default async function ({ start, check }) {
     await enc.wait(400);
     await q.evaluate(() => openAccounts());
     await enc.wait(200);
-    check('encrypted: the relay\'s account list still arrives', await q.isVisible('#accounts-admin') && (await q.locator('#accounts-list li').count()) === 2);
+    check('encrypted: the relay\'s account list still arrives', (await q.locator('#accounts-list li').count()) === 3);
     await q.evaluate(() => closeDialog(document.getElementById('settings')));
     // The backend's frames: number 2 to the other account's socket first, then number 1 to the main one
     const delivered = await q.evaluate(async () => {

@@ -1,11 +1,11 @@
-// Settings: reachable from the footer; autologin per machine with a question to exactly this machine,
+// Settings: reachable from the tabs; autologin per machine with a question to exactly this machine,
 // switching on only with a stored password, sleeping machines cannot be set; appearance selectable.
 
 export default async function ({ start, check }) {
     const h = await start({ online: ['desk', 'workstation'] });
     const p = h.page;
     await h.push({ type: 'machine_status', configured: true, hosts: { desk: { active: true }, workstation: { active: true }, laptop: { active: false } } });
-    await p.click('#btn-settings');
+    await p.click('[data-tab=settings]');
     await h.wait(100);
     check('dialog open', await p.isVisible('#settings'));
     const queries = h.sent.filter((f) => f.type === 'machine_autologon' && f.on === undefined).map((f) => f.machine).sort();
@@ -68,21 +68,33 @@ export default async function ({ start, check }) {
     await h.wait(100);
     const shared = await p.evaluate(() => ({
         model: document.querySelector('#settings-avatar-model').value, pull: document.querySelector('#settings-git-pull').checked,
-        keys: [...document.querySelectorAll('#settings-bots .settings-key')].map((b) => b.querySelector('.settings-hint').textContent),
-        removable: [...document.querySelectorAll('#settings-bots .settings-key')].map((b) => Boolean(b.querySelector('.danger'))),
+        services: [...document.querySelectorAll('#settings-ai-list li[data-provider]')].map((li) => li.dataset.provider + ': ' + li.querySelector('span').textContent),
+        addable: !document.getElementById('settings-ai-add-row').hidden,
     }));
     check('shared settings shown as reported', shared.model === 'gpt-image-1' && !shared.pull, shared);
-    check('API keys: stored or not, remove only where stored', shared.keys.join() === 'stored,not stored' && shared.removable.join() === 'true,false', shared);
+    // image model from OpenAI without its key; with Gemini's key alone the automatic voice is Gemini
+    check('AI services: the stored key listed with its use, the other one to add', shared.services.join() === 'gemini: Key stored · reading aloud' && shared.addable, shared);
     await p.selectOption('#settings-voice-language', 'de');
     await h.wait(100);
     const saves = h.sent.filter((f) => f.type === 'settings_save' && f.settings.voiceLanguage === 'de').map((f) => f.machine).sort();
     check('a shared change goes to every machine that is awake', saves.join() === 'desk,workstation', saves);
-    await p.fill('#settings-bots .settings-key[data-key="openai"] input', 'sk-new');
-    await p.click('#settings-bots .settings-key[data-key="openai"] button');
+    await p.click('#settings-ai-add');
+    check('add: the form opens in the settings dialog, with its own buttons', await p.isVisible('#settings-dialog') && await p.isHidden('#settings-dialog-actions')
+        && await p.evaluate(() => document.getElementById('settings-ai-form').parentElement.id === 'settings-dialog-body'));
+    check('add: the form offers only the provider without a key', (await p.inputValue('#settings-ai-provider')) === 'openai'
+        && await p.evaluate(() => [...document.querySelectorAll('#settings-ai-provider option')].filter((o) => !o.hidden).map((o) => o.value).join() === 'openai'));
+    await p.fill('#settings-ai-key', 'sk-new');
+    await p.click('#settings-ai-save');
     await h.wait(100);
     const key = h.sent.find((f) => f.type === 'settings_save' && f.apiKeys);
-    check('a new key is sent, the field is emptied', key && key.apiKeys.openai === 'sk-new'
-        && (await p.inputValue('#settings-bots .settings-key[data-key="openai"] input')) === '', key);
+    check('a new key is sent, the form closes', key && key.apiKeys.openai === 'sk-new' && await p.evaluate(() => document.getElementById('settings-ai-form').hidden), key);
+    await h.push({ type: 'settings', machine: 'desk', settings: { language: 'en', avatarModel: 'gpt-image-1', gitAutoPull: false, apiKeys: { gemini: true, openai: true }, updatedAt: '2026-10-18T10:01:00Z' } });
+    await h.wait(100);
+    const both = await p.evaluate(() => ({
+        services: [...document.querySelectorAll('#settings-ai-list li[data-provider]')].map((li) => li.dataset.provider + ': ' + li.querySelector('span').textContent),
+        addable: !document.getElementById('settings-ai-add-row').hidden,
+    }));
+    check('both stored: listed with their uses, nothing left to add', both.services.join('|') === 'openai: Key stored · profile pictures, reading aloud|gemini: Key stored · not used right now' && !both.addable, both);
 
     // settings of one machine: only once its backend reported them, changes only to that machine
     const form = () => p.evaluate(() => [...document.querySelectorAll('#settings-machines li')].map((li) => [li.querySelector('strong').textContent.toLowerCase(), Boolean(li.querySelector('details'))]));
@@ -108,6 +120,24 @@ export default async function ({ start, check }) {
     await h.wait(100);
     const machineSave = h.sent.find((f) => f.type === 'machine_settings_save');
     check('a machine change goes to that machine only', machineSave && machineSave.machine === 'desk' && machineSave.settings.shutdown === false, machineSave);
+
+    // claude.ai connectors: no switch from a backend that does not know it, off by default, a click lets them in
+    const connectorBox = () => p.evaluate(() => {
+        const label = [...document.querySelectorAll('#settings-machines details label.check')].find((l) => l.textContent.includes('connectors'));
+        return label ? label.querySelector('input').checked : null;
+    });
+    check('older backend: no connector switch', (await connectorBox()) === null);
+    await h.push({
+        type: 'machine_settings', machine: 'desk', anthropicKey: false, shutdownMethod: 'script', offers: { shutdown: true, ide: true, terminal: false, voice: true },
+        settings: { claudeAuth: 'subscription', shutdown: false, shutdownDelaySeconds: 60, afterWake: 'ifIdle', afterWakeSeconds: 300, afterWakeWaitMinutes: 60, idleMinutes: 15,
+            handoverIde: true, handoverTerminal: true, voiceModel: '', voiceDevice: 'auto', voicePreload: true, claudeAiConnectors: false },
+    });
+    await h.wait(100);
+    check('connector switch shown, off', (await connectorBox()) === false);
+    await p.evaluate(() => [...document.querySelectorAll('#settings-machines details label.check')].find((l) => l.textContent.includes('connectors')).querySelector('input').click());
+    await h.wait(100);
+    const connectorSave = h.sent.findLast((f) => f.type === 'machine_settings_save');
+    check('switching connectors on goes to that machine', connectorSave?.machine === 'desk' && connectorSave.settings.claudeAiConnectors === true, connectorSave);
 
     // voice messages not set up: the button asks exactly this machine
     await h.push({
@@ -149,7 +179,11 @@ export default async function ({ start, check }) {
     await h.push({ type: 'machine_join_link', machine: ask?.machine, url: 'https://test.local/#join=abc&e2e=key', command: 'npm run join -- "https://test.local/#join=abc&e2e=key"',
         expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), e2e: true });
     await h.wait(50);
-    check('the command to run on the new machine', (await p.inputValue('#machine-join input')) === 'npm run join -- "https://test.local/#join=abc&e2e=key"');
+    check('the command to run on the new machine, in the settings dialog', (await p.inputValue('#machine-join input')) === 'npm run join -- "https://test.local/#join=abc&e2e=key"'
+        && await p.isVisible('#settings-dialog') && (await p.textContent('#settings-dialog-title')) === 'Add machine');
+    await p.click('#settings-dialog [data-close]');
+    await h.wait(50);
+    check('closed: the box is back in the machines block', await p.isHidden('#settings-dialog') && await p.evaluate(() => document.getElementById('machine-join').hidden && document.getElementById('machine-join').parentElement.id !== 'settings-dialog-body'));
     await p.click('#settings-machines .settings-machine-joined button');
     await h.wait(50);
     const removal = h.sent.find((f) => f.type === 'machine_token_remove');

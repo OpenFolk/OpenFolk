@@ -53,6 +53,11 @@ export default async function ({ start, check }) {
     await p.click('#info-actions button[data-action="favorite"]');
     await h.wait(100);
     check('favorite: the page stays and shows the new state', await p.isVisible('#info') && (await p.textContent('#info-actions button[data-action="favorite"]')) === 'Remove from favorites');
+    await p.click('#info-actions button[data-action="mute"]');
+    await h.wait(100);
+    const mute = h.sent.findLast((f) => f.type === 'mute');
+    check('mute: sent for the bot, the page stays and shows the new state', mute && mute.chatId === 'skool' && mute.on === true && await p.isVisible('#info')
+        && (await p.textContent('#info-actions button[data-action="mute"]')) === 'Notify again', mute);
     accept = false;
     await p.click('#info-actions button[data-action="restart"]');
     await h.wait(100);
@@ -92,7 +97,7 @@ export default async function ({ start, check }) {
     await p.click('[data-el=chat-title]');
     await h.wait(200);
     const entries = await p.locator('#group-actions button[data-action]').evaluateAll((k) => k.map((x) => x.dataset.action));
-    check('group: the editor with its entries', await p.isVisible('#group-editor') && await p.isVisible('#group-actions') && entries.join() === 'search,favorite,group_delete', entries);
+    check('group: the editor with its entries', await p.isVisible('#group-editor') && await p.isVisible('#group-actions') && entries.join() === 'search,favorite,mute,group_delete', entries);
     await p.click('#group-actions button[data-action="favorite"]');
     await h.wait(100);
     const fav = h.sent.findLast((f) => f.type === 'favorite');

@@ -13,7 +13,7 @@ import { setBadge } from './platform.js';
 import { openEditor } from './editors.js';
 import { renderWelcome } from './welcome.js';
 import { openSettingsAt } from './settings.js';
-import { openOtherChat, otherRows, otherUnreadCount } from './others.js';
+import { openOtherChat, otherLabel, otherRows, otherUnreadCount } from './others.js';
 
 // ================================================================ Sidebar
 
@@ -106,22 +106,25 @@ export function renderChatList() {
         setBadge(otherUnreadCount());
         return;
     }
-    // Order: running or waiting chats, then favorites, then the rest (each newest message first);
-    // a bot counts as running if one of its conversations runs, and takes them all along
+    // Order: finished chats with something unread (not muted), then running or waiting ones, then favorites, then the
+    // rest (each newest message first); a bot counts as running or unread if one of its conversations is, and takes
+    // them all along
     const section = (id) => {
         const b = isGroup(id) ? null : bot(id);
-        const running = [id, ...(b ? conversationsOf(b) : [])].some((c) => {
+        const chats = [id, ...(b ? conversationsOf(b) : [])];
+        const running = chats.some((c) => {
             const st = chatStatus(c).state;
             return st === 'thinking' || st === 'waiting' || backgroundOf(c).length > 0;
         });
-        if (running) return 0;
-        return isFavorite(id) ? 1 : 2;
+        if (running) return 1;
+        if (!isMuted(id) && chats.some(isUnread)) return 0;
+        return isFavorite(id) ? 2 : 3;
     };
     const sorted = [
         ...ids.map((id, i) => ({ id, i, s: section(id), ts: latest(id), foreign: null })),
         ...foreign.map((r, i) => ({ id: r.id, i: ids.length + i, s: r.section, ts: r.ts, foreign: r })),
     ].sort((x, y) => x.s - y.s || y.ts.localeCompare(x.ts) || x.i - y.i);
-    const titles = [t('list.running'), t('list.favorites'), t('list.all')];
+    const titles = [t('list.unreadDone'), t('list.running'), t('list.favorites'), t('list.all')];
     const several = new Set(sorted.map((x) => x.s)).size > 1;
     let lastSection = -1;
     for (const { id, s, foreign: other } of sorted) {
@@ -163,13 +166,16 @@ export function renderChatList() {
         if (b) tags.appendChild(modelBadge(id));
         if (where && state.online.length > 1) tags.appendChild(node('span', 'machine-badge', upper(where)));
         if (tags.firstChild) meta.appendChild(tags);
+        // side by side in one line, so git, queue and conversations do not make the row higher
+        const icons = node('div', 'meta-icons');
         const git = b ? gitOpenOf(b) : [];
-        if (git.length) meta.appendChild(gitBadge(b, git));
-        if (isMuted(id)) meta.appendChild(node('span', 'muted-badge', '🔕'));
-        if (open) meta.appendChild(node('span', 'badge', String(open)));
-        else meta.appendChild(node('i', 'dot ' + (st === 'idle' && isUnread(id) ? 'new' : st)));
+        if (git.length) icons.appendChild(gitBadge(b, git));
+        if (isMuted(id)) icons.appendChild(node('span', 'muted-badge', '🔕'));
+        if (open) icons.appendChild(node('span', 'badge', String(open)));
+        else icons.appendChild(node('i', 'dot ' + (st === 'idle' && isUnread(id) ? 'new' : st)));
         if (isUnread(id)) li.classList.add('unread');
-        queueBadge(meta, id);
+        queueBadge(icons, id);
+        meta.appendChild(icons);
         const subs = b ? byTime(conversationsOf(b)) : [];
         const closed = subs.length > 0 && collapsed.has(id);
         if (subs.length) {
@@ -182,7 +188,7 @@ export function renderChatList() {
             button.setAttribute('aria-expanded', String(!closed));
             button.innerHTML = `<span>${subs.length}</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>`;
             button.addEventListener('click', (ev) => { ev.stopPropagation(); toggleConversations(id); });
-            meta.appendChild(button);
+            icons.appendChild(button);
         }
         li.append(av, info, meta);
         openOnClick(li, id);
@@ -210,13 +216,15 @@ function foreignRow(r) {
     const li = node('li', 'other-account');
     li.dataset.chat = r.id;
     li.dataset.account = r.account.id;
+    if (r.relay) li.dataset.relay = r.relay.url;
     const av = node('div', 'avatar' + (r.group ? ' group' : ''));
     fillAvatar(av, r.item, r.id);
     const info = node('div', 'info');
     const name = node('div', 'name', r.item.name);
     if (!r.group && (r.item.area || r.item.role)) name.appendChild(node('small', '', ' · ' + (r.item.area || r.item.role)));
-    const badge = node('span', 'account-badge', r.account.name);
-    badge.style.setProperty('--account-hue', String(accountHue(r.account.id)));
+    const label = otherLabel(r);
+    const badge = node('span', 'account-badge', label);
+    badge.style.setProperty('--account-hue', String(accountHue(r.relay ? r.relay.url : r.account.id)));
     name.appendChild(badge);
     const last = node('div', 'last',
         r.state === 'waiting' ? '⏳ ' + t('status.waitingForYou') : r.state === 'thinking' ? r.activity || t('status.thinking')
@@ -232,8 +240,8 @@ function foreignRow(r) {
     else meta.appendChild(node('i', 'dot ' + (r.state === 'idle' && r.unread ? 'new' : r.state)));
     if (r.unread) li.classList.add('unread');
     li.append(av, info, meta);
-    li.title = t('list.otherAccount', { account: r.account.name });
-    li.addEventListener('click', () => openOtherChat(r.account.id, r.id));
+    li.title = t('list.otherAccount', { account: label });
+    li.addEventListener('click', () => openOtherChat(r.relay, r.account.id, r.id));
     return li;
 }
 
@@ -697,9 +705,11 @@ function conversationRow(chatId) {
     tags.appendChild(modelBadge(chatId));
     meta.appendChild(tags);
     const open = openApprovals(chatId).length;
-    meta.appendChild(open ? node('span', 'badge', String(open)) : node('i', 'dot ' + (st === 'idle' && isUnread(chatId) ? 'new' : st)));
+    const icons = node('div', 'meta-icons');
+    icons.appendChild(open ? node('span', 'badge', String(open)) : node('i', 'dot ' + (st === 'idle' && isUnread(chatId) ? 'new' : st)));
     if (isUnread(chatId)) li.classList.add('unread');
-    queueBadge(meta, chatId);
+    queueBadge(icons, chatId);
+    meta.appendChild(icons);
     li.append(node('div', 'sub-mark', '↳'), info, meta);
     openOnClick(li, chatId);
     return li;
@@ -708,6 +718,7 @@ function conversationRow(chatId) {
 export function renderUsage() {
     const claude = state.usage;
     const codex = state.usageCodex;
+    el.usageNone.hidden = !!(claude || codex);
     if (!claude && !codex) return;
     el.usage.hidden = false;
     el.usage.innerHTML = '';
@@ -715,22 +726,30 @@ export function renderUsage() {
         if (!w) return;
         const p = Math.round(w.utilization * 100);
         const row = node('div', 'usage-bar' + (p >= 90 ? ' critical' : p >= 70 ? ' warning' : ''));
-        row.title = w.resetsAt ? t('usage.resets', { time: new Date(w.resetsAt * 1000).toLocaleString(locale()) }) : '';
         row.append(node('span', '', label));
         const track = node('span', 'track');
         const fill = node('span', 'fill');
         fill.style.width = Math.min(p, 100) + '%';
         track.appendChild(fill);
         row.append(track, node('span', 'value', p + ' %'));
+        // when the window resets: on the status page as text, elsewhere only in the tooltip
+        if (w.resetsAt) {
+            const when = t('usage.resets', { time: clockTime(w.resetsAt * 1000) });
+            row.title = when;
+            row.append(node('span', 'usage-reset', when));
+        }
         el.usage.appendChild(row);
     };
     // Claude plan and ChatGPT plan (Codex) have their own limits; the prefix only appears once both are there
     const both = !!(claude && codex);
+    el.usage.classList.toggle('two', both);
     for (const [u, name] of [[claude, 'Claude'], [codex, 'Codex']]) {
         if (!u) continue;
         const prefix = both ? name + ' ' : '';
         bar(prefix + t('usage.fiveHours'), u.fiveHour);
         bar(prefix + t('usage.week'), u.sevenDay);
+        // models the plan limits on their own (Fable): a weekly bar each, named as the server names them
+        for (const m of u.models || []) bar(`${m.name} ${t('usage.week')}`, m);
         if (u.status === 'rejected') {
             const until = u.resetsAt ? new Date(u.resetsAt * 1000).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) : t('usage.later');
             el.usage.appendChild(node('div', 'limit', t(name === 'Codex' ? 'usage.codexLimit' : 'usage.planLimit', { time: until })));

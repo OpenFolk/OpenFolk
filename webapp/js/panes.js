@@ -86,7 +86,17 @@ export const NARROW_PX = 760;
 /** A pane narrower than this squeezes code and tables. */
 export const MIN_PANE_PX = 640;
 export const SIDEBAR_PX = 360;
+export const SIDEBAR_MIN_PX = 260;
+export const SIDEBAR_MAX_PX = 640;
 export const INFO_PX = 400;
+let sidebarPx = SIDEBAR_PX;
+
+/** Sets the sidebar's width (the desktop apps let the user drag it) and returns the width it got. */
+export function setSidebarWidth(px) {
+    sidebarPx = Math.round(Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, px)));
+    el.app.style.setProperty('--sidebar-width', sidebarPx + 'px');
+    return sidebarPx;
+}
 
 /** Data type of a chat dragged from the list onto a pane or the + strip. */
 export const CHAT_DRAG = 'application/x-openfolk-chat';
@@ -166,10 +176,10 @@ export function removePane(p) {
 }
 
 /** Whether there is room for more than one pane. */
-export const isWide = () => window.innerWidth >= SIDEBAR_PX + 2 * MIN_PANE_PX;
+export const isWide = () => window.innerWidth >= sidebarPx + 2 * MIN_PANE_PX;
 
 /** The info panel docks as a column of its own when a pane still fits next to it. */
-export const canDockInfo = () => window.innerWidth >= SIDEBAR_PX + MIN_PANE_PX + INFO_PX;
+export const canDockInfo = () => window.innerWidth >= sidebarPx + MIN_PANE_PX + INFO_PX;
 
 function infoDocked() {
     return !el.info.hidden && canDockInfo();
@@ -179,13 +189,31 @@ function infoDocked() {
 export function capacity() {
     const w = window.innerWidth;
     if (w <= NARROW_PX) return 1;
-    return Math.max(1, Math.floor((w - SIDEBAR_PX - (infoDocked() ? INFO_PX : 0)) / MIN_PANE_PX));
+    return Math.max(1, Math.floor((w - sidebarPx - (infoDocked() ? INFO_PX : 0)) / MIN_PANE_PX));
 }
 
 /** On wide screens the settings are a pane of their own after the chats; on a phone a page over everything. */
 function placeSettings() {
     const target = window.innerWidth > NARROW_PX ? el.panes : el.app;
     if (el.settings.parentElement !== target) target.appendChild(el.settings);
+    // Same z-index as the settings page on a phone: later in the DOM, the tabs stay on top of it
+    if (el.app.lastElementChild !== el.tabBar) el.app.appendChild(el.tabBar);
+}
+
+/**
+ * The tab of what the screen shows. The page of one bot's repos (`page` "bot") belongs to the repos, but on a phone it
+ * is a page under a chat with its own way back, without the tabs.
+ */
+function renderTabs() {
+    const page = el.gitPage.hidden ? '' : el.gitPage.dataset.page || 'repos';
+    const tab = !el.settings.hidden ? 'settings' : page === 'bot' ? 'repos' : page || 'bots';
+    for (const b of el.tabBar.querySelectorAll('.tab')) {
+        const on = /** @type {HTMLElement} */ (b).dataset.tab === tab;
+        b.classList.toggle('on', on);
+        if (on) b.setAttribute('aria-current', 'page');
+        else b.removeAttribute('aria-current');
+    }
+    el.app.classList.toggle('tab-page', !el.settings.hidden || (page !== '' && page !== 'bot'));
 }
 
 /** Whether the settings take the room of a pane. */
@@ -240,6 +268,7 @@ export function layoutPanes() {
     el.paneAdd.hidden = !isWide() || !el.gitPage.hidden || panes.length >= capacity() - (settings ? 1 : 0);
     for (const p of panes) p.el.btnClose.hidden = single;
     markActive();
+    renderTabs();
 }
 
 /** Remembers the open chats of all panes on this device (restored after a reload on a wide screen). */

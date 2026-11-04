@@ -9,12 +9,16 @@ export default async function ({ start, check }) {
     const shownPanes = () => p.evaluate(() => [...document.querySelectorAll('.pane')].filter((x) => !x.hidden).length);
     await p.setViewportSize({ width: 1400, height: 900 });
     await h.wait(200);
-    await p.click('#btn-settings');
+    await p.click('[data-tab=settings]');
     await h.wait(200);
     check('wide: settings open as a pane', await p.isVisible('#settings') && await p.evaluate(() => document.getElementById('settings').parentElement.id === 'panes'));
     check('no backdrop', await p.evaluate(() => getComputedStyle(document.getElementById('settings')).position === 'static'));
-    check('a header with the title and an X, no Close button below', await p.isVisible('#settings .settings-bar .pane-close')
-        && (await p.textContent('#settings .settings-bar')).includes('Settings') && !(await p.isVisible('#settings .settings-close-row button')));
+    check('a header with the title and an X, no arrow, no Close button below', await p.isVisible('#settings .settings-bar .pane-close')
+        && (await p.textContent('#settings .settings-bar')).includes('Settings') && !(await p.isVisible('#settings .settings-bar .page-back'))
+        && (await p.locator('#settings .settings-close-row').count()) === 0);
+    const head = await p.locator('#settings .settings-bar').boundingBox();
+    const block = await p.locator('#settings-bots').boundingBox();
+    check('the content starts at the left under the head, like the status page', head && block && Math.round(block.x - head.x) === 16 && block.width <= 640, { head, block });
     const list = await p.locator('.sidebar').boundingBox();
     const page = await p.locator('#settings').boundingBox();
     check('one pane fits: the settings take it', list && page && Math.round(page.x) === Math.round(list.x + list.width)
@@ -26,12 +30,12 @@ export default async function ({ start, check }) {
     await h.openChat('PDF');
     await h.wait(200);
     check('a chat replaces them in the only pane', !(await p.isVisible('#settings')) && (await shownPanes()) === 1);
-    await p.click('#btn-settings');
+    await p.click('[data-tab=settings]');
     await h.wait(200);
     await p.click('#settings .settings-bar .pane-close');
     await h.wait(100);
     check('the X closes them, the chat is back', !(await p.isVisible('#settings')) && (await shownPanes()) === 1);
-    await p.click('#btn-settings');
+    await p.click('[data-tab=settings]');
     await h.wait(200);
     await p.keyboard.press('Escape');
     await h.wait(100);
@@ -39,7 +43,7 @@ export default async function ({ start, check }) {
 
     await p.setViewportSize({ width: 1900, height: 900 });
     await h.wait(200);
-    await p.click('#btn-settings');
+    await p.click('[data-tab=settings]');
     await h.wait(200);
     const chat = await p.locator('.pane:not([hidden])').boundingBox();
     const beside = await p.locator('#settings').boundingBox();
@@ -58,7 +62,7 @@ export default async function ({ start, check }) {
     await h.wait(200);
     await p.evaluate(() => document.querySelector('.back')?.click());
     await h.wait(200);
-    await p.click('#btn-settings');
+    await p.click('[data-tab=settings]');
     // The page slides in; on a slow CI runner it is still moving after a fixed wait
     let narrow = null;
     for (let i = 0; i < 30 && narrow?.x !== 0; i++) {
@@ -67,6 +71,13 @@ export default async function ({ start, check }) {
     }
     check('narrow: over the whole screen', narrow && narrow.x === 0 && narrow.width === 400
         && await p.evaluate(() => getComputedStyle(document.getElementById('settings')).position === 'fixed'), narrow);
+    check('narrow: the head with the arrow back instead of the X', await p.isVisible('#settings .settings-bar .page-back') && !(await p.isVisible('#settings .settings-bar .pane-close')));
+    check('narrow: a tab like the others, no slide-in', await p.evaluate(() => getComputedStyle(document.getElementById('settings')).animationName === 'none'));
+    const before = await p.locator('#settings').boundingBox();
+    await h.swipe(20, 400, 200, 400, 8, 20);
+    await h.wait(400);
+    const after = await p.locator('#settings').boundingBox();
+    check('narrow: a swipe to the right neither moves nor closes them', await p.isVisible('#settings') && before && after && before.x === after.x, { before, after });
 
     // Saving shows a toast at the bottom: local settings at once, the others when the backend answers
     const toast = () => p.evaluate(() => { const t = document.getElementById('toast'); return t && !t.hidden ? t.textContent : ''; });

@@ -43,20 +43,26 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
 ## Features
 
 - **Bots and templates.** Create a bot with "+", optionally from a template. Per bot: folder, model (default,
-  Opus, Sonnet, Haiku, Codex, Cursor, Copilot, Antigravity, OpenCode or a custom id), approval level and tone.
+  Opus, Sonnet, Haiku, Codex, Cursor, Copilot, Antigravity, OpenCode or a custom id), approval level, tone and the
+  voice that reads its answers aloud (guessed from the name unless chosen).
   "Suggest" proposes names (a first name with a field of work, kept in a field of its own), a role or a profile
   picture from the folder's README/CLAUDE.md; with
   a Gemini or OpenAI key in the settings the avatar is a generated photo, otherwise an SVG drawn by the model.
 - **Approvals in the chat.** Per bot: *risky* (default) asks before deleting, pushing, deploying, SSH, service
   restarts, writing outside the folder or into secrets, reading secrets through the shell, installing packages,
-  running code from the internet (`curl … | sh`), elevated rights and writing actions of external MCP services; it
-  checks every part of a shell command (`a && b | c`) on its own. It is a careful filter, not a fence: whoever wants
-  every command confirmed uses *write*, which asks before every change; *never* never asks. Reading tools never get
-  `.env` files or keys, whatever the level. The card offers allow, always allow (for the session)
-  and deny with a reason; unanswered requests are denied after 30 minutes. Rules: `local/src/policy.ts`.
+  running code from the internet (`curl … | sh`), elevated rights and every call of an external MCP service, reading
+  ones included; it checks every part of a shell command (`a && b | c`) on its own. It is a careful filter, not a
+  fence: a script the bot writes and then runs is not looked into. Whoever wants every command confirmed uses
+  *write*, which asks before every change; *never* never asks. Reading tools never get `.env` files or keys,
+  whatever the level. The card offers allow, always allow (for the session), always for this bot (external MCP tools;
+  the bot editor lists them and takes them off again) and deny with a reason; unanswered requests are denied after
+  30 minutes. Rules: `local/src/policy.ts`.
+- **Connectors.** The services connected in the claude.ai account Claude Code is signed in with (Gmail, Drive and
+  so on) stay out of the bots' sessions unless the machine settings let them in ("Connectors"). MCP servers you
+  configure yourself (`.mcp.json`, `claude mcp add`) are not affected.
 - **Questions.** Multiple-choice questions of a bot (AskUserQuestion) appear as a card with buttons and free text.
 - **Push notifications.** Per kind (bot done, routine done, approval/question, machine awake, usage limit) off,
-  quiet, normal or high, for all devices. Single bots and groups can be muted in the push settings. Sent directly from your machine:
+  quiet, normal or high, for all devices. Single bots and groups are muted on their page or in the list's menu. Sent directly from your machine:
   Web Push/VAPID to browsers (on iPhone only from the installed PWA), APNs and FCM to the mobile apps
   (`mobile/README.md`).
 - **Activity.** Tool calls as expandable rows with result and duration; the list shows what a bot is working on.
@@ -85,6 +91,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   others, as many as fit (one per 640 px); "+" at the right edge adds an empty one. With the mouse a chat can also
   be dragged from the list onto a column or onto "+". Every column has its own input,
   queue and search. The bot info docks as a column of its own. Phones and laptops keep one chat.
+- **Tabs.** Floating at the bottom of the list: Bots, Repos (open changes of all bots, with a badge), Status
+  (the machines with their bots, engines and backend, waking and shutting down, the plans' quota with the 5-hour and weekly windows, a separate one for Fable, and when
+  each resets) and Settings.
 - **Open changes.** Uncommitted files and unpushed or unpulled commits of the git repos in a bot's folder, with
   commit-and-push or pull per repo. The backend also reports when it runs outdated code and offers a gentle restart.
 - **Repos stay current.** On start, after waking, every quarter hour and when another machine pushes from the app,
@@ -104,9 +113,11 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   there if it is not there yet. Work that is not on the git server yet (uncommitted changes, new files, unpushed
   commits) goes along on request, end-to-end encrypted through the relay, without a push; the new machine applies
   what fits cleanly and parks the rest in the repo's `.git/openfolk-work/`.
-- **Settings.** Language, theme, notifications, devices and security. Shared by all machines: the image model and
-  API keys for profile pictures, the language of voice messages, what app notifications show, keeping the repos
-  current. Per machine (main account only): the AI providers that run there, each on its subscription or a key,
+- **Settings.** Language, theme, notifications, devices and security; per device whether the answer to a voice
+  message is read aloud by itself once it is done (on by default). Shared by all machines: the AI services (the API
+  keys of OpenAI and Google Gemini as a list), the image model for profile pictures, the voice for reading answers aloud (with one of those keys an OpenAI or Gemini
+  voice, otherwise the device's own; the text then goes to that provider), the language of voice messages, what app
+  notifications show, keeping the repos current. Per machine (main account only): the AI providers that run there, each on its subscription or a key,
   shutting down with its countdown and
   what happens after wake routines, automatic sign-in, "Open in the IDE / in a terminal", the speech model. A browser
   only learns whether a key is stored; keys travel to the other machines only end-to-end encrypted. What runs
@@ -183,7 +194,9 @@ check incoming frames with Zod (`local/src/frames.ts`) and answer malformed ones
 
 The desktop apps for Windows, Linux (AppImage, .deb) and macOS bring the backend along: choose "Start on this computer" on
 their first start, sign in to Claude Code when the app asks, and that is all (`desktop/README.md`). They come from
-the [releases](https://github.com/OpenFolk/OpenFolk/releases) and update themselves from there. From source:
+the [releases](https://github.com/OpenFolk/OpenFolk/releases) and update themselves from there. Their first update check
+of a day is counted anonymously on openfolk.app (a daily total per system and version, no IP, no identifier, public at
+[openfolk.app/update/stats.json](https://openfolk.app/update/stats.json)); the app's menu switches that off. From source:
 
 ```sh
 git clone https://github.com/OpenFolk/OpenFolk.git openfolk
@@ -245,17 +258,23 @@ per customer. Each account has its own bots, chats, knowledge, devices and its o
 subscriptions, limits and usage stay apart, and it sees nothing of the others. Whoever set up the relay owns the
 main account; nothing changes until a second one exists.
 
-- **Creating:** settings → Accounts → "Create and invite". The invitation is a pairing link with a QR code, valid for
-  15 minutes; whoever opens it is signed in to the new account. "New invitation" makes another one. An account may
-  set a password of its own afterwards and then sign in with its name and that password. Admins may manage
-  accounts; the main account always is one.
-- **Switching:** a device can be signed in to several accounts. The name next to the title in the sidebar switches
-  between them, "Sign in to another account" adds one, and an invitation link opened on a signed-in device adds its
-  account too.
+- **One list, one "Add":** settings → Accounts is one list grouped by relay: every account this device is signed in to
+  (the active one marked, the others with switch and remove) and, for an admin, everyone else on this relay with
+  "Create invitation link", admin and delete. One button "Add" takes whatever you were given: an invitation into an
+  account, a pairing link of another relay, or just a relay's address (then it asks for account and password); an
+  admin also creates a new person there ("Create account and invitation link"). The invitation is a pairing link with
+  a QR code, valid for 15 minutes; whoever opens it is signed in to the new account and may set a password of their own
+  afterwards. What is signed in stays; signing out is under "Devices and security". The main account always is an admin.
+- **Switching:** the name next to the title in the sidebar switches between the accounts and relays of this device;
+  an invitation link opened on a signed-in device adds its account too.
 - **One list:** the chat list shows the bots of every account the device is signed in to, those of the other
   accounts with the account's name as a badge, with what they do, their last message and what is new. A tap opens
-  the chat in its account; notifications of every account arrive. Settings → "Show the bots of all accounts on this
-  device in the list" turns it off for this device.
+  the chat in its account; notifications of every account arrive. "Show all accounts in one list" under Accounts
+  turns it off for this device, then the list shows the active account only.
+- **Several relays (the apps):** "Add" with a pairing link from another relay signs the app in there, for example
+  one relay per customer. Each relay keeps its own machines, accounts, devices and key. The chat list shows the bots
+  of all of them with the relay's name as a badge. In the browser the page belongs to one relay; further relays are
+  kept as links there.
 - **AI sign-ins per account:** the main account uses the machine's own `~/.claude` and `~/.codex`. Any other account
   signs in once per machine into its own folder: Codex with a code from the setup checklist, Claude with the command
   the checklist shows (`CLAUDE_CONFIG_DIR=… claude`). Copilot, Cursor, Antigravity and OpenCode serve the main account only, as

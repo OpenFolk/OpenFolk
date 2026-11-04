@@ -16,11 +16,11 @@ import { joinDone, joinPending } from './join.ts';
 import { appUrl, newMachineInvite, newPairingLink, pairingSvg, pairingUrl } from './pairing.ts';
 import { startDeviceLogin } from './engine-login.ts';
 import { claudeSignInCommand, engineAvailable } from './engine-home.ts';
-import { cloneRepository, inspectFolder, originOf, proposeFolder } from './folders.ts';
+import { cloneRepository, inspectFolder, listFolder, originOf, proposeFolder } from './folders.ts';
 import type { WarningCode } from './relay-client.ts';
 import {
     archiveConversation, botSessionIds, createConversation, deleteBot, deleteGroup, findBot, findConversation, findGroup, isMuted, isUnder, loadBots, loadGroups, mayMessage,
-    readSessionId, removeConversation, renameConversation, roleLine, saveBot, saveBots, saveGroup, setFavorite, setModel, setMuted, setSessionId, underAllowedRoot,
+    readSessionId, removeConversation, renameConversation, roleLine, saveBot, saveBots, saveGroup, allowTool, setFavorite, setModel, setMuted, setSessionId, underAllowedRoot,
 } from './bots.ts';
 import { autologon, canAutologon, type AutologonState } from './autologon.ts';
 import { config } from './config.ts';
@@ -39,7 +39,7 @@ import {
     deleteFact, isValidLocation, knowledgeSections, readFact, saveFact, sees,
 } from './knowledge.ts';
 import type { CodexLimits, EngineTool } from './codex.ts';
-import { approvalText, needsApproval } from './policy.ts';
+import { approvalText, needsApproval, rememberable } from './policy.ts';
 import { gitAutoPull, loadSettings, saveApiKeys, saveLanguage, saveSettings, settingsForBrowser, voiceLanguage } from './settings.ts';
 import { claudeOnKey, keyFallbackState, onKeyFallbackChange, resetKeyFallback, subscriptionLimit } from './key-fallback.ts';
 import {
@@ -59,6 +59,7 @@ import { currentAccount, DEFAULT_ACCOUNT, readJson, writeJson } from './store.ts
 import { merge, snapshot } from './sync.ts';
 import { keywordTitle } from './title.ts';
 import { suggest } from './suggestions.ts';
+import { synthesize } from './speech.ts';
 import { transcriber } from './voice.ts';
 import { setupVoice, voiceStatus } from './voice-setup.ts';
 import { projectDir, listVscodeSessions, transcriptStoreError, transcriptPath, Watcher } from './vscode.ts';
@@ -1024,6 +1025,15 @@ export class BotManager implements SessionHooks {
                     );
                     break;
                 }
+                case 'folder_list': {
+                    const asked = frame.folder;
+                    try {
+                        this.send({ type: 'folder_listed', asked, ok: true, ...listFolder(asked) }, cid);
+                    } catch (e) {
+                        this.send({ type: 'folder_listed', asked, ok: false, message: (e as Error).message }, cid);
+                    }
+                    break;
+                }
                 case 'bot_suggest': {
                     const { what } = frame.request;
                     const begin = Date.now();
@@ -1424,6 +1434,12 @@ export class BotManager implements SessionHooks {
                     this.send({ type: 'file', path: frame.path, name: d.name, mime: d.mime, data: d.data }, cid);
                     break;
                 }
+                case 'speech_get':
+                    synthesize(frame.text, frame.voice).then(
+                        (audio) => this.send({ type: 'speech', id: frame.id, ...audio }, cid),
+                        (e: Error) => this.send({ type: 'speech', id: frame.id, error: e.message }, cid),
+                    );
+                    break;
                 case 'push_subscribe':
                     saveSubscription(frame.subscription);
                     this.shareConfig();
@@ -1812,11 +1828,18 @@ export class BotManager implements SessionHooks {
             if (info.rateLimitType === key && typeof info.utilization === 'number') return { utilization: info.utilization, resetsAt: info.resetsAt };
             return old;
         };
+        // The per-model windows arrive on their own (session start); they do not change the status of the plan
+        if (info.modelWindows) {
+            this.usageClaude = { ...(this.usageClaude ?? { status: 'allowed', updatedAt: '' }), models: info.modelWindows, updatedAt: new Date().toISOString() };
+            this.send({ type: 'usage', usage: this.usageClaude });
+            return;
+        }
         this.usageClaude = {
             status: info.status,
             fiveHour: window('five_hour', this.usageClaude?.fiveHour),
             sevenDay: window('seven_day', this.usageClaude?.sevenDay),
             resetsAt: info.status === 'rejected' ? info.resetsAt : undefined,
+            models: this.usageClaude?.models,
             updatedAt: new Date().toISOString(),
         };
         this.send({ type: 'usage', usage: this.usageClaude });
@@ -1854,7 +1877,7 @@ export class BotManager implements SessionHooks {
     // ------------------------------------------------------------------ Approvals
 
     approval(s: BotSession, turn: Turn, toolName: string, input: Record<string, unknown>, signal: AbortSignal, suggestions?: PermissionUpdate[]): Promise<PermissionResult> {
-        const e = needsApproval(s.bot.approval, toolName, input, s.bot.folder);
+        const e = needsApproval(s.bot.approval, toolName, input, s.bot.folder, s.bot.allowedTools);
         if (e.deny) return Promise.resolve({ behavior: 'deny', message: e.reason ?? '' });
         if (!e.ask) return Promise.resolve({ behavior: 'allow', updatedInput: input });
 
@@ -1871,6 +1894,7 @@ export class BotManager implements SessionHooks {
             questions: isQuestion ? questionsFrom(input) : undefined,
             ts: new Date().toISOString(),
             machine: config.machine,
+            rememberable: !isQuestion && rememberable(toolName) || undefined,
         };
 
         return new Promise<PermissionResult>((resolve) => {
@@ -1913,6 +1937,14 @@ export class BotManager implements SessionHooks {
         if (approval.kind === 'question') {
             const answers = f.answers ?? {};
             open.settle({ behavior: 'allow', updatedInput: { ...input, answers } }, Object.values(answers).join(' · ') || t('approval.answered'));
+            return;
+        }
+        if (f.remember && approval.rememberable) {
+            const bot = allowTool(approval.botId, approval.tool);
+            for (const s of this.sessionsOf(bot.id)) s.bot = bot;
+            this.sendBots();
+            this.shareConfig();
+            open.settle({ behavior: 'allow', updatedInput: input }, t('approval.allowedForBot'));
             return;
         }
         open.settle({

@@ -4,7 +4,7 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkFolder, underAllowedRoot } from './bots.ts';
+import { checkFolder, isUnder, underAllowedRoot } from './bots.ts';
 import { config } from './config.ts';
 import { pushAccess } from './git.ts';
 import { t } from './i18n.ts';
@@ -74,6 +74,42 @@ export async function proposeFolder(url: string): Promise<{ folder: string; exis
         if (await holds(target, url)) return { folder: slashes(target), existing: true };
     }
     throw new Error(t('folders.exists', { folder: slashes(path.join(root, name)) }));
+}
+
+const LIST_MAX = 500;
+
+const isDir = (p: string) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+
+/** `p` or the nearest of its parents that exists, '' if none does. */
+function nearestDir(p: string): string {
+    for (let at = p; ; at = path.dirname(at)) {
+        if (isDir(at)) return at;
+        if (path.dirname(at) === at) return '';
+    }
+}
+
+/**
+ * The subfolders of `folder` for the editor's folder picker, never outside the allowed roots. '' lists the roots
+ * (with a single root: that root); a folder that is missing lists its nearest existing parent. Hidden folders and
+ * node_modules are left out; links count only where they lead inside the roots.
+ */
+export function listFolder(folder: string): { folder: string; parent?: string; folders: string[] } {
+    const roots = config.allowedRoots.map((r) => path.resolve(r)).filter(isDir);
+    if (!roots.length) throw new Error(t('folders.noRoot'));
+    const start = folder.trim() ? nearestDir(path.resolve(folder.trim())) : '';
+    const abs = start && underAllowedRoot(start) ? start : roots.length === 1 ? roots[0] : '';
+    if (!abs) return { folder: '', folders: roots.map(slashes) };
+    const folders = fs.readdirSync(abs, { withFileTypes: true })
+        .filter((d) => !d.name.startsWith('.') && d.name !== 'node_modules')
+        .map((d) => ({ d, full: path.join(abs, d.name) }))
+        .filter(({ d, full }) => d.isDirectory() || (d.isSymbolicLink() && isDir(full) && underAllowedRoot(full)))
+        .map(({ full }) => full)
+        .sort((a, b) => path.basename(a).localeCompare(path.basename(b), undefined, { sensitivity: 'base', numeric: true }))
+        .slice(0, LIST_MAX);
+    const up = path.dirname(abs);
+    const atRoot = roots.some((r) => isUnder(r, abs) && isUnder(abs, r));
+    const parent = !atRoot && up !== abs && underAllowedRoot(up) ? slashes(up) : roots.length > 1 ? '' : undefined;
+    return { folder: slashes(abs), ...(parent !== undefined ? { parent } : {}), folders: folders.map(slashes) };
 }
 
 /**

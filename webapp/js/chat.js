@@ -63,7 +63,6 @@ export function openChat(id, jumpTo, searchWord, target) {
     layoutPanes();
     savePanes();
     paneActivated();
-    if (window.innerWidth > 760) p.el.text.focus();
 }
 
 /** Opens a chat in a new pane next to the others; without room (or on narrow screens) like a normal click. */

@@ -33,7 +33,7 @@ export default async function ({ start, check }) {
     await h.wait(100);
     check('connected again', (await row('workstation')).includes('connected'), await row('workstation'));
 
-    check('footer without autologin', !(await row('desk')).includes('utologin'), await row('desk'));
+    check('machine row without autologin', !(await row('desk')).includes('utologin'), await row('desk'));
 
     // machine settings: with shutting down switched off no "shut down"; the delay comes from the machine's settings
     const buttons = (host) => p.evaluate((host) => {

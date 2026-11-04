@@ -7,7 +7,7 @@ import path from 'node:path';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-folders-'));
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-folders-data-'));
 process.env.ALLOWED_ROOTS = root;
-const { cloneName, cloneRepository, inspectFolder, proposeFolder } = await import('./folders.ts');
+const { cloneName, cloneRepository, inspectFolder, listFolder, proposeFolder } = await import('./folders.ts');
 
 let failures = 0;
 const check = (name: string, ok: boolean, info?: unknown) => { console.log(`${ok ? 'ok    ' : 'FAILED'} ${name}${ok || info === undefined ? '' : ` (is ${JSON.stringify(info)})`}`); if (!ok) failures++; };
@@ -45,6 +45,21 @@ check('propose: name taken by something else, the next free one', taken.folder =
 const fresh = await proposeFolder('git@github.com:team/docs.git');
 check('propose: a new folder named after the repository', fresh.folder === slash(path.join(root, 'docs')) && !fresh.existing, fresh);
 check('propose: no address refused', (await refused(() => proposeFolder('C:/www/website'))) !== '');
+
+// The folder picker: subfolders, never outside the allowed roots
+fs.mkdirSync(path.join(root, '.hidden'));
+fs.mkdirSync(path.join(root, 'website', 'node_modules'));
+fs.mkdirSync(path.join(root, 'website', 'src'));
+fs.writeFileSync(path.join(root, 'file.txt'), '');
+const top = listFolder('');
+check('list: a single root is listed at once, without a way up', top.folder === slash(root) && top.parent === undefined, top);
+check('list: subfolders sorted, without files and hidden folders', JSON.stringify(top.folders) === JSON.stringify(['api', 'website'].map((n) => slash(path.join(root, n)))), top.folders);
+const inner = listFolder(repo);
+check('list: a subfolder leads back up and leaves node_modules out', inner.parent === slash(root) && JSON.stringify(inner.folders) === JSON.stringify([slash(path.join(repo, 'src'))]), inner);
+const missing = listFolder(path.join(repo, 'gone', 'deeper'));
+check('list: a missing folder lists its nearest existing parent', missing.folder === slash(repo), missing);
+const outside = listFolder(os.homedir());
+check('list: a folder outside the roots lists the root instead', outside.folder === slash(root), outside);
 
 for (const d of [root, process.env.DATA_DIR!]) fs.rmSync(d, { recursive: true, force: true });
 if (failures) process.exit(1);

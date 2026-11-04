@@ -77,14 +77,13 @@
 <div id="app" class="app">
     <aside class="sidebar">
         <header class="bar">
-            <!-- Logo and name open the settings -->
-            <button type="button" class="title title-button brand" id="btn-settings" data-i18n-title="settings.buttonTitle">
+            <div class="title brand">
                 <img class="logo" src="icons/icon.svg" alt="" width="34" height="34">
                 <span class="brand-text">
                     <strong>OpenFolk</strong>
                     <span class="status" id="agent-status"><i></i><span></span></span>
                 </span>
-            </button>
+            </div>
             <!-- The account this device is signed in to, with the others to switch to; hidden while there is only main -->
             <button type="button" class="account-switch" id="account-switch" aria-haspopup="menu" hidden><span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></button>
             <div class="menu account-menu" id="account-menu" hidden></div>
@@ -101,15 +100,7 @@
         </div>
         <ul class="search-results" id="search-results" hidden></ul>
         <ul class="chat-list" id="chat-list"></ul>
-        <footer class="footer closed" id="footer">
-            <button type="button" class="footer-handle" id="footer-handle" aria-expanded="false"></button>
-            <button type="button" class="git-total" id="git-total" hidden></button>
-            <div class="machines" id="machines" hidden></div>
-            <div class="usage" id="usage" hidden></div>
-            <div class="footer-row">
-                <span id="account"></span>
-            </div>
-        </footer>
+        <div class="sidebar-resize" id="sidebar-resize" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="sidebar.resize" data-i18n-aria-label="sidebar.resize"></div>
     </aside>
 
     <main class="chat" id="chat">
@@ -123,11 +114,21 @@
                     <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
                 </button>
                 <div class="title">
-                    <strong id="git-title" data-i18n="git.openChanges"></strong>
+                    <strong id="git-title"></strong>
                     <span id="git-sub"></span>
                 </div>
             </header>
             <div class="git-page-content" id="git-page-content"></div>
+            <!-- The same page frame shows the status (tab "Status"): the machines, then the plans' quota -->
+            <div class="git-page-content machines-page" id="machines-page" hidden>
+                <h3 data-i18n="status.machines"></h3>
+                <div class="machines" id="machines"></div>
+                <p class="empty-small" id="machines-none" data-i18n="status.noMachines" hidden></p>
+                <h3 data-i18n="status.quota"></h3>
+                <div class="usage" id="usage" hidden></div>
+                <p class="empty-small" id="usage-none" data-i18n="status.noUsage"></p>
+                <p class="account-line" id="account"></p>
+            </div>
         </div>
         <div class="panes" id="panes"></div>
         <button type="button" class="pane-add" id="pane-add" data-i18n-title="pane.add" data-i18n-aria-label="pane.add" hidden>
@@ -267,23 +268,20 @@
                 <summary data-i18n="info.claudeMd"></summary>
                 <pre id="info-claude"></pre>
             </details>
-            <div class="actions">
-                <button class="btn" id="info-edit" data-i18n="menu.editBot"></button>
-            </div>
         </section>
     </div>
     <!-- Settings: appearance, language, bots, machines, notifications, devices and accounts. On wide screens a
          pane next to the chats with a header like theirs (panes.js moves it there), on the phone a page over everything -->
     <div id="settings" class="overlay page" hidden>
+        <!-- The same head as the repos and status pages: back on the phone, the X on wide screens -->
         <header class="bar settings-bar">
+            <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
             <div class="title"><strong data-i18n="settings.title"></strong></div>
             <button type="button" class="round pane-close" data-close data-i18n-title="common.close" data-i18n-aria-label="common.close">
                 <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
             </button>
         </header>
         <section class="dialog">
-            <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
-            <h2 data-i18n="settings.title"></h2>
             <h3 data-i18n="settings.appearance"></h3>
             <label><span data-i18n="settings.colorScheme"></span>
                 <select id="settings-theme">
@@ -300,12 +298,31 @@
                 </select>
             </label>
             <p class="hint" data-i18n="settings.languageHint"></p>
-            <!-- Only on a device signed in to several accounts -->
-            <label class="check" id="settings-all-accounts-field" hidden><input type="checkbox" id="settings-all-accounts"> <span data-i18n="settings.allAccounts"></span></label>
-            <!-- Shared by all machines of the account; needs a machine that is awake -->
-            <div id="settings-bots">
-                <h3 data-i18n="settings.bots"></h3>
-                <p class="hint" id="settings-bots-asleep" data-i18n="settings.botsAsleep" hidden></p>
+            <label class="check"><input type="checkbox" id="settings-auto-read"> <span data-i18n="settings.autoRead"></span></label>
+            <p class="hint" data-i18n="settings.autoReadHint"></p>
+            <!-- AI services: the API keys as a list with "add", then what they are used for. Shared by all machines of
+                 the account; needs a machine that is awake -->
+            <div id="settings-ai" class="settings-block">
+                <h3 data-i18n="ai.title"></h3>
+                <p class="hint" id="settings-ai-asleep" data-i18n="settings.botsAsleep" hidden></p>
+                <p class="hint" data-i18n="ai.hint"></p>
+                <ul class="device-list" id="settings-ai-list"></ul>
+                <div class="actions left" id="settings-ai-add-row">
+                    <button type="button" class="btn" id="settings-ai-add" data-i18n="ai.add"></button>
+                </div>
+                <div class="settings-form" id="settings-ai-form" hidden>
+                    <label><span data-i18n="ai.provider"></span>
+                        <select id="settings-ai-provider">
+                            <option value="openai" data-i18n="ai.openai"></option>
+                            <option value="gemini" data-i18n="ai.gemini"></option>
+                        </select>
+                    </label>
+                    <label><span data-i18n="ai.key"></span><input type="password" id="settings-ai-key" autocomplete="off" data-i18n-placeholder="settings.keyEnter"></label>
+                    <div class="actions left">
+                        <button type="button" class="btn" id="settings-ai-cancel" data-i18n="common.cancel"></button>
+                        <button type="button" class="primary" id="settings-ai-save" data-i18n="settings.keySave"></button>
+                    </div>
+                </div>
                 <label><span data-i18n="settings.avatarModel"></span>
                     <select id="settings-avatar-model">
                         <option value="gemini-3.1-flash-image" data-i18n="settings.avatarGeminiFlash"></option>
@@ -314,8 +331,20 @@
                     </select>
                 </label>
                 <p class="hint" data-i18n="settings.avatarHint"></p>
-                <div class="settings-key" data-key="gemini"></div>
-                <div class="settings-key" data-key="openai"></div>
+                <label><span data-i18n="settings.readAloud"></span>
+                    <select id="settings-read-aloud">
+                        <option value="auto" data-i18n="settings.readAloudAuto"></option>
+                        <option value="device" data-i18n="settings.readAloudDevice"></option>
+                        <option value="openai" data-i18n="settings.readAloudOpenai"></option>
+                        <option value="gemini" data-i18n="settings.readAloudGemini"></option>
+                    </select>
+                </label>
+                <p class="hint" data-i18n="settings.readAloudHint"></p>
+            </div>
+            <!-- Shared by all machines of the account; needs a machine that is awake -->
+            <div id="settings-bots">
+                <h3 data-i18n="settings.bots"></h3>
+                <p class="hint" id="settings-bots-asleep" data-i18n="settings.botsAsleep" hidden></p>
                 <label><span data-i18n="settings.voiceLanguage"></span>
                     <select id="settings-voice-language">
                         <option value="" data-i18n="settings.voiceLanguageAuto"></option>
@@ -342,9 +371,9 @@
                 <button type="button" class="btn" id="machine-add" data-i18n="machines.add"></button>
             </div>
             <div id="machine-join" class="pair-box" hidden></div>
-            <!-- Notifications: priority per kind and muted chats, applies to all devices -->
+            <!-- Notifications: priority per kind, applies to all devices; muting a chat is on the bot's page and in its menu -->
             <div id="settings-push" class="settings-block">
-                <h3>🔔 <span data-i18n="push.title"></span></h3>
+                <h3 data-i18n="push.title"></h3>
                 <p id="push-status"></p>
                 <div class="actions left">
                     <button type="button" class="btn" id="push-enable" data-i18n="push.enable" hidden></button>
@@ -352,13 +381,11 @@
                 <h4 data-i18n="push.whenTitle"></h4>
                 <p class="hint" data-i18n-html="push.whenHint"></p>
                 <div class="push-kinds" id="push-kinds"></div>
-                <h4 data-i18n="push.mutedTitle"></h4>
-                <p class="hint" data-i18n="push.mutedHint"></p>
-                <ul class="push-chats" id="push-chats"></ul>
+                <p class="hint" data-i18n="push.muteHint"></p>
             </div>
             <!-- Paired devices, the end-to-end key and the second factor -->
             <div id="settings-devices" class="settings-block">
-                <h3>🔐 <span data-i18n="devices.title"></span></h3>
+                <h3 data-i18n="devices.title"></h3>
                 <p data-i18n="devices.intro"></p>
                 <ul class="device-list" id="device-list"></ul>
                 <div class="actions left">
@@ -381,36 +408,97 @@
                 <h4 data-i18n="totp.title" id="totp-title" hidden></h4>
                 <div id="totp-box" class="totp-box" hidden></div>
             </div>
-            <!-- Accounts on the relay: one's own (name, password), for admins all of them, new ones with an invitation link; hidden for relays without accounts -->
-            <div id="settings-accounts" class="settings-block" hidden>
-                <h3>👥 <span data-i18n="accounts.title"></span></h3>
-                <p data-i18n="accounts.intro"></p>
-                <h4 data-i18n="accounts.own"></h4>
-                <label><span data-i18n="accounts.name"></span><input id="accounts-own-name" maxlength="60" autocomplete="off"></label>
-                <label><span data-i18n="accounts.newPassword"></span><input type="password" id="accounts-password" autocomplete="new-password" data-i18n-placeholder="accounts.passwordPlaceholder"></label>
-                <p class="hint" id="accounts-own-hint"></p>
-                <div class="actions left">
-                    <button type="button" class="btn" id="accounts-own-save" data-i18n="common.save"></button>
-                    <button type="button" class="btn" id="accounts-add" data-i18n="accounts.add"></button>
+            <!-- Everything that is a sign-in (accounts.js): one list of the relays and the accounts on them (where this
+                 device is signed in, and for admins everyone on this relay), "Add" for any link, an address or a new
+                 person, the shared list switch, one's own account. Devices, key and second factor stay in the block above. -->
+            <div id="settings-accounts" class="settings-block">
+                <h3 data-i18n="accounts.title"></h3>
+                <p id="accounts-intro"></p>
+                <ul class="device-list" id="accounts-list"></ul>
+                <div class="actions left" id="accounts-add-row">
+                    <button type="button" class="btn" id="accounts-join" data-i18n="accounts.join"></button>
+                    <button type="button" class="btn" id="accounts-scan" data-i18n="accounts.scan" hidden></button>
                 </div>
-                <div id="accounts-admin" hidden>
-                    <h4 data-i18n="accounts.all"></h4>
-                    <ul class="device-list" id="accounts-list"></ul>
-                    <h4 data-i18n="accounts.create"></h4>
+                <!-- The admin's "Add": a link or address to redeem, or a new person on this relay -->
+                <div id="accounts-new-form" class="settings-form" hidden>
+                    <label><span data-i18n="accounts.linkField"></span><input id="accounts-link" autocomplete="off" data-i18n-placeholder="accounts.linkPlaceholder"></label>
+                    <p class="hint" data-i18n="accounts.joinHint"></p>
+                    <div class="actions left">
+                        <button type="button" class="btn" id="accounts-link-go" data-i18n="accounts.redeem"></button>
+                    </div>
+                    <h4 data-i18n="accounts.newPerson"></h4>
                     <label><span data-i18n="accounts.name"></span><input id="accounts-new-name" maxlength="60" autocomplete="off" data-i18n-placeholder="accounts.newNamePlaceholder"></label>
                     <label class="check"><input type="checkbox" id="accounts-new-admin"> <span data-i18n="accounts.adminRight"></span></label>
+                    <p class="hint" data-i18n="accounts.createHint"></p>
                     <div class="actions left">
                         <button type="button" class="btn" id="accounts-create" data-i18n="accounts.createButton"></button>
+                        <button type="button" class="btn" id="accounts-new-cancel" data-i18n="common.cancel"></button>
                     </div>
-                    <div id="invite-box" class="pair-box" hidden></div>
+                </div>
+                <div id="invite-box" class="pair-box" hidden></div>
+                <!-- Only on a device signed in to several accounts or relays -->
+                <div id="settings-all-accounts-field" hidden>
+                    <label class="check"><input type="checkbox" id="settings-all-accounts"> <span data-i18n="settings.allAccounts"></span></label>
+                    <p class="hint" data-i18n="settings.allAccountsHint"></p>
+                </div>
+                <!-- Hidden on a relay without accounts -->
+                <div id="accounts-own" hidden>
+                    <h4 data-i18n="accounts.own"></h4>
+                    <label><span data-i18n="accounts.name"></span><input id="accounts-own-name" maxlength="60" autocomplete="off"></label>
+                    <label><span data-i18n="accounts.newPassword"></span><input type="password" id="accounts-password" autocomplete="new-password" data-i18n-placeholder="accounts.passwordPlaceholder"></label>
+                    <p class="hint" id="accounts-own-hint"></p>
+                    <div class="actions left">
+                        <button type="button" class="btn" id="accounts-own-save" data-i18n="common.save"></button>
+                    </div>
                 </div>
                 <p class="error" id="accounts-error" hidden></p>
             </div>
-            <div class="actions settings-close-row">
-                <button type="button" class="btn" data-close data-i18n="common.close"></button>
-            </div>
         </section>
     </div>
+    <!-- While a message is read aloud: below everything, like a music player; a tap on the text goes to the message -->
+    <div class="speech-bar" id="speech-bar" hidden>
+        <div class="speech-bar-row">
+            <button type="button" class="speech-bar-open" id="speech-bar-open" data-i18n-title="speak.toMessage">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+                <strong id="speech-bar-who"></strong>
+                <span id="speech-bar-text"></span>
+            </button>
+            <button type="button" class="round speech-bar-play" id="speech-bar-play">
+                <svg viewBox="0 0 24 24" class="icon-pause"><path d="M9 5v14M15 5v14"/></svg>
+                <svg viewBox="0 0 24 24" class="icon-play"><path d="M7 4.5v15l12-7.5z"/></svg>
+            </button>
+            <button type="button" class="round" id="speech-bar-stop" data-i18n-title="message.stopReading" data-i18n-aria-label="message.stopReading">
+                <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+            </button>
+        </div>
+        <div class="speech-bar-time">
+            <span id="speech-bar-elapsed">0:00</span>
+            <input type="range" id="speech-bar-seek" min="0" max="0" value="0" step="1" data-i18n-aria-label="speak.seek">
+            <span id="speech-bar-total">0:00</span>
+        </div>
+    </div>
+    <!-- Floating tabs at the bottom of the list; on the phone also over the pages they open (panes.js keeps them last) -->
+    <nav class="tab-bar" id="tab-bar">
+        <button type="button" class="tab" data-tab="bots">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg>
+            <span data-i18n="tabs.bots"></span>
+        </button>
+        <button type="button" class="tab" data-tab="repos" id="tab-repos">
+            <span class="tab-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 3-11 5.5"/></svg>
+                <b class="tab-badge" id="tab-repos-badge" hidden></b>
+            </span>
+            <span data-i18n="tabs.repos"></span>
+        </button>
+        <button type="button" class="tab" data-tab="machines">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+            <span data-i18n="tabs.status"></span>
+        </button>
+        <button type="button" class="tab" data-tab="settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+            <span data-i18n="tabs.settings"></span>
+        </button>
+    </nav>
 </div>
 
 <!-- Create / edit a bot -->
@@ -443,7 +531,7 @@
         </label>
         <!-- Folder and repository: each fills the other where it can (the folder's origin, the folder a clone goes to) -->
         <label class="on-move"><span data-i18n="editor.folder"></span>
-            <input id="editor-folder" data-i18n-placeholder="editor.folderPlaceholder" spellcheck="false" autocapitalize="off">
+            <span class="with-button"><input id="editor-folder" data-i18n-placeholder="editor.folderPlaceholder" spellcheck="false" autocapitalize="off"><button type="button" class="btn small" id="editor-folder-browse" data-i18n="editor.browse" data-i18n-title="editor.browseTitle"></button></span>
         </label>
         <label class="on-move"><span data-i18n="editor.repo"></span>
             <input id="editor-repo" data-i18n-placeholder="editor.repoPlaceholder" spellcheck="false" autocapitalize="off">
@@ -474,6 +562,13 @@
             </label>
         </div>
         <input id="editor-model-custom" data-i18n-placeholder="editor.modelCustomPlaceholder" hidden spellcheck="false">
+        <label><span data-i18n="editor.voice"></span>
+            <select id="editor-voice">
+                <option value="" data-i18n="editor.voiceAuto"></option>
+                <option value="female" data-i18n="editor.voiceFemale"></option>
+                <option value="male" data-i18n="editor.voiceMale"></option>
+            </select>
+        </label>
         <label><span data-i18n="editor.tone"></span><textarea id="editor-tone" rows="4" data-i18n-placeholder="editor.tonePlaceholder"></textarea></label>
         <p class="hint" data-i18n="editor.riskyHint"></p>
         <label><span data-i18n="editor.canMessage"></span>
@@ -485,6 +580,7 @@
         </label>
         <fieldset class="choice" id="editor-can-message-bots" hidden><legend data-i18n="editor.canMessageBots"></legend></fieldset>
         <p class="hint" data-i18n="editor.canMessageHint"></p>
+        <fieldset class="choice" id="editor-allowed-tools" hidden><legend data-i18n="editor.allowedTools"></legend></fieldset>
         <p class="error on-move" id="editor-error" hidden></p>
         <div class="actions on-move">
             <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
@@ -619,7 +715,34 @@
     </form>
 </div>
 
+<!-- The bot editor's folder picker: the subfolders come from the bot's machine, not from this device -->
+<div id="folder-picker" class="overlay page" hidden>
+    <div class="dialog">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 data-i18n="picker.title"></h2>
+        <p class="hint" id="picker-path"></p>
+        <div class="menu menu-inline" id="picker-list"></div>
+        <p class="error" id="picker-error" hidden></p>
+        <div class="actions">
+            <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
+            <button type="button" class="primary" id="picker-choose" data-i18n="picker.choose"></button>
+        </div>
+    </div>
+</div>
+
 <!-- One line of text instead of prompt() (rename a conversation, commit message), see askText() in menus.js -->
+<!-- Adding something in the settings (a key, a person, a machine, a device): the form or the result moves into this
+     small dialog, like the bot editor, and back into its block when it closes (menus.js openSettingsDialog) -->
+<div id="settings-dialog" class="overlay page" hidden>
+    <section class="dialog">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 id="settings-dialog-title"></h2>
+        <div id="settings-dialog-body"></div>
+        <div class="actions" id="settings-dialog-actions">
+            <button type="button" class="btn" data-close data-i18n="common.close"></button>
+        </div>
+    </section>
+</div>
 <div id="text-dialog" class="overlay page" hidden>
     <form class="dialog" id="text-form">
         <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>

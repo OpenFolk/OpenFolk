@@ -1,4 +1,4 @@
-// Overview: unread answers with an orange dot, expandable footer, loading bar when opening,
+// Overview: unread answers with an orange dot, tabs, loading bar when opening,
 // no "no machine awake" as long as the machine list is missing.
 import { bot } from './harness.mjs';
 
@@ -22,13 +22,15 @@ export default async function ({ start, check }) {
     await h.wait(200);
     check('opened and back: no dot any more', (await unread()).length === 0, await unread());
 
-    // footer: collapsed only the row of the connected machine
+    // tabs: the machines on a page of their own, the list again with "Bots"
     await h.push({ type: 'machine_status', configured: true, hosts: { desk: { active: true }, workstation: { active: false } } });
     await h.wait(150);
-    const footer = () => p.evaluate(() => [...document.querySelectorAll('.machine-row')].filter((z) => z.offsetParent).length + (document.querySelector('.footer-row').offsetParent ? '+buttons' : ''));
-    check('footer collapsed: one machine row', (await footer()) === '1', await footer());
-    await p.click('#footer-handle');
-    check('expanded: all machines and buttons', (await footer()) === '2+buttons', await footer());
-    await p.click('.machine-row.main .machine-text');
-    check('a tap on the machine row collapses it', (await footer()) === '1');
+    const rows = () => p.evaluate(() => [...document.querySelectorAll('.machine-row')].filter((z) => z.offsetParent).length);
+    check('machines hidden in the list', (await rows()) === 0, await rows());
+    await p.click('[data-tab=machines]');
+    await h.wait(100);
+    check('tab "Status": all machines, tab marked', (await rows()) === 2 && (await p.getAttribute('[data-tab=machines]', 'aria-current')) === 'page', await rows());
+    await p.click('[data-tab=bots]');
+    await h.wait(100);
+    check('tab "Bots": page closed, list marked', (await rows()) === 0 && (await p.getAttribute('[data-tab=bots]', 'aria-current')) === 'page');
 }

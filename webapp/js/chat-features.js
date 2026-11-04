@@ -1,13 +1,14 @@
-/* OpenFolk web app: @ mentions, history rendering, unread, read aloud, pinned messages, replies (quote). */
-import { i18n, locale, t } from './i18n.js';
+/* OpenFolk web app: @ mentions, history rendering, unread, pinned messages, replies (quote). */
+import { t } from './i18n.js';
 import { SEEN_KEY, el, mdCached, node, state, storage, closest } from './core.js';
 import { paneFor, paneOf, visibleChats } from './panes.js';
 import { bot, botIdOf, clockTime, colorOf, fillAvatar, group, isGroup, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList } from './list.js';
 import { openChat } from './chat.js';
-import { attachmentBar, displayTime, getLive, isQueued, liveWrap, renderApprovals, renderLiveText, renderQueue, renderTools, showEvent, speaker, textHeight, titleFrom, toolRow } from './queue.js';
+import { attachmentBar, displayTime, getLive, isQueued, liveWrap, renderApprovals, renderLiveText, renderQueue, renderTools, speaker, textHeight, titleFrom, toolRow } from './queue.js';
 import { renderVoicePending, voicePlayer } from './voice.js';
 import { menuButton } from './menus.js';
+import { isReading, readAloud, speakButton } from './read-aloud.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -225,7 +226,7 @@ export function renderEntry(p, e) {
         if (e.attachments && e.attachments.length) b.appendChild(attachmentBar(e.attachments));
         const time = node('span', 'time');
         if (e.id) time.appendChild(moreButton());
-        if (e.text && e.id) time.appendChild(speakButton(e));
+        if (e.text && e.id) time.appendChild(speakButton(e, chatId));
         time.appendChild(document.createTextNode(clockTime(e.ts)));
         b.appendChild(time);
         if (e.id) b.dataset.eid = e.id;
@@ -352,108 +353,12 @@ export function toggleUnread(chatId) {
     renderChatList();
 }
 
-// ---------------------------------------------------------- Read aloud
-// Speech output of the browser (on the iPhone the iOS voices). Long texts in sentences, because some
-// browsers stop long utterances after a few seconds. Code and links are only announced.
-const speech = { active: null };
-
 function moreButton() {
     const k = node('button', 'more', '⋯');
     k.type = 'button';
     k.title = t('message.moreTitle');
     k.setAttribute('aria-label', t('message.moreLabel'));
     return k;
-}
-
-function speakButton(e) {
-    const k = node('button', 'speak' + (speech.active === e.id ? ' speaking' : ''));
-    k.type = 'button';
-    k.dataset.speak = e.id;
-    k.title = t('message.readAloud');
-    k.setAttribute('aria-label', t('message.readAloud'));
-    k.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>';
-    k.addEventListener('click', (ev) => { ev.stopPropagation(); readAloud(e); });
-    return k;
-}
-
-function speechText(text) {
-    return String(text || '')
-        .replace(/```[\s\S]*?```/g, ` (${t('speak.codeBlock')}) `)
-        .replace(/`([^`]+)`/g, '$1')
-        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-        .replace(/https?:\/\/\S+?([.,;:!?)]*)(?=\s|$)/g, `${t('speak.link')}$1`)
-        .replace(/^\s*[-*+]\s+/gm, '')
-        .replace(/^\s*#+\s*/gm, '')
-        .replace(/[*_~>|#]+/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-/** Best voice for the UI language: premium/enhanced/natural voices first (German systems call them "erweitert"),
- *  then local ones. */
-function speechVoice() {
-    const lang = new RegExp(`^${i18n.language}(-|_|$)`, 'i');
-    const voices = (window.speechSynthesis.getVoices() || []).filter((v) => lang.test(v.lang));
-    return voices.find((v) => /premium|enhanced|erweitert|natural|neural/i.test(v.name)) || voices.find((v) => v.localService) || voices[0] || null;
-}
-
-function showSpeaking(id) {
-    speech.active = id;
-    for (const k of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.speak'))) k.classList.toggle('speaking', k.dataset.speak === id);
-}
-
-// In silent mode the speech output on the iPhone stays mute but still reports "running"; a web page can neither
-// query nor bypass the switch (audioSession "playback" with a silent <audio> did not help).
-// iPadOS pretends to be a Mac, but gives itself away by touch.
-const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-/** If the output does not start (iOS hangs at times, e.g. after a voice recording), try once more. */
-const SPEAK_START_MS = 1500;
-
-function readAloud(e, secondTry = false) {
-    if (!('speechSynthesis' in window)) {
-        alert(t('speak.unsupported'));
-        return;
-    }
-    const synth = window.speechSynthesis;
-    const wasActive = speech.active;
-    synth.cancel();
-    // Safari sometimes stays paused after cancel(); new utterances then stay silent
-    if (typeof synth.resume === 'function') synth.resume();
-    showSpeaking(null);
-    if (wasActive === e.id && !secondTry) return;
-    const sentences = speechText(e.text).match(/[^.!?…]+[.!?…]*\s*/g) || [];
-    // bundle sentences into chunks up to about 220 characters
-    const parts = [];
-    for (const s of sentences) {
-        if (parts.length && (parts[parts.length - 1] + s).length < 220) parts[parts.length - 1] += s;
-        else parts.push(s);
-    }
-    if (!parts.length) return;
-    if (IOS && !speech.silentHintShown) {
-        speech.silentHintShown = true;
-        showEvent(t('speak.silentMode'));
-    }
-    const voice = speechVoice();
-    let started = false;
-    parts.forEach((part, i) => {
-        const u = new SpeechSynthesisUtterance(part.trim());
-        u.lang = locale();
-        if (voice) u.voice = voice;
-        u.rate = 1.05;
-        if (i === 0) u.onstart = () => { started = true; };
-        if (i === parts.length - 1) u.onend = () => { if (speech.active === e.id) showSpeaking(null); };
-        u.onerror = () => { if (speech.active === e.id && i === parts.length - 1) showSpeaking(null); };
-        synth.speak(u);
-    });
-    showSpeaking(e.id);
-    setTimeout(() => {
-        if (started || speech.active !== e.id) return;
-        if (!secondTry) { readAloud(e, true); return; }
-        synth.cancel();
-        showSpeaking(null);
-        showEvent(t('speak.doesNotStart'), true);
-    }, SPEAK_START_MS);
 }
 
 // ---------------------------------------------------------- Pinned messages
@@ -567,7 +472,7 @@ function openMessageMenu(p, bubble, x, y) {
     item(pinned ? 'unpin' : 'pin', pinned ? t('message.unpin') : t('message.pin'), () => sendPin(chatId, {
         id: e.id, text: e.text || (e.attachments || []).map((a) => a.name).join(', '), ts: e.ts, from,
     }, !pinned));
-    if (e.text) item(speech.active === e.id ? 'stop' : 'speaker', speech.active === e.id ? t('message.stopReading') : t('message.readAloud'), () => readAloud(e));
+    if (e.text) item(isReading(e.id) ? 'stop' : 'speaker', isReading(e.id) ? t('message.stopReading') : t('message.readAloud'), () => readAloud(e, chatId));
     if (e.text) item('copy', t('message.copy'), () => { if (navigator.clipboard) navigator.clipboard.writeText(e.text).catch(() => undefined); });
     m.hidden = false;
     fx.openSince = Date.now();

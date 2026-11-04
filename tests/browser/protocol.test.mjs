@@ -1,5 +1,5 @@
 // Protocol version: the web app's copy equals shared/protocol.ts; a backend that needs a newer app, or is too old for
-// this one, is shown in the footer and on the page of open changes. Backends without a version (from before) fit.
+// this one, is shown on the repos tab and on the page of open changes. Backends without a version (from before) fit.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +14,7 @@ export default async function ({ start, check }) {
 
     const h = await start({ online: ['desk', 'workstation'] });
     const p = h.page;
-    const footer = () => p.evaluate(() => { const g = document.getElementById('git-total'); return g.hidden ? '' : g.textContent; });
+    const footer = () => p.getAttribute('#tab-repos', 'title');
     await h.push({ type: 'backend_status', machine: 'desk', since: '2026-10-13T08:00:00Z', changed: [] });
     await h.push({ type: 'backend_status', machine: 'workstation', since: '2026-10-13T08:00:00Z', changed: [], protocol: web, minClientProtocol: 0 });
     await h.wait(100);
@@ -22,7 +22,7 @@ export default async function ({ start, check }) {
 
     await h.push({ type: 'backend_status', machine: 'workstation', since: '2026-10-13T08:00:00Z', changed: [], protocol: web + 1, minClientProtocol: web + 1 });
     await h.wait(100);
-    check('backend needs a newer app: hint in the footer', (await footer()).includes('WORKSTATION: app and backend do not fit'), await footer());
+    check('backend needs a newer app: hint on the repos tab', (await footer()).includes('WORKSTATION: app and backend do not fit'), await footer());
     await p.evaluate(() => openGitPage());
     await h.wait(200);
     const page = await p.textContent('#git-page-content');

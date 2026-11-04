@@ -1,27 +1,47 @@
-/* OpenFolk web app: the bots of the other accounts this device is signed in to, for the shared chat list. One
-   lightweight connection per account fetches only what a row needs (bots, state, last message, unread); a tap opens
-   the chat in that account, which loads the page again (accounts.js). The active account keeps its one full
-   connection (connection.js), and nothing of another account goes beyond the list. */
-import { deviceAccounts, loadedAccount, storage } from './core.js';
-import { botIdOf, decrypt, e2e, isGroup, newChannel, sendOn } from './e2e.js';
+/* OpenFolk web app: the bots of the other accounts this device is signed in to, on this relay and on the other relays
+   it knows (relays.js), for the shared chat list. One lightweight connection per account fetches only what a row
+   needs (bots, state, last message, unread); a tap opens the chat in that account, which loads the page again
+   (accounts.js). The active account keeps its one full connection (connection.js), and nothing of another account goes
+   beyond the list. */
+import { DEVICE_KEY, accountScopeOf, deviceAccounts, deviceRelays, loadedAccount, relayScope, storage } from './core.js';
+import { botIdOf, decrypt, e2e, isGroup, loadKey, newChannel, sendOn } from './e2e.js';
 import { socketUrl } from './platform.js';
 import { preview } from './connection.js';
 import { renderChatList } from './list.js';
 import { forgetAccount } from './accounts.js';
+import { relaysPossible } from './relays.js';
 
 /** '0': the list shows the active account only (settings). */
 export const ALL_ACCOUNTS_KEY = 'openfolk-all-accounts';
 const RETRY_MS = 15_000;
 
 /**
- * @typedef {{ account: { id: string, name: string, device: string }, ws: WebSocket | null, channel: ReturnType<typeof newChannel>,
+ * `relay`: null for the page's own relay, otherwise the other relay with its end-to-end key (`key`, null without one).
+ * @typedef {{ account: { id: string, name: string, device: string }, relay: { url: string, name: string, scope: string } | null, key: CryptoKey | null,
+ *   ws: WebSocket | null, channel: ReturnType<typeof newChannel>,
  *   bots: any[], groups: any[], perMachine: Record<string, { states: Record<string, string>, activity: Record<string, string>, activeChats: Record<string, string> }>,
  *   approvals: Record<string, { chatId: string, machine?: string }>, last: Record<string, string>, lastTs: Record<string, string>, incoming: Record<string, string>,
  *   seen: Record<string, any>, online: string[], retry: any }} Other
  */
 
-/** @type {Map<string, Other>} */
+/** By account id on the page's relay, by `<relay address>|<account id>` on another one. @type {Map<string, Other>} */
 export const others = new Map();
+
+/** @param {Other} o */
+const keyOf = (o) => (o.relay ? o.key : e2e.key);
+/** @param {Other} o */
+const idOf = (o) => (o.relay ? `${o.relay.url}|${o.account.id}` : o.account.id);
+
+/**
+ * The accounts of another relay: its list, or for a relay without accounts the device key alone (main).
+ * @param {{ scope: string }} relay
+ */
+export function accountsOf(relay) {
+    const list = deviceAccounts(relay.scope);
+    if (list.length) return list;
+    const device = storage.get('openfolk-device' + relay.scope);
+    return device ? [{ id: 'main', name: '', admin: true, device }] : [];
+}
 
 export function showAllAccounts() {
     return storage.get(ALL_ACCOUNTS_KEY) !== '0';
@@ -35,19 +55,31 @@ export function setShowAllAccounts(on) {
     renderChatList();
 }
 
-/** After the active account signed in: one connection for each other account of this device. */
+/** After the active account signed in: one connection for each other account of this device, on every relay. */
 export function connectOthers() {
     if (!showAllAccounts()) return;
-    for (const a of deviceAccounts()) {
-        if (a.id === loadedAccount || others.has(a.id)) continue;
-        /** @type {Other} */
-        const o = {
-            account: a, ws: null, channel: newChannel(), bots: [], groups: [], perMachine: Object.create(null), approvals: {}, last: {}, lastTs: {}, incoming: {},
-            seen: storedSeen(a.id), online: [], retry: null,
-        };
-        others.set(a.id, o);
+    for (const a of deviceAccounts()) if (a.id !== loadedAccount && a.device !== storage.get(DEVICE_KEY)) add(a, null);
+    if (!relaysPossible()) return;
+    for (const r of deviceRelays()) if (r.scope !== relayScope) for (const a of accountsOf(r)) add(a, r);
+}
+
+/**
+ * @param {{ id: string, name: string, device: string }} account
+ * @param {{ url: string, name: string, scope: string } | null} relay
+ */
+function add(account, relay) {
+    /** @type {Other} */
+    const o = {
+        account, relay, key: null, ws: null, channel: newChannel(), bots: [], groups: [], perMachine: Object.create(null), approvals: {}, last: {}, lastTs: {},
+        incoming: {}, seen: storedSeen(account.id, relay ? relay.scope : relayScope), online: [], retry: null,
+    };
+    if (others.has(idOf(o))) return;
+    others.set(idOf(o), o);
+    if (!relay) {
         open(o);
+        return;
     }
+    loadKey('e2e' + relay.scope).then((key) => { o.key = key; }, () => undefined).then(() => { if (others.get(idOf(o)) === o) open(o); });
 }
 
 export function closeOthers() {
@@ -60,10 +92,10 @@ export function closeOthers() {
     others.clear();
 }
 
-/** What this device last stored as seen for that account (core.js keeps it per account). */
-function storedSeen(id) {
+/** What this device last stored as seen for that account (core.js keeps it per relay and account). */
+function storedSeen(id, scope) {
     try {
-        const s = JSON.parse(storage.get(id === 'main' ? 'openfolk-seen' : `openfolk-seen:${id}`) || 'null');
+        const s = JSON.parse(storage.get('openfolk-seen' + accountScopeOf(id, scope)) || 'null');
         return s && typeof s === 'object' ? s : { _since: new Date().toISOString() };
     } catch {
         return { _since: new Date().toISOString() };
@@ -72,7 +104,7 @@ function storedSeen(id) {
 
 /** @param {Other} o */
 function open(o) {
-    const ws = new WebSocket(socketUrl('/ws/client'));
+    const ws = new WebSocket(o.relay ? socketUrl('/ws/client', o.relay.url) : socketUrl('/ws/client'));
     o.ws = ws;
     let inbox = Promise.resolve();
     ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', device: o.account.device }));
@@ -91,15 +123,21 @@ function open(o) {
             drop(o);
             return;
         }
-        if (others.get(o.account.id) === o) o.retry = setTimeout(() => open(o), RETRY_MS);
+        if (others.get(idOf(o)) === o) o.retry = setTimeout(() => open(o), RETRY_MS);
     };
 }
 
 /** @param {Other} o */
 function drop(o) {
     clearTimeout(o.retry);
-    others.delete(o.account.id);
-    forgetAccount(o.account.id);
+    others.delete(idOf(o));
+    if (!o.relay) forgetAccount(o.account.id);
+    else {
+        // Of another relay: out of its list; there the device key alone may be all there is (no accounts)
+        const scope = o.relay.scope;
+        storage.set('openfolk-accounts' + scope, JSON.stringify(deviceAccounts(scope).filter((a) => a.id !== o.account.id)));
+        if (storage.get('openfolk-device' + scope) === o.account.device) storage.remove('openfolk-device' + scope);
+    }
     renderChatList();
 }
 
@@ -123,12 +161,13 @@ async function receive(o, raw) {
         return;
     }
     let f = raw;
+    const key = keyOf(o);
     if (raw.type === 'e2e') {
-        if (!e2e.key) return;
-        f = await decrypt(raw, o.channel).catch(() => null);
+        if (!key) return;
+        f = await decrypt(raw, o.channel, key).catch(() => null);
         if (!f) return;
         if (raw.machine) f.machine = raw.machine;
-    } else if (e2e.key) {
+    } else if (key) {
         // With a key only encrypted frames count, as on the main connection
         return;
     }
@@ -149,7 +188,7 @@ async function receive(o, raw) {
                 for (const [id, a] of Object.entries(o.approvals)) if (a.machine === f.machine) delete o.approvals[id];
             }
             for (const a of f.approvals || []) o.approvals[a.id] = Object.assign({ machine: f.machine }, a);
-            for (const id of chatIds(o)) if (!(id in o.last)) sendOn(o.ws, o.channel, { type: 'history', chatId: id, limit: 1 });
+            for (const id of chatIds(o)) if (!(id in o.last)) sendOn(o.ws, o.channel, { type: 'history', chatId: id, limit: 1 }, undefined, key);
             break;
         case 'history': {
             const entries = f.entries || [];
@@ -215,7 +254,8 @@ function unread(o, chatId) {
 
 /**
  * The rows of the other accounts: a bot (with its conversations) or a group each, with what the list sorts by.
- * @returns {{ account: { id: string, name: string }, id: string, item: any, group: boolean, section: number, ts: string,
+ * `relay`: null on the page's own relay.
+ * @returns {{ account: { id: string, name: string }, relay: { url: string, name: string } | null, id: string, item: any, group: boolean, section: number, ts: string,
  *   state: string, activity: string, last: string, unread: boolean, approvals: number, sleeping: boolean, machine: string }[]}
  */
 export function otherRows() {
@@ -233,8 +273,8 @@ export function otherRows() {
             const ts = chats.reduce((x, c) => ((o.lastTs[c] || '') > x ? o.lastTs[c] : x), '');
             const sleeping = !group && !!item.machine && !o.online.includes(item.machine) && !busy;
             rows.push({
-                account: o.account, id, item, group, ts,
-                section: busy ? 0 : item.favorite ? 1 : 2,
+                account: o.account, relay: o.relay, id, item, group, ts,
+                section: busy ? 1 : !item.muted && chats.some((c) => unread(o, c)) ? 0 : item.favorite ? 2 : 3,
                 state: shown.state, activity: shown.activity,
                 last: o.last[id] || '', unread: chats.some((c) => unread(o, c)),
                 approvals: Object.values(o.approvals).filter((a) => chats.includes(a.chatId)).length,
@@ -245,9 +285,23 @@ export function otherRows() {
     return rows;
 }
 
-/** Opens a chat of another account: the page loads again in that account (core.js picks it from ?account=). */
-export function openOtherChat(account, chatId) {
-    location.href = `${location.pathname}?chat=${encodeURIComponent(chatId)}&account=${encodeURIComponent(account)}`;
+/**
+ * Opens a chat of another account: the page loads again in that account, on another relay in that relay (core.js
+ * picks both from ?relay= and ?account=).
+ * @param {{ url: string } | null} relay
+ * @param {string} account
+ * @param {string} [chatId] without one, the account's list
+ */
+export function openOtherChat(relay, account, chatId) {
+    const params = new URLSearchParams({ account });
+    if (chatId) params.set('chat', chatId);
+    if (relay) params.set('relay', relay.url);
+    location.href = `${location.pathname}?${params}`;
+}
+
+/** The badge of a row: the account, on another relay the relay's name in front. */
+export function otherLabel(r) {
+    return r.relay ? [r.relay.name, r.account.name].filter(Boolean).join(' · ') : r.account.name;
 }
 
 /** For the app badge. */

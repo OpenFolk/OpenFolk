@@ -19,12 +19,12 @@ export default async function ({ start, check }) {
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'remote', container: false, engines });
     await h.push({ type: 'setup_status', machine: 'cloud', relay: 'remote', container: true, engines });
     await h.wait(300);
-    check('all hosts reachable: no row at the bottom', await p.$eval('#git-total', (n) => n.hidden));
+    check('all hosts reachable: no row at the bottom', await p.$eval('#tab-repos-badge', (n) => n.hidden));
 
     await h.push({ type: 'setup_status', machine: 'cloud', relay: 'remote', container: true, engines, push: [{ host: 'git.example.com', bots: ['skool', 'mail'] }] });
     await h.wait(300);
-    check('row at the bottom names the machine', (await p.textContent('#git-total')) === 'no push access on CLOUD', await p.textContent('#git-total'));
-    await p.click('#git-total');
+    check('row at the bottom names the machine', (await p.getAttribute('#tab-repos', 'title')) === 'no push access on CLOUD', await p.getAttribute('#tab-repos', 'title'));
+    await p.click('#tab-repos');
     await h.wait(200);
     const container = (await hint())[0] || '';
     check('page: host, bots and the git token in the settings for the container', container.startsWith('CLOUD cannot push to git.example.com')
@@ -33,8 +33,8 @@ export default async function ({ start, check }) {
 
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'remote', container: false, engines, push: [{ host: 'github.com', bots: ['pdf'] }] });
     await h.wait(300);
-    check('two machines: both named', (await p.textContent('#git-total')) === 'no push access on CLOUD, DESK', await p.textContent('#git-total'));
-    await p.click('#git-total');
+    check('two machines: both named', (await p.getAttribute('#tab-repos', 'title')) === 'no push access on CLOUD, DESK', await p.getAttribute('#tab-repos', 'title'));
+    await p.click('#tab-repos');
     await h.wait(200);
     const pc = (await hint()).find((x) => x.startsWith('DESK')) || '';
     check('a PC: sign in once with git there', pc.includes('Sign in to github.com once with git on DESK'), pc);
@@ -43,7 +43,7 @@ export default async function ({ start, check }) {
     await h.push({ type: 'setup_status', machine: 'cloud', relay: 'remote', container: true, engines });
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'remote', container: false, engines });
     await h.wait(300);
-    check('credentials set: row gone', await p.$eval('#git-total', (n) => n.hidden));
+    check('credentials set: row gone', await p.$eval('#tab-repos-badge', (n) => n.hidden));
 
     // Cloning onto a machine without push access: the editor says so under the folder
     await p.evaluate(() => openEditor(bot('skool')));

@@ -4,7 +4,7 @@ import { AVATAR_EDGE, TEMPLATES, el, node, state, templateValues } from './core.
 import { layoutPanes } from './panes.js';
 import { bot, clockTime, fillAvatar, group, isConversation, responsibleMachine, send, upper } from './e2e.js';
 import { shrinkImage } from './voice.js';
-import { chatMenuButtons, closeDialog, gitOpenOf, renderInfoChat, showGitChanges } from './menus.js';
+import { chatMenuButtons, closeDialog, gitOpenOf, menuButton, renderInfoChat, showGitChanges } from './menus.js';
 
 // ================================================================ Bot editor
 
@@ -59,7 +59,9 @@ export function editorValues(v) {
     el.editorModelCustom.hidden = el.editorModel.value !== 'custom';
     el.editorApproval.value = v.approval || 'risky';
     el.editorTone.value = v.tone || '';
+    el.editorVoice.value = v.voice || '';
     canMessageValues(v);
+    allowedToolValues(v);
     // A template keeps the machine already chosen; a new bot starts on the first machine awake
     machineOptions(v.machine || (v.id ? responsibleMachine(v) : '') || el.editorMachine.value || [...state.online].sort()[0] || '');
 }
@@ -85,6 +87,30 @@ function canMessageValues(v) {
 
 export function canMessageChanged() {
     el.editorCanMessageBots.hidden = el.editorCanMessage.value !== 'some';
+}
+
+/** The MCP tools allowed for good on an approval card; unticking one takes it off when saving. */
+function allowedToolValues(v) {
+    const list = v.id ? v.allowedTools || [] : [];
+    const legend = el.editorAllowedTools.querySelector('legend');
+    el.editorAllowedTools.replaceChildren(legend);
+    for (const tool of list) {
+        const l = node('label', 'check');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = tool;
+        cb.checked = true;
+        l.append(cb, document.createTextNode(` ${tool.replace(/^mcp__/, '').replace(/__/g, ' › ')}`));
+        el.editorAllowedTools.appendChild(l);
+    }
+    el.editorAllowedTools.appendChild(node('p', 'hint', t('editor.allowedToolsHint')));
+    el.editorAllowedTools.hidden = list.length === 0;
+}
+
+/** undefined (unchanged) unless the bot has tools on the list. */
+function allowedToolsInput() {
+    if (el.editorAllowedTools.hidden) return undefined;
+    return [...el.editorAllowedTools.querySelectorAll('input:checked')].map((cb) => /** @type {HTMLInputElement} */ (cb).value);
 }
 
 /** null = all bots, as the backend stores it. */
@@ -207,6 +233,65 @@ export function machineChanged() {
     if (!state.online.includes(el.editorMachine.value)) showEditorError(t('editor.machineAsleep', { machine: upper(el.editorMachine.value) }));
 }
 
+// ---------------------------------------------------------------- Folder picker
+
+/** The folder the picker shows ('' = the allowed roots), the machine it lists and the folder still awaited. */
+const picker = { folder: '', machine: '', asked: null };
+
+export function openFolderPicker() {
+    const machine = el.editorMachine.value;
+    if (!state.online.includes(machine)) { showEditorError(t('editor.machineAsleep', { machine: upper(machine) })); return; }
+    picker.machine = machine;
+    el.pickerPath.textContent = '';
+    el.folderPicker.hidden = false;
+    listPicker(el.editorFolder.value.trim());
+}
+
+function listPicker(folder) {
+    picker.asked = folder;
+    el.pickerError.hidden = true;
+    el.pickerChoose.disabled = true;
+    el.pickerList.replaceChildren(node('p', 'empty-small', t('common.loading')));
+    send({ type: 'folder_list', folder }, picker.machine);
+}
+
+function pickerEntry(icon, text, folder) {
+    const k = menuButton(icon, text);
+    k.addEventListener('click', () => listPicker(folder));
+    return k;
+}
+
+export function receiveFolderListed(f) {
+    if (el.folderPicker.hidden || f.asked !== picker.asked) return;
+    picker.asked = null;
+    if (!f.ok) { pickerFailed(f.message); return; }
+    picker.folder = f.folder;
+    const machine = upper(picker.machine);
+    el.pickerPath.textContent = f.folder ? t('picker.where', { folder: f.folder, machine }) : t('picker.roots', { machine });
+    const entries = f.parent !== undefined ? [pickerEntry('back', t('picker.up'), f.parent)] : [];
+    // The roots by their full path, folders inside one by name
+    for (const p of f.folders) entries.push(pickerEntry('folder', f.folder ? p.split('/').pop() : p, p));
+    if (!f.folders.length) entries.push(node('p', 'empty-small', t('picker.empty')));
+    el.pickerList.replaceChildren(...entries);
+    el.pickerChoose.disabled = !f.folder;
+}
+
+/** Also for a backend from before the picker, which does not know folder_list. */
+export function pickerFailed(message) {
+    picker.asked = null;
+    el.pickerList.replaceChildren();
+    el.pickerError.textContent = message || t('editor.noAnswer');
+    el.pickerError.hidden = false;
+}
+
+export function chooseFolder() {
+    if (!picker.folder) return;
+    el.editorFolder.value = picker.folder;
+    filled.folder = false;
+    closeDialog(el.folderPicker);
+    folderChanged();
+}
+
 /** The editor is the small move dialog (openEditor with a machine). */
 let moving = false;
 
@@ -237,7 +322,7 @@ function saveBot(folder, to) {
             id: b ? b.id : '',
             name: el.editorName.value.trim(), area: el.editorArea.value.trim(), role: el.editorRole.value.trim(), folder,
             model, tone: el.editorTone.value.trim(), avatar: state.editorAvatar, approval: el.editorApproval.value, machine: el.editorMachine.value,
-            canMessage: canMessageInput(),
+            voice: el.editorVoice.value, canMessage: canMessageInput(), allowedTools: allowedToolsInput(),
         },
     }, to);
     setSaving(false);
@@ -381,6 +466,7 @@ export async function receiveSuggestion(f) {
                 el.editorName.value = n;
                 // Backends before the field of work send names only; then the field stays as it is
                 if (area !== null) el.editorArea.value = area;
+                if (r.voices && r.voices[i]) el.editorVoice.value = r.voices[i];
                 renderEditorAvatar();
                 el.editorNameSuggestions.hidden = true;
                 el.editorName.focus();

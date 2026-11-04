@@ -1,8 +1,9 @@
 # OpenFolk for the desktop
 
-OpenFolk as a program of its own for Windows, Linux and macOS, around the web app from `../webapp/`. One project
-builds all three: the Windows installer, the Linux AppImage and .deb, the Mac's .dmg. On Windows and Linux the app
-lives in the tray, on the Mac in the Dock and the menu bar; everything else is the same.
+OpenFolk as a program of its own for Windows, Linux and macOS, around the web app from `../webapp/`, which the app
+brings along and shows under its own address `openfolk://app` (like the mobile apps; the browser gets it from the
+relay). One project builds all three: the Windows installer, the Linux AppImage and .deb, the Mac's .dmg. On Windows
+and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; everything else is the same.
 
 - **First start:** the app asks whether there is an OpenFolk server already. The two ways sit side by side, the
   server first, because picking "on this computer" where a backend already runs would start a second one with
@@ -14,17 +15,19 @@ lives in the tray, on the Mac in the Dock and the menu bar; everything else is t
     backend once no bot is working, after asking if that takes a while. "Sign this window in again" (tray menu,
     on the Mac "Window") helps after logging the device out. This is the single-computer setup: your phone, or
     the browser on another device, needs a relay on a server (`../docs/running.md`, linked from the setup page).
-  - **I already have an OpenFolk server:** the app loads the web app from that relay, like the browser, and needs no
-    backend of its own. To test against a local relay, `OPENFOLK_URL=http://localhost:8787` presets it for one
-    start.
+  - **I already have an OpenFolk server:** the app points its web app at that relay and needs no backend of its own.
+    To test against a local relay, `OPENFOLK_URL=http://localhost:8787` presets it for one start.
+  - **Several relays:** like the mobile apps, the desktop app can be signed in to further relays, for example one per
+    customer (settings → Accounts → "Add" with a pairing link from there; switch at the top of the sidebar, the
+    chat list shows the bots of all of them).
   - **Connect this computer to my server:** the link from "Add machine" (settings of the app on a device that is
     signed in) joins this computer to that relay: `../local/tools/join.mjs` writes the relay, a token of this
     computer's own and the end-to-end key into the profile's `.env`, and the app runs the backend as "on this
     computer", only with the relay on the server. The window comes from there and signs itself in with a pairing link.
 - **Moving to a relay on a server:** "on this computer" can move later. The first steps or the settings claim a
   relay with the setup code from its log; the backend moves over at once and writes `RELAY_URL` into the profile's
-  `.env`. The window follows the pairing link of the new relay, and from then on the app loads the web app from there
-  (`backend.js` reads `RELAY_URL` from the profile; `config.json` remembers the address the window is signed in at).
+  `.env`. The window takes the pairing link of the new relay and is signed in there from then on (`backend.js` reads
+  `RELAY_URL` from the profile; `config.json` remembers the address the window is signed in at).
 - **Run without signing in (Windows):** a checkbox in the tray menu and under "File", offered once the backend talks
   to a relay on a server. It asks for administrator rights (UAC) and creates the scheduled task "OpenFolk backend
   <user>" (`task.ps1`, which lies next to the app where only administrators can change it): at system start, without
@@ -40,7 +43,8 @@ lives in the tray, on the Mac in the Dock and the menu bar; everything else is t
   Linux it writes `~/.config/autostart/openfolk.desktop`.
 - **Tray on Linux:** KDE, Ubuntu's GNOME and most other desktops show the icon; plain GNOME needs the
   AppIndicator extension. Without a tray, starting OpenFolk again brings the hidden window back.
-- Login, device key (E2E) and display settings live in the app's profile, separate from the browser. Microphone
+- Login, device key (E2E) and display settings live in the app's profile under the origin `openfolk://app`, separate
+  from the browser. The page's security policy is the relay's, with connections to any relay allowed. Microphone
   (voice messages) and notifications are allowed without a prompt; macOS itself asks once on the first microphone
   access. External links open in the default browser.
 - **Handing chats over:** a backend on the same machine that runs without a desktop (a Windows task in session 0, a
@@ -88,6 +92,14 @@ then the new version is installed and, after "Restart now", started. "Check for 
 "Help" and, on the Mac, in the "OpenFolk" menu; a check from there says what it found, the automatic ones stay quiet.
 Not updated: a build started from source, the portable EXE, a Mac app without a Developer ID signature (Squirrel.Mac
 installs only signed apps), and the smoke test (`OPENFOLK_NO_UPDATE=1`).
+
+**Update feed and counting:** the app asks `https://openfolk.app/update` for the feed (`update.php` of the landing page,
+repo `openfolk.app`); it hands out the feed files of the latest release and redirects every package to GitHub. When
+openfolk.app does not answer, the same check goes straight to GitHub. The first check of a day (UTC) sends the header
+`X-OpenFolk-Active: <version>`; openfolk.app adds one to a daily total per system and version, without IP address or
+any identifier. These totals are public at `https://openfolk.app/update/stats.json`. The menu entry "Count this
+installation anonymously" (next to "Check for updates …") switches the header off; the setting lives in
+`update-count.json` in the profile.
 
 **Signing:** CI signs each system as soon as its secrets exist in the repository's settings (Settings, Secrets and
 variables, Actions); without them that system builds unsigned, as before.

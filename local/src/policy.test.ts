@@ -1,7 +1,7 @@
 // Tests for the approval rules:  node local/src/policy.test.ts
 import path from 'node:path';
 
-const { needsApproval, secretRead } = await import('./policy.ts');
+const { needsApproval, rememberable, secretRead } = await import('./policy.ts');
 const { acpTool } = await import('./acp.ts');
 
 let failures = 0;
@@ -30,7 +30,16 @@ check('risky: git status free', !needsApproval('risky', 'Bash', { command: 'git 
 check('risky: write outside the folder asks', needsApproval('risky', 'Write', { file_path: path.join(folder, '..', 'other', 'a.ts') }, folder).ask);
 check('write: every Bash asks', needsApproval('write', 'Bash', { command: 'ls' }, folder).ask);
 check('never: nothing asks', !needsApproval('never', 'Bash', { command: 'rm -rf /' }, folder).ask);
-check('risky: reading MCP tool free', !needsApproval('risky', 'mcp__github__list_issues', {}, folder).ask);
+check('risky: reading MCP tool asks too, the name says nothing about the content', needsApproval('risky', 'mcp__github__list_issues', {}, folder).ask
+    && needsApproval('risky', 'mcp__claude_ai_Gmail__search_threads', {}, folder).ask && needsApproval('risky', 'mcp__coolify__get_env_values', {}, folder).ask);
+check('MCP resource tools ask in risky and write, free in never', ['ListMcpResourcesTool', 'ReadMcpResourceTool'].every((tool) =>
+    needsApproval('risky', tool, { server: 'gmail' }, folder).ask && needsApproval('write', tool, {}, folder).ask && !needsApproval('never', tool, {}, folder).ask));
+check('tool allowed for the bot: free in risky and write', !needsApproval('risky', 'mcp__claude_ai_Gmail__search_threads', {}, folder, ['mcp__claude_ai_Gmail__search_threads']).ask
+    && !needsApproval('write', 'mcp__github__create_issue', {}, folder, ['mcp__github__create_issue']).ask);
+check('allowing one tool leaves the others of the server asking', needsApproval('risky', 'mcp__github__create_issue', {}, folder, ['mcp__github__list_issues']).ask);
+check('only named MCP tools can be allowed for good', rememberable('mcp__github__list_issues') && !rememberable('mcp__acp__abc') && !rememberable('ReadMcpResourceTool')
+    && !rememberable('mcp__openfolk__send_file') && !rememberable('Bash') && !rememberable('mcp__x'));
+check('an ACP call stays asking even if listed', needsApproval('risky', 'mcp__acp__abc', {}, folder, ['mcp__acp__abc']).ask);
 check('risky: writing MCP tool asks', needsApproval('risky', 'mcp__github__create_issue', {}, folder).ask);
 check('own tools free', !needsApproval('write', 'mcp__openfolk__send_file', {}, folder).ask);
 

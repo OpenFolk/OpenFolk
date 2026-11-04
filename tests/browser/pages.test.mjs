@@ -46,9 +46,10 @@ export default async function ({ start, check }) {
     await h.wait(300);
     const info = await box('#info-panel');
     check('the header opens the bot\'s page over the full screen', info && info.x === 0 && info.width === 400 && info.height >= 850, info);
+    const actions = (await p.locator('#info-actions button[data-action]').evaluateAll((bs) => bs.map((b) => b.dataset.action))).join(' ');
     check('the page: model switch, open changes, the chat\'s entries', (await p.locator('#info-switches .model-switch .chip.on').count()) === 1
         && h.sent.some((f) => f.type === 'git_changes' && f.botId === 'pdf') && (await p.locator('#info-git .git-repo').count()) === 1
-        && (await p.locator('#info-actions button[data-action]').count()) === 6);
+        && actions === 'search conversation_new vscode edit favorite mute restart delete', actions);
     await p.click('#info-actions button[data-action="search"]');
     await h.wait(200);
     check('"Search in chat" leaves the page, the chat search is open', !(await shown('#info')) && (await shown('[data-el=chat-search]')) && (await p.evaluate(() => window.activePane().chatId)) === 'pdf');

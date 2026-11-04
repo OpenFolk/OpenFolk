@@ -179,7 +179,7 @@ export default async function ({ start, check }) {
     check('app: server URL taken from the code', await p.evaluate(() => localStorage.getItem('openfolk-relay') === 'https://relay.example.com'));
 
     // ---- and, signed in, scans a new device's code in the devices block
-    await p.click('#btn-settings');
+    await p.click('[data-tab=settings]');
     check('app: scanner button in the devices block', await p.isVisible('#devices-scan'));
     await p.evaluate(() => { window.__scanResult = 'https://relay.example.com/#approve=req-5&pk=abc'; window.confirm = () => false; });
     await p.click('#devices-scan');

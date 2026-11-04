@@ -20,10 +20,10 @@ import { t } from './i18n.ts';
 import { knowledgeIndex } from './knowledge.ts';
 import { keyTurnCost } from './key-fallback.ts';
 import { engineEnabled } from './machine-settings.ts';
-import { secretRead } from './policy.ts';
+import { foreignMcp, needsApproval, secretRead } from './policy.ts';
 import { transcriptStoreError, transcriptPath } from './vscode.ts';
 import {
-    ENGINE_NAMES, OTHER_ENGINES, engineModelId, engineOf, type Attachment, type Bot, type BotState, type Engine, type EngineStatus, type EngineStatuses, type LiveTurn, type ModelInfo,
+    ENGINE_NAMES, OTHER_ENGINES, engineModelId, engineOf, type Attachment, type Bot, type BotState, type Engine, type EngineStatus, type EngineStatuses, type LiveTurn, type ModelInfo, type ModelWindow,
     type ToolCall,
 } from '../../shared/protocol.ts';
 
@@ -83,6 +83,8 @@ export interface AccountInfo {
 
 export type RateLimitInfo = SDKRateLimitInfo & {
     unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number }>;
+    /** Weekly windows per model (Fable) from the usage endpoint; only the start of a session asks for them. */
+    modelWindows?: ModelWindow[];
 };
 
 /** Feedback of the session to the bot manager. */
@@ -487,6 +489,15 @@ export class BotSession {
                         const reason = secretRead(input.tool_name, (input.tool_input ?? {}) as Record<string, unknown>);
                         return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {};
                     }],
+                }, {
+                    // The resource tools skip canUseTool like reads, and an allow rule in the user's settings lets any
+                    // MCP tool skip it; 'ask' sends them to canUseTool, which decides by the bot's setting
+                    matcher: 'mcp__.*|ListMcpResourcesTool|ReadMcpResourceTool',
+                    hooks: [async (input) => {
+                        if (input.hook_event_name !== 'PreToolUse' || !foreignMcp(input.tool_name)) return {};
+                        const e = needsApproval(this.bot.approval, input.tool_name, (input.tool_input ?? {}) as Record<string, unknown>, this.bot.folder, this.bot.allowedTools);
+                        return e.ask ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: e.reason ?? '' } } : {};
+                    }],
                 }],
             },
             mcpServers: { 'openfolk': this.hooks.tools(this) },
@@ -635,6 +646,25 @@ export class BotSession {
         return true;
     }
 
+    /**
+     * The plan's weekly windows per model (Fable) come only from the usage endpoint, not with the rate_limit_event of a
+     * turn. Asked once per CLI start; the answer arrives as a usage report of its own and keeps the turn's windows.
+     */
+    private async reportModelWindows(q: Query): Promise<void> {
+        try {
+            const r = await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+            const rows = r.rate_limits?.model_scoped;
+            if (!rows) return;
+            const modelWindows = rows.filter((w) => typeof w.utilization === 'number').map((w) => ({
+                name: w.display_name, utilization: w.utilization! / 100,
+                resetsAt: w.resets_at ? Math.floor(Date.parse(w.resets_at) / 1000) : undefined,
+            }));
+            this.hooks.usage({ status: 'allowed', modelWindows });
+        } catch {
+            // older CLI, API key or a profile without the scope: no per-model windows
+        }
+    }
+
     /** Short reason for the display why `resume` failed before the CLI started. */
     private resumeFailure(sessionId: string): string {
         const store = transcriptStoreError();
@@ -696,6 +726,7 @@ export class BotSession {
                         // account info is display only
                     }
                     this.hooks.account(this, { subscription, model: m.model, version: m.claude_code_version, apiKeySource: m.apiKeySource });
+                    void this.reportModelWindows(q);
                     const wrong = checkSignIn(this.auth, m.apiKeySource);
                     if (wrong) {
                         this.hooks.error(this, turn, wrong);

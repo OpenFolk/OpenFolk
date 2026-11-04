@@ -9,7 +9,7 @@ import { t } from './i18n.js';
 import { el, state } from './core.js';
 import { adoptPairingLink, send } from './e2e.js';
 import { connect, showLogin } from './connection.js';
-import { canScanQr, isNative, parsePairingLink, relayAddress, scanQrCode, socketUrl } from './platform.js';
+import { bundled, canScanQr, parsePairingLink, relayAddress, scanQrCode, socketUrl } from './platform.js';
 
 const textEnc = new TextEncoder();
 const SEAL_INFO = textEnc.encode('openfolk:pair-qr');
@@ -309,10 +309,10 @@ export async function scanToSignIn() {
         showLogin(t('qr.notPairingCode'));
         return;
     }
-    if (isNative) el.loginRelay.value = text.trim();
+    if (bundled) el.loginRelay.value = text.trim();
     else if (link.address === location.origin) await adoptPairingLink(link.params);
     else {
-        // The browser and the desktop app are the relay's page: a code of another relay opens that relay's page
+        // The browser is the relay's page: a code of another relay opens that relay's page
         location.assign(text.trim());
         return;
     }

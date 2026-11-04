@@ -4,6 +4,8 @@
 import { t } from './i18n.js';
 import { node, state } from './core.js';
 import { send, upper } from './e2e.js';
+import { bundled } from './platform.js';
+import { goToRelay } from './relays.js';
 
 /** What is typed: the forms render anew with every state that arrives and must not lose it. */
 const draft = { address: '', code: '', focus: '' };
@@ -76,8 +78,9 @@ export function relayClaimed(machine, url) {
     claim = { machine, state: 'done' };
     draft.address = draft.code = '';
     rerender();
-    // A moment to read what happens; the backend moves over shortly after its answer
-    setTimeout(() => location.assign(url), 1200);
+    // A moment to read what happens; the backend moves over shortly after its answer. An app that brings the web app
+    // along takes the new relay in and loads its page for it; the browser's page is the relay's and opens the link.
+    setTimeout(() => { if (!bundled || !goToRelay(url)) location.assign(url); }, 1200);
 }
 
 /**

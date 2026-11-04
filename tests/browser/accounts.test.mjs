@@ -21,7 +21,10 @@ const afterReload = async (h) => {
 export default async function ({ start, check }) {
     // ---- a relay without accounts: nothing new to see
     const old = await start({});
-    check('relay without accounts: no switch, no accounts block', await old.page.isHidden('#account-switch') && await old.page.evaluate(() => document.getElementById('settings-accounts').hidden));
+    await old.page.evaluate(() => openSettings());
+    await old.wait(100);
+    check('relay without accounts: no switch, nothing of one\'s own to edit, but where this device is signed in', await old.page.isHidden('#account-switch')
+        && await old.page.isHidden('#accounts-own') && (await old.page.locator('#accounts-list li').count()) === 2 && await old.page.isHidden('#settings-all-accounts-field'));
     await old.close();
 
     // ---- only main: the page exists, the switch does not
@@ -43,7 +46,7 @@ export default async function ({ start, check }) {
     check('switch shows the current account', await p.isVisible('#account-switch') && (await p.textContent('#account-switch')).trim() === 'Alex');
     await p.click('#account-switch');
     const entries = await p.locator('#account-menu button').allTextContents();
-    check('menu: both accounts, adding, managing', entries.length === 4 && entries[0].includes('Alex') && entries[1].includes('Work'), entries);
+    check('menu: both accounts and the way to the settings', entries.length === 3 && entries[0].includes('Alex') && entries[1].includes('Work'), entries);
     check('current account marked', (await p.getAttribute('#account-menu button[data-account="main"]', 'class') || '').includes('current'));
     await p.click('#account-menu button[data-account="work"]');
     await afterReload(h);
@@ -91,26 +94,59 @@ export default async function ({ start, check }) {
     await stale.close();
 
     // ---- adding an account with its name and password
+    let signedInAs = 'main';
     const add = await start({
         auth: (f) => (f.token ? (f.account === 'Kunde' && f.token === 'kunde-password-123'
             ? { type: 'auth', ok: true, device: { id: 'k', token: 'k.key', name: 'Phone' }, account: KUNDE }
             : { type: 'auth', ok: false, code: 'wrong_password', message: 'Wrong password.' }) : byDevice({ test: MAIN, 'k.key': KUNDE })(f)),
-        onSend: async (f, push) => { if (f.type === 'accounts') await push({ type: 'accounts', list: [{ ...MAIN, created: '' }], current: 'main' }); },
+        // the relay lists the own account only (Kunde is no admin)
+        onSend: async (f, push) => { if (f.type === 'accounts') await push({ type: 'accounts', list: [signedInAs === 'main' ? { ...MAIN, created: '' } : { ...KUNDE, created: '2026-10-16T08:00:00Z' }], current: signedInAs }); },
     });
     const a = add.page;
-    await a.click('#btn-settings');
+    await a.click('[data-tab=settings]');
     await add.wait(200);
-    await a.click('#accounts-add');
+    const signedIn = () => a.evaluate(() => [...document.querySelectorAll('#accounts-list li')].map((li) => `${li.querySelector('strong').firstChild.textContent}${li.querySelector('.tag') ? ' *' : ''}: ${[...li.querySelectorAll('button')].map((b) => b.textContent).join(',')}`));
+    check('the list: the relay, then the account, marked, nothing to remove', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Alex *: ']), await signedIn());
+    // "Add" (an admin: the form) with the address of this relay: the login with the account field
+    await a.click('#accounts-join');
+    await a.fill('#accounts-link', 'http://test.local');
+    await a.click('#accounts-link-go');
+    await add.wait(200);
     check('adding: the login with the account field and a way back', await a.isVisible('#login') && await a.isVisible('#login-account') && await a.isVisible('#login-cancel'));
     await a.fill('#login-account', 'Kunde');
     await a.fill('#login-token', 'kunde-password-123');
+    signedInAs = 'kunde';
     await a.click('#login-form button[type="submit"]');
     await afterReload(add);
     const pw = add.sent.find((f) => f.type === 'auth' && f.token);
     check('password sign-in names the account', pw?.account === 'Kunde', pw);
     check('signed in to the added account, the first one kept', (await a.textContent('#account-switch')).trim() === 'Kunde'
         && await a.evaluate(() => JSON.parse(localStorage.getItem('openfolk-accounts')).map((x) => x.id).sort().join() === 'kunde,main'));
+    await a.evaluate(() => openSettings());
+    await add.wait(200);
+    check('both in the list, the first one with switch and remove', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Alex *: Switch,Remove', 'Kunde *: ']), await signedIn());
+    check('… and the setting for one list offered', await a.isVisible('#settings-all-accounts'));
+    a.on('dialog', (d) => void d.accept());
+    await a.locator('#accounts-list li', { hasText: 'Alex' }).locator('button.danger').click();
+    await add.wait(100);
+    check('removed: only this device forgets it', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Kunde *: '])
+        && await a.evaluate(() => JSON.parse(localStorage.getItem('openfolk-accounts')).map((x) => x.id).join() === 'kunde') && !add.sent.some((f) => f.type === 'device_logout'));
     await add.close();
+
+    // ---- "Add" with an invitation into another account of this relay: the token signs in, the first account stays
+    const paste = await start({
+        secure: true, before: knows([{ ...MAIN, device: 'test' }]),
+        auth: (f) => (f.pair === 'inv-2' ? { type: 'auth', ok: true, device: { id: 'k', token: 'k.key', name: 'Phone' }, account: KUNDE } : byDevice({ test: MAIN, 'k.key': KUNDE })(f)),
+    });
+    await paste.page.evaluate(() => openSettings());
+    await paste.wait(100);
+    await paste.page.click('#accounts-join');
+    await paste.page.fill('#accounts-link', `http://test.local/#pair=inv-2&e2e=${KEY}`);
+    await paste.page.click('#accounts-link-go');
+    await afterReload(paste);
+    check('pasted invitation: signed in with its token', paste.sent.some((f) => f.type === 'auth' && f.pair === 'inv-2'));
+    check('… in the new account, both known to the device', await paste.page.evaluate(() => state.account?.id === 'kunde' && JSON.parse(localStorage.getItem('openfolk-accounts')).map((x) => x.id).sort().join() === 'kunde,main'));
+    await paste.close();
 
     const cancel = await start({ auth: byDevice({ test: MAIN }) });
     await cancel.page.evaluate(() => addAccount());
@@ -141,25 +177,47 @@ export default async function ({ start, check }) {
     const m = admin.page;
     await m.evaluate(() => openAccounts());
     await admin.wait(200);
-    check('admin: all accounts listed', await m.isVisible('#accounts-admin') && (await m.locator('#accounts-list li').count()) === 2);
-    check('own account: password belongs to the relay setup', await m.isHidden('#accounts-password'));
-    check('others: invite, admin and delete; main and oneself untouched', (await m.locator('#accounts-list li').nth(1).locator('button').count()) === 3
-        && (await m.locator('#accounts-list li').nth(0).locator('button').count()) === 0);
+    const rows = () => m.evaluate(() => [...document.querySelectorAll('#accounts-list li')].map((li) => `${li.querySelector('strong').firstChild.textContent}${li.querySelector('.tag') ? ' *' : ''}: ${[...li.querySelectorAll('button')].map((b) => b.textContent).join(',')}`));
+    check('admin: the relay, then every account on it; the one not signed in here gets the invitation, admin and delete, main and oneself nothing',
+        JSON.stringify(await rows()) === JSON.stringify(['test.local: Rename', 'Alex *: ', 'Work: Create invitation link,Make admin,Delete']), await rows());
+    check('main: nothing of its own to edit (its password is the relay setup)', await m.isHidden('#accounts-own'));
+    check('the admin\'s form waits behind "Add"', await m.isHidden('#accounts-new-form') && await m.isVisible('#accounts-join'));
+    await m.click('#accounts-join');
+    check('… and opens with it in the settings dialog: a link to redeem, a new person', await m.isVisible('#settings-dialog') && await m.evaluate(() => document.getElementById('accounts-new-form').parentElement.id === 'settings-dialog-body')
+        && await m.isVisible('#accounts-link') && await m.isVisible('#accounts-new-name') && await m.isHidden('#settings-dialog-actions'));
     await m.fill('#accounts-new-name', 'Kunde');
     await m.click('#accounts-create');
     await admin.wait(300);
+    check('created: the form is back in its block, hidden', await m.isHidden('#accounts-new-form') && await m.evaluate(() => document.getElementById('accounts-new-form').parentElement.id === 'settings-accounts'));
     check('create goes to the relay', admin.sent.some((f) => f.type === 'account_create' && f.name === 'Kunde' && f.admin === false));
     const wrap = admin.sent.find((f) => f.type === 'pair_link');
     check('a backend wraps the relay\'s token, it mints none', wrap?.token === 'tok-kunde', wrap);
-    check('invitation with link and QR code', await m.isVisible('#invite-box') && (await m.inputValue('#invite-box input')).includes('pair=tok-kunde') && (await m.textContent('#invite-box')).includes('Kunde'));
+    check('invitation with link and QR code in the dialog, with a Close row', await m.isVisible('#invite-box') && (await m.inputValue('#invite-box input')).includes('pair=tok-kunde') && (await m.textContent('#invite-box')).includes('Kunde')
+        && (await m.textContent('#settings-dialog-title')) === 'Invitation for Kunde' && await m.isVisible('#settings-dialog-actions'));
+    await m.click('#settings-dialog [data-close]');
+    await admin.wait(100);
+    check('closed: the box is back in its block, hidden', await m.isHidden('#settings-dialog') && await m.isHidden('#invite-box') && await m.evaluate(() => document.getElementById('invite-box').parentElement.id === 'settings-accounts'));
     oldBackend = true;
-    await m.locator('#accounts-list li').nth(1).locator('button').first().click();
+    await m.locator('#accounts-list li').nth(2).locator('button').first().click();
     await admin.wait(300);
     check('new invitation for an existing account', admin.sent.some((f) => f.type === 'account_invite' && f.id === 'work'));
     check('a backend that ignores the token: no link for main to a stranger', (await m.textContent('#accounts-error')).includes('too old'), await m.textContent('#accounts-error'));
-    await m.fill('#accounts-own-name', 'Alex K.');
-    await m.click('#accounts-own-save');
+    await m.locator('#accounts-list li').nth(2).locator('button').nth(1).click();
     await admin.wait(200);
     check('refusal of the relay shown on the page', (await m.textContent('#accounts-error')).includes('may not'), await m.textContent('#accounts-error'));
     await admin.close();
+
+    // ---- another account edits its own name and password
+    const own = await start({
+        device: 'w.key', auth: byDevice({ 'w.key': WORK }), before: knows([{ ...WORK, device: 'w.key' }]),
+        onSend: async (f, push) => { if (f.type === 'accounts') await push({ type: 'accounts', list: [{ ...WORK, created: '2026-10-01T08:00:00Z' }], current: 'work' }); },
+    });
+    await own.page.evaluate(() => openAccounts());
+    await own.wait(200);
+    check('other account: name and password of its own', await own.page.isVisible('#accounts-own') && await own.page.isVisible('#accounts-password'));
+    await own.page.fill('#accounts-own-name', 'Work 2');
+    await own.page.click('#accounts-own-save');
+    await own.wait(200);
+    check('the change goes to the relay', own.sent.some((f) => f.type === 'account_update' && f.id === 'work' && f.name === 'Work 2'));
+    await own.close();
 }

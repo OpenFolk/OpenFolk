@@ -55,7 +55,20 @@ frame therefore carries a `ReplayGuard` (`shared/protocol.ts`): sender id, count
 counter they have seen from that sender and anything more than ten minutes off, which also bounds how long they
 must remember senders across a restart. Backends insist on the guard; the web app accepts frames without one so it
 can still show an old backend's version notice. With a key, the web app also drops unencrypted backend frames, so
-the relay cannot inject bots, history or approvals in plain text.
+the relay cannot inject bots, history or approvals in plain text. Frames the relay makes itself are the exception
+and are listed in `PLAIN_TYPES` (`webapp/js/connection.js`); a new `RelayFrame` that is missing there is dropped
+silently as soon as a device has the key, and tests without a key do not notice.
+
+**What a bot can reach** is decided on the backend, per tool call, by the bot's approval level (`local/src/policy.ts`).
+Two things in Claude Code go around `canUseTool`: tools it counts as reading (including `ListMcpResourcesTool` and
+`ReadMcpResourceTool`), and allow rules in the user's own settings, which the sessions load. Secrets are therefore
+refused in a PreToolUse hook, and foreign MCP tools get a hook that answers `ask`, which sends them to
+`canUseTool` after all (`session.ts`). The name of an MCP tool proves nothing about what it returns: `get_env_values`
+reads secrets, `search_threads` reads mail. So in *risky* every foreign MCP tool asks until the user allows it for the
+bot for good (`Bot.allowedTools`, by exact name, never for ACP calls, which are named after their title). The
+connectors of the claude.ai account come with Claude Code's login even without any settings source; the machine
+setting `claudeAiConnectors` keeps them out unless the user lets them in, because a bot that reads a prepared page
+should not find the user's mail among its tools.
 
 **Push** is the one place where contents leave this model, see [push.md](./push.md).
 
@@ -186,8 +199,8 @@ end-to-end key; the admin gets the token from the relay and the backend only wra
 account. A backend from before accounts ignores the token and answers with a link into `main`, so the page shows an
 invitation only if the link carries its token.
 
-The shared chat list shows the other accounts of the device through one lightweight connection each
-(`webapp/js/others.js`), signed in with that account's key, so it sees nothing a switch would not show. It asks only
+The shared chat list shows the other accounts of the device, also those on its other relays (`webapp/js/relays.js`),
+through one lightweight connection each (`webapp/js/others.js`), signed in with that account's key, so it sees nothing a switch would not show. It asks only
 for the list (bots, state, the last entry of each chat) and never sends `presence`, so that account's push stays on.
 The trap is the replay guard: a backend numbers all its encrypted frames in one sequence across its clients, and the
 frames of two sockets arrive interleaved, so every connection keeps its own sender id, counter and highest counter
@@ -218,9 +231,9 @@ window, which is why it opens the folder with `code` first.
 
 ## Versions move at different speeds
 
-The web app is served by the relay and is therefore always as new as the relay; the desktop apps load it from
-there. The mobile apps bring their own copy and update through the stores. Backends update when the user pulls
-and restarts. Nothing can assume a coordinated release:
+The web app is served by the relay to browsers and is therefore as new as the relay there. The desktop and mobile
+apps bring their own copy and update with the app (installer, stores). Backends update when the user pulls and
+restarts. Nothing can assume a coordinated release:
 
 - `PROTOCOL_VERSION` in `shared/protocol.ts` (copy in `webapp/js/core.js`, kept equal by a test) is raised only for
   a change the other side cannot ignore. Backends report theirs; the web app says which side needs an update.

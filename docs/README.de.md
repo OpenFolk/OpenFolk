@@ -40,19 +40,24 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
 
 ## Funktionen
 
-- **Bots und Vorlagen.** Bot über „+“ anlegen, wahlweise aus einer Vorlage. Je Bot: Ordner, Modell, Freigabe-Stufe
-  und Ton. „Vorschlag“ schlägt Namen (Vorname mit Aufgabenfeld in einem eigenen Feld), Rolle
+- **Bots und Vorlagen.** Bot über „+“ anlegen, wahlweise aus einer Vorlage. Je Bot: Ordner, Modell, Freigabe-Stufe,
+  Ton und die Stimme, die seine Antworten vorliest (ohne Wahl passend zum Namen). „Vorschlag“ schlägt Namen (Vorname mit Aufgabenfeld in einem eigenen Feld), Rolle
   oder ein Profilbild vor; mit einem Gemini- oder OpenAI-Schlüssel in den Einstellungen
   ist der Avatar ein generiertes Foto, sonst ein vom Modell gezeichnetes SVG.
 - **Freigaben im Chat.** Je Bot *riskant* (Standard: fragt bei Löschen, Push, Deploy, SSH, Dienst-Neustarts,
   Schreiben außerhalb des Ordners oder in Secrets, Secrets lesen per Shell, Pakete installieren, Code aus dem Internet
-  ausführen, erhöhten Rechten; jeder Teil eines Shell-Befehls wird einzeln geprüft), *bei jeder Änderung* oder *nie*.
-  *Riskant* ist ein sorgfältiger Filter, keine Mauer: Wer jeden Befehl bestätigen will, nimmt *bei jeder Änderung*.
-  `.env`-Dateien und Schlüssel bekommen lesende Werkzeuge in keiner Stufe. Die Karte bietet Freigeben,
-  Immer erlauben (für die Session) und Ablehnen mit Begründung; ohne Antwort wird nach 30 Minuten abgelehnt.
+  ausführen, erhöhten Rechten, jedem Aufruf eines externen MCP-Dienstes, auch lesenden; jeder Teil eines
+  Shell-Befehls wird einzeln geprüft), *bei jeder Änderung* oder *nie*. *Riskant* ist ein sorgfältiger Filter, keine
+  Mauer: Ein Skript, das der Bot schreibt und dann ausführt, wird nicht durchleuchtet. Wer jeden Befehl bestätigen
+  will, nimmt *bei jeder Änderung*. `.env`-Dateien und Schlüssel bekommen lesende Werkzeuge in keiner Stufe. Die Karte
+  bietet Freigeben, Immer erlauben (für die Session), Immer für diesen Bot (externe MCP-Werkzeuge; der Bot-Editor
+  listet sie und nimmt sie wieder weg) und Ablehnen mit Begründung; ohne Antwort wird nach 30 Minuten abgelehnt.
+- **Connectoren.** Die Dienste, die im claude.ai-Konto von Claude Code verbunden sind (Gmail, Drive usw.), bleiben
+  den Bots verschlossen, bis die Maschinen-Einstellungen sie zulassen („Connectoren“). Selbst eingerichtete
+  MCP-Server (`.mcp.json`, `claude mcp add`) betrifft das nicht.
 - **Rückfragen** eines Bots mit Optionen erscheinen als Karte mit Knöpfen und Freitext.
 - **Push-Benachrichtigungen** je Art (Bot fertig, Routine fertig, Freigabe/Rückfrage, Rechner wach, Abo-Limit)
-  aus, leise, normal oder hoch, für alle Geräte; einzelne Bots und Gruppen lassen sich in den Push-Einstellungen stummschalten. Browser
+  aus, leise, normal oder hoch, für alle Geräte; einzelne Bots und Gruppen schaltet man auf ihrer Seite oder im Menü der Liste stumm. Browser
   bekommen Web Push (Ende-zu-Ende-verschlüsselt), die Mobile-Apps APNs bzw. FCM; dort sehen Apple und Google den
   Inhalt, deshalb zeigt eine App-Benachrichtigung standardmäßig nur den Titel (einstellbar in den Einstellungen).
 - **Routinen** nach Zeitplan (täglich, werktags, wöchentlich, stündlich oder Cron), auf Wunsch mit Wecken des Rechners.
@@ -73,6 +78,9 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   Spalte daneben, so viele wie Platz haben; „+“ am rechten Rand fügt eine leere hinzu. Mit der Maus lässt sich ein
   Chat auch aus der Liste auf eine Spalte oder auf „+“ ziehen. Die Bot-Info dockt als eigene
   Spalte an. Handy und Laptop bleiben bei einem Chat.
+- **Tabs** schwebend unten an der Liste: Bots, Repos (offene Änderungen aller Bots, mit Zähler), Status (die Rechner
+  mit ihren Bots, Engines und Backend, Wecken und Herunterfahren, Kontingent der Abos mit 5-Stunden- und Wochenfenster, Fable getrennt, und wann jedes
+  zurückgesetzt wird) und Einstellungen.
 - **Offene Änderungen** der Git-Repos im Ordner eines Bots, mit Committen und Pushen oder Holen je Repo.
 - **Repos bleiben aktuell:** Beim Start, nach dem Aufwachen, alle 15 Minuten und nach einem Push aus der App auf
   einem anderen Rechner holt das Backend die Repos seiner Bots und spult saubere vor (nie Merge, Rebase oder Reset,
@@ -92,9 +100,12 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   aus: Wird ein Projekt auf zwei Rechnern bearbeitet, hat jeder seinen Klon und seinen Bot. Beim Umzug eines Bots
   ziehen die Sessions mit dem ganzen Kontext mit, und der Bot-Editor klont das Repository auf den neuen Rechner,
   wenn es dort noch fehlt (im Feld „Ordner oder Repository“ steht dann die Adresse des Repositorys).
-- **Einstellungen:** Sprache, Darstellung, Benachrichtigungen, Geräte und Sicherheit. Für alle Rechner: Bildmodell
-  und API-Schlüssel für Profilbilder, Sprache der Sprachnachrichten, was App-Benachrichtigungen zeigen, Repos aktuell
-  halten. Je Rechner (nur Hauptkonto): die KI-Anbieter, die dort laufen, jeder über sein Abo oder einen Schlüssel,
+- **Einstellungen:** Sprache, Darstellung, Benachrichtigungen, Geräte und Sicherheit; je Gerät, ob die Antwort auf
+  eine Sprachnachricht von selbst vorgelesen wird, sobald sie fertig ist (Standard: an). Für alle Rechner: die
+  KI-Dienste (API-Schlüssel von OpenAI und Google Gemini als Liste), das Bildmodell für Profilbilder, die Stimme zum
+  Vorlesen von Antworten (mit einem dieser Schlüssel eine Stimme
+  von OpenAI oder Gemini, sonst die des Geräts; der Text geht dann an diesen Anbieter), Sprache der Sprachnachrichten,
+  was App-Benachrichtigungen zeigen, Repos aktuell halten. Je Rechner (nur Hauptkonto): die KI-Anbieter, die dort laufen, jeder über sein Abo oder einen Schlüssel,
   Herunterfahren mit Countdown und Verhalten
   nach Weck-Routinen, Autologin, „In der IDE / im Terminal öffnen“, Sprachmodell. Ein Browser erfährt nur, ob ein
   Schlüssel hinterlegt ist; zu den anderen Rechnern reisen Schlüssel nur Ende-zu-Ende-verschlüsselt. Was Befehle
@@ -129,7 +140,9 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
 Die Desktop-Apps für Windows, Linux (AppImage, .deb) und macOS bringen das Backend mit: beim ersten Start „Auf
 diesem Rechner starten“ wählen, bei Claude Code anmelden, wenn die App danach fragt, fertig (`desktop/README.md`,
 englisch). Sie kommen aus den [Releases](https://github.com/OpenFolk/OpenFolk/releases) und aktualisieren sich von dort
-selbst. Aus dem Quellcode:
+selbst. Die erste Update-Prüfung eines Tages zählt openfolk.app anonym mit (eine Tagessumme je System und Version, ohne
+IP-Adresse und Kennung, öffentlich unter [openfolk.app/update/stats.json](https://openfolk.app/update/stats.json)); im
+Menü der App lässt sich das abschalten. Aus dem Quellcode:
 
 ```sh
 git clone https://github.com/OpenFolk/OpenFolk.git openfolk
@@ -239,17 +252,24 @@ Kollegin, einem Konto je Kunde. Jedes Konto hat eigene Bots, Chats, Wissen, Ger�
 und Codex, sodass Abos, Kontingente und Verbrauch getrennt bleiben, und es sieht nichts von den anderen. Wer das Relay
 eingerichtet hat, besitzt das Hauptkonto; solange es kein zweites gibt, ändert sich nichts.
 
-- **Anlegen:** Einstellungen → Konten → „Anlegen und einladen“. Die Einladung ist ein Kopplungslink mit QR-Code,
-  15 Minuten gültig; wer ihn öffnet, ist im neuen Konto angemeldet. „Neue Einladung“ erzeugt eine weitere. Ein Konto
-  kann sich danach ein eigenes Passwort setzen und sich dann mit Namen und Passwort anmelden. Admins verwalten Konten;
-  das Hauptkonto ist immer einer.
-- **Wechseln:** Ein Gerät kann in mehreren Konten angemeldet sein. Der Name neben dem Titel in der Seitenleiste
-  wechselt zwischen ihnen, „Weiteres Konto anmelden“ fügt eines hinzu, und ein Einladungslink auf einem schon
-  angemeldeten Gerät fügt sein Konto ebenfalls hinzu.
+- **Eine Liste, ein „Hinzufügen“:** Einstellungen → Konten ist eine Liste, nach Relay gruppiert: jedes Konto, in dem
+  dieses Gerät angemeldet ist (das aktive markiert, die anderen mit Wechseln und Entfernen), und für einen Admin alle
+  weiteren Personen auf diesem Relay mit „Einladungslink erstellen“, Admin und Löschen. Ein Knopf „Hinzufügen“ nimmt,
+  was man bekommen hat: eine Einladung in ein Konto, einen Kopplungslink eines anderen Relays oder nur die Adresse
+  eines Relays (dann fragt die App nach Konto und Passwort); ein Admin legt dort auch eine neue Person an („Konto
+  anlegen und Einladungslink erstellen“). Die Einladung ist ein Kopplungslink mit QR-Code, 15 Minuten gültig; wer ihn
+  öffnet, ist im neuen Konto angemeldet und kann sich danach ein eigenes Passwort setzen. Was angemeldet ist, bleibt;
+  Abmelden steht unter „Geräte und Sicherheit“. Das Hauptkonto ist immer Admin.
+- **Wechseln:** Der Name neben dem Titel in der Seitenleiste wechselt zwischen den Konten und Relays dieses Geräts;
+  ein Einladungslink auf einem schon angemeldeten Gerät fügt sein Konto ebenfalls hinzu.
 - **Eine Liste:** Die Chatliste zeigt die Bots aller Konten, in denen das Gerät angemeldet ist, die der anderen Konten
   mit dem Kontonamen als Abzeichen, mit dem, was sie gerade tun, ihrer letzten Nachricht und was neu ist. Ein Tipp
-  öffnet den Chat in seinem Konto; Benachrichtigungen aller Konten kommen an. Einstellungen → „Bots aller Konten
-  dieses Geräts in der Liste zeigen“ schaltet das für dieses Gerät ab.
+  öffnet den Chat in seinem Konto; Benachrichtigungen aller Konten kommen an. „Alle Konten in einer Liste zeigen“
+  unter Konten schaltet das für dieses Gerät ab, dann zeigt die Liste nur das aktive Konto.
+- **Mehrere Relays (die Apps):** „Hinzufügen“ mit einem Kopplungslink eines anderen Relays meldet die App dort an,
+  zum Beispiel bei einem Relay je Kunde. Jedes Relay behält seine Rechner, Konten, Geräte und seinen Schlüssel. Die
+  Chatliste zeigt die Bots aller Relays mit dem Namen des Relays als Abzeichen. Im Browser gehört die Seite zu einem
+  Relay; weitere Relays merkt er sich dort als Links.
 - **KI-Anmeldungen je Konto:** Das Hauptkonto nutzt `~/.claude` und `~/.codex` des Rechners. Jedes andere Konto meldet
   sich je Rechner einmal in einem eigenen Ordner an: Codex mit einem Code aus der Einrichtungs-Checkliste, Claude mit
   dem Befehl, den die Checkliste zeigt (`CLAUDE_CONFIG_DIR=… claude`). Copilot, Cursor, Antigravity und OpenCode laufen nur für

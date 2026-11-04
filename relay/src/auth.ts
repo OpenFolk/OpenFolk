@@ -135,13 +135,14 @@ export function clientAddress(remote: string, forwardedFor: string | string[] | 
 }
 
 /**
- * Origins allowed to open /ws/client: the relay's own address, and the mobile apps, which bring the web app along
- * (Capacitor: capacitor://localhost on iOS, https://localhost on Android). Requests without Origin (not a browser)
- * pass; they need the password like everyone else. A foreign web page is refused before it can try passwords.
+ * Origins allowed to open /ws/client: the relay's own address, and the apps, which bring the web app along (Capacitor:
+ * capacitor://localhost on iOS, https://localhost on Android; the desktop app: openfolk://app). Requests without Origin
+ * (not a browser) pass; they need the password like everyone else. A foreign web page is refused before it can try
+ * passwords.
  */
 export function originAllowed(origin: string | undefined, ...hosts: (string | string[] | undefined)[]): boolean {
     if (!origin) return true;
-    if (['capacitor://localhost', 'https://localhost', 'http://localhost'].includes(origin)) return true;
+    if (['capacitor://localhost', 'https://localhost', 'http://localhost', 'openfolk://app'].includes(origin)) return true;
     try {
         const own = new URL(origin).host;
         // Host as the proxy passes it on, or X-Forwarded-Host for a proxy that rewrites Host

@@ -8,7 +8,7 @@ import { e2eEnabled } from './e2e.ts';
 import { setLanguageSource } from './i18n.ts';
 import { currentAccount, readJson, writeJson } from './store.ts';
 import {
-    AVATAR_MODELS, LANGUAGES, PUSH_PREVIEWS, SHARED_API_KEYS, type AvatarModel, type Language, type PushPreview, type SharedApiKey,
+    AVATAR_MODELS, LANGUAGES, PUSH_PREVIEWS, READ_ALOUD_VOICES, SHARED_API_KEYS, type AvatarModel, type Language, type PushPreview, type ReadAloudVoice, type SharedApiKey,
     type SharedSettings, type SharedSettingsInput, type Snapshot,
 } from '../../shared/protocol.ts';
 
@@ -29,6 +29,7 @@ function clean(s: Partial<SharedSettings>): SharedSettings {
     if (s.voiceLanguage === '' || isLanguage(s.voiceLanguage)) r.voiceLanguage = s.voiceLanguage;
     if (typeof s.gitAutoPull === 'boolean') r.gitAutoPull = s.gitAutoPull;
     if (oneOf(PUSH_PREVIEWS, s.pushPreview)) r.pushPreview = s.pushPreview;
+    if (oneOf(READ_ALOUD_VOICES, s.readAloud)) r.readAloud = s.readAloud;
     return r;
 }
 
@@ -79,6 +80,7 @@ export const avatarModel = (): AvatarModel => loadSettings().avatarModel ?? 'gem
 export const voiceLanguage = (): '' | Language => loadSettings().voiceLanguage ?? '';
 export const gitAutoPull = (): boolean => loadSettings().gitAutoPull ?? true;
 export const pushPreview = (): PushPreview => loadSettings().pushPreview ?? 'title';
+export const readAloudVoice = (): ReadAloudVoice => loadSettings().readAloud ?? 'auto';
 
 // ------------------------------------------------------------------ API keys
 

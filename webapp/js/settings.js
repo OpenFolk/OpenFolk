@@ -1,15 +1,17 @@
 /* OpenFolk web app: settings (appearance, language, autologin per machine, entry to notifications and devices). */
 import { BACKEND_LANGUAGE_KEY, LANGUAGE_KEY, i18n, isLanguage, locale, readSetting, resolveLanguage, setLanguage, t, writeSetting } from './i18n.js';
-import { THEME_KEY, deviceAccounts, el, node, state, storage, toast } from './core.js';
+import { THEME_KEY, el, node, state, storage, toast } from './core.js';
 import { clockTime, e2e, send, upper } from './e2e.js';
 import { askAutologon, machineCan } from './machines.js';
-import { setShowAllAccounts, showAllAccounts } from './others.js';
+import { setShowAllAccounts } from './others.js';
 import { qrSvg } from './qr-login.js';
 import { layoutPanes } from './panes.js';
 import { relayAddress } from './platform.js';
 import { loadPushSettings } from './push.js';
 import { loadAccounts } from './accounts.js';
 import { relayClaimForm } from './relay-claim.js';
+import { closeSettingsDialog, openSettingsDialog } from './menus.js';
+import { autoReadOn } from './read-aloud.js';
 
 // ================================================================ Settings
 
@@ -31,9 +33,8 @@ export function settingsSaveFailed() {
 
 export function openSettings() {
     el.settingsTheme.value = storage.get(THEME_KEY) || 'auto';
+    el.settingsAutoRead.checked = autoReadOn();
     el.settingsLanguage.value = readSetting(LANGUAGE_KEY);
-    el.settingsAllAccountsField.hidden = deviceAccounts().length < 2;
-    el.settingsAllAccounts.checked = showAllAccounts();
     // Query the state fresh: the backend caches it for up to a minute, a password stored just now would be missing
     for (const h of state.online) if (machineCan(h, 'autologon')) send({ type: 'machine_autologon' }, h);
     // Answered for the main account only; then "Add machine" and "Log out" for joined machines appear
@@ -42,8 +43,7 @@ export function openSettings() {
     renderSettings();
     loadPushSettings();
     loadDevices();
-    // Relays without accounts know no account frames
-    if (state.account) loadAccounts();
+    loadAccounts();
     el.settings.hidden = false;
     layoutPanes();
 }
@@ -158,9 +158,13 @@ export function askMachineJoin() {
  */
 export function renderMachineJoin(invite) {
     el.machineAdd.disabled = false;
-    el.machineJoin.hidden = !invite;
     el.machineJoin.replaceChildren();
-    if (!invite) return;
+    if (!invite) {
+        closeSettingsDialog(el.machineJoin);
+        el.machineJoin.hidden = true;
+        return;
+    }
+    openSettingsDialog(t('machines.add'), el.machineJoin);
     const command = /** @type {HTMLInputElement} */ (node('input'));
     command.type = 'text';
     command.readOnly = true;
@@ -421,6 +425,13 @@ function machineForm(host, ms) {
     details.appendChild(numberField('settings.afterWakeWait', s.afterWakeWaitMinutes, 1440, (v) => set({ afterWakeWaitMinutes: v }), afterOff));
     details.appendChild(numberField('settings.idleMinutes', s.idleMinutes, 1440, (v) => set({ idleMinutes: v }), afterOff || s.afterWake !== 'ifIdle'));
 
+    // Older backends do not know the switch; their sessions get the connectors anyway
+    if ('claudeAiConnectors' in s) {
+        details.appendChild(node('h4', '', t('settings.connectors')));
+        details.appendChild(checkField('settings.claudeAiConnectors', s.claudeAiConnectors, (v) => set({ claudeAiConnectors: v })));
+        details.appendChild(node('p', 'hint', t('settings.claudeAiConnectorsHint')));
+    }
+
     details.appendChild(node('h4', '', t('settings.handover')));
     details.appendChild(checkField('settings.handoverIde', s.handoverIde && ms.offers.ide, (v) => set({ handoverIde: v }), !ms.offers.ide));
     details.appendChild(checkField('settings.handoverTerminal', s.handoverTerminal && ms.offers.terminal, (v) => set({ handoverTerminal: v }), !ms.offers.terminal));
@@ -476,23 +487,85 @@ export function renderSharedSettings() {
     const s = state.settings || {};
     const asleep = !state.online.length;
     el.settingsBotsAsleep.hidden = !asleep;
-    for (const c of [el.settingsAvatarModel, el.settingsVoiceLanguage, el.settingsPushPreview, el.settingsGitPull]) c.disabled = asleep;
+    el.settingsAiAsleep.hidden = !asleep;
+    for (const c of [el.settingsAvatarModel, el.settingsReadAloud, el.settingsVoiceLanguage, el.settingsPushPreview, el.settingsGitPull]) c.disabled = asleep;
     el.settingsAvatarModel.value = s.avatarModel || 'gemini-3.1-flash-image';
+    el.settingsReadAloud.value = s.readAloud || 'auto';
     el.settingsVoiceLanguage.value = s.voiceLanguage || '';
     el.settingsPushPreview.value = s.pushPreview || 'title';
     el.settingsGitPull.checked = s.gitAutoPull !== false;
-    renderAvatarKeys();
+    renderAiServices();
 }
 
-/** Only the key of the provider the chosen image model needs; the choice applies here at once, before the answer. */
-export function renderAvatarKeys() {
+// ---------------------------------------------------------------- AI services (the shared API keys)
+// A list of the providers with a key and what each is used for right now; "add" opens one form for the next one.
+
+const AI_PROVIDERS = ['openai', 'gemini'];
+
+/** What the choices above use a provider for: the image model's provider, the voice (as speechProvider() in local/src/speech.ts resolves it). */
+function aiUses(name, keys) {
+    const uses = [];
+    if ((el.settingsAvatarModel.value === 'gpt-image-1' ? 'openai' : 'gemini') === name) uses.push(t('ai.useAvatar'));
+    const choice = el.settingsReadAloud.value;
+    const voice = choice === 'auto' ? AI_PROVIDERS.find((k) => keys[k]) || '' : choice;
+    if (voice === name) uses.push(t('ai.useVoice'));
+    return uses.length ? uses.join(', ') : t('ai.unused');
+}
+
+/** The list and the "add" button; the choices of image model and voice apply here at once, before the answer. */
+export function renderAiServices() {
     const keys = (state.settings || {}).apiKeys || {};
-    const needed = el.settingsAvatarModel.value === 'gpt-image-1' ? 'openai' : 'gemini';
-    for (const box of /** @type {NodeListOf<HTMLElement>} */ (el.settingsBots.querySelectorAll('.settings-key'))) {
-        const name = box.dataset.key || '';
-        box.hidden = name !== needed;
-        keyField(box, `settings.key.${name}`, Boolean(keys[name]), (v) => sendShared({}, { [name]: v }), !state.online.length);
+    const asleep = !state.online.length;
+    const stored = AI_PROVIDERS.filter((k) => keys[k]);
+    el.aiList.replaceChildren();
+    if (!stored.length) el.aiList.appendChild(node('li', 'empty-small', t('ai.none')));
+    for (const name of stored) {
+        const li = node('li');
+        li.dataset.provider = name;
+        const text = node('div', 'd-text');
+        text.append(node('strong', '', t(`ai.${name}`)), node('span', '', t('ai.stored', { uses: aiUses(name, keys) })));
+        const actions = node('div', 'account-actions');
+        const replace = node('button', 'btn small', t('ai.replace'));
+        replace.type = 'button';
+        replace.disabled = asleep;
+        replace.addEventListener('click', () => openAiForm(name));
+        const remove = node('button', 'btn small danger', t('ai.remove'));
+        remove.type = 'button';
+        remove.disabled = asleep;
+        remove.addEventListener('click', () => { if (confirm(t('settings.keyRemoveConfirm'))) sendShared({}, { [name]: '' }); });
+        actions.append(replace, remove);
+        li.append(text, actions);
+        el.aiList.appendChild(li);
     }
+    const free = AI_PROVIDERS.filter((k) => !keys[k]);
+    el.aiAddRow.hidden = !free.length;
+    el.aiAdd.disabled = asleep;
+    // the key just saved arrived: the form for it is done
+    if (!el.aiForm.hidden && !el.aiProvider.disabled && !free.includes(el.aiProvider.value)) closeAiForm();
+}
+
+/** The form for one key: for a new provider (those without a key to choose from) or to replace the key of `name`. */
+export function openAiForm(name = '') {
+    const keys = (state.settings || {}).apiKeys || {};
+    for (const o of el.aiProvider.options) o.hidden = name ? o.value !== name : Boolean(keys[o.value]);
+    el.aiProvider.value = name || AI_PROVIDERS.find((k) => !keys[k]) || AI_PROVIDERS[0];
+    el.aiProvider.disabled = Boolean(name);
+    el.aiKey.value = '';
+    openSettingsDialog(t('ai.title'), el.aiForm, true);
+    el.aiKey.focus();
+}
+
+export function closeAiForm() {
+    closeSettingsDialog(el.aiForm);
+    el.aiForm.hidden = true;
+    el.aiKey.value = '';
+}
+
+export function saveAiKey() {
+    const v = el.aiKey.value.trim();
+    if (!v) { el.aiKey.focus(); return; }
+    sendShared({}, { [el.aiProvider.value]: v });
+    closeAiForm();
 }
 
 /** A change on the settings page (start.js wires the fields). */
@@ -579,9 +652,14 @@ export function renderDevices(list, current) {
  */
 export function renderPairLink(link, box = el.pairBox, hint) {
     if (box === el.pairBox) el.pairCreate.disabled = false;
-    box.hidden = !link;
     box.replaceChildren();
-    if (!link) return;
+    if (!link) {
+        closeSettingsDialog(box);
+        box.hidden = true;
+        return;
+    }
+    if (box === el.pairBox) openSettingsDialog(t('pair.create'), box);
+    else box.hidden = false;
     const qr = node('div', 'pair-qr');
     // SVG from the backend (qrcode library), sanitized like everything else that arrives as markup
     qr.innerHTML = DOMPurify.sanitize(link.svg, { USE_PROFILES: { svg: true } });
@@ -631,7 +709,7 @@ export function renderTotp(status) {
     el.totpBox.replaceChildren();
     if (!status.available) return;
     if (status.active) {
-        el.totpBox.append(node('p', '', '🔐 ' + t('totp.on')), node('p', 'hint', t('totp.offHint')), totpCodeRow('totp.switchOff', 'totp_off', true));
+        el.totpBox.append(node('p', '', t('totp.on')), node('p', 'hint', t('totp.offHint')), totpCodeRow('totp.switchOff', 'totp_off', true));
         return;
     }
     const start = node('button', 'btn', t('totp.setUp'));

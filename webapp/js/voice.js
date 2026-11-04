@@ -5,6 +5,7 @@ import { paneFor, panes } from './panes.js';
 import { bot, responsibleMachine, send, showImageLarge, upper } from './e2e.js';
 import { scroll, setReply } from './chat-features.js';
 import { approvalsToBottom, composerButtons, showEvent, textHeight } from './queue.js';
+import { expectAnswer } from './read-aloud.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -143,6 +144,7 @@ export async function stopRecording(submit) {
     p.el.text.value = '';
     textHeight(p);
     showVoicePending(chatId, length);
+    expectAnswer(chatId);
 }
 
 /** Placeholder until the transcript comes back from the machine. */

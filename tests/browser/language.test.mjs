@@ -9,18 +9,18 @@ export default async function ({ start, check }) {
     const p = h.page;
     const texts = () => p.evaluate(() => ({
         lang: document.documentElement.lang,
-        settings: document.querySelector('#btn-settings').title,
+        settings: document.querySelector('[data-tab=settings]').textContent.trim(),
         search: document.getElementById('search').placeholder,
         searchLabel: document.getElementById('search').getAttribute('aria-label'),
         newTitle: document.getElementById('btn-new').title,
         empty: document.querySelector('#chat-empty p').textContent,
         status: document.querySelector('#agent-status span').textContent,
-        footer: document.getElementById('footer-handle').getAttribute('aria-label'),
+        machines: document.querySelector('[data-tab=machines]').textContent.trim(),
     }));
     let s = await texts();
-    check('German browser: German UI and <html lang="de">', s.lang === 'de' && s.settings.startsWith('Einstellungen:') && s.status === 'DESK, WORKSTATION verbunden', s);
+    check('German browser: German UI and <html lang="de">', s.lang === 'de' && s.settings === 'Einstellungen' && s.status === 'DESK, WORKSTATION verbunden', s);
     check('data-i18n texts, placeholders, titles and aria labels in German', s.search === 'In allen Chats suchen' && s.searchLabel === 'In allen Chats suchen'
-        && s.newTitle === 'Neue Unterhaltung, neuer Bot oder neue Gruppe' && s.empty.startsWith('Wähle links einen Bot') && s.footer === 'Mehr anzeigen', s);
+        && s.newTitle === 'Neue Unterhaltung, neuer Bot oder neue Gruppe' && s.empty.startsWith('Wähle links einen Bot') && s.machines === 'Status', s);
 
     // a message code from the relay in German
     await h.openChat('Anna');
@@ -32,7 +32,7 @@ export default async function ({ start, check }) {
     await h.wait(300);
 
     // switch to English in the settings
-    await p.click('#btn-settings');
+    await p.click('[data-tab=settings]');
     await h.wait(100);
     check('language select: automatic is chosen', (await p.inputValue('#settings-language')) === '', await p.inputValue('#settings-language'));
     check('language options', (await p.locator('#settings-language option').allTextContents()).join('|') === 'Automatisch|English|Deutsch');
@@ -41,12 +41,13 @@ export default async function ({ start, check }) {
     const frames = h.sent.filter((f) => f.type === 'language');
     check('`language` frame to every machine that is awake', frames.length === 2 && frames.every((f) => f.language === 'en') && frames.map((f) => f.machine).sort().join() === 'desk,workstation', frames);
     s = await texts();
-    check('re-rendered in English without a reload', s.lang === 'en' && s.settings.startsWith('Settings:') && s.search === 'Search all chats' && s.status === 'DESK, WORKSTATION connected'
-        && s.newTitle === 'New conversation, new bot or new group' && s.footer === 'Show more', s);
-    check('the open settings dialog is English too', (await p.textContent('#settings h2')) === 'Settings'
+    check('re-rendered in English without a reload', s.lang === 'en' && s.settings === 'Settings' && s.search === 'Search all chats' && s.status === 'DESK, WORKSTATION connected'
+        && s.newTitle === 'New conversation, new bot or new group' && s.machines === 'Status', s);
+    check('the open settings page is English too', (await p.textContent('#settings .settings-bar strong')) === 'Settings'
         && (await p.locator('#settings-language option').allTextContents()).join('|') === 'Automatic|English|Deutsch');
     check('chosen language stored on this device', await p.evaluate(() => localStorage.getItem('openfolk-language') === 'en'));
-    await p.click('#settings .settings-close-row [data-close]');
+    // the arrow on a phone, the X on a wide screen
+    await p.locator('#settings .settings-bar .round:visible').first().click();
     await p.click('#btn-new');
     check('"+" menu rebuilt in English', (await p.locator('#new-menu button').allTextContents()).join('|') === 'New conversation|New bot|New group');
     await p.click('#btn-new');
@@ -61,5 +62,5 @@ export default async function ({ start, check }) {
     await g.push({ type: 'settings', machine: 'desk', settings: { language: 'en', updatedAt: new Date().toISOString() } });
     await g.wait(100);
     check('setting of the backends applies without a choice of its own', (await pg.evaluate(() => document.documentElement.lang)) === 'en'
-        && (await pg.getAttribute('#btn-settings', 'title')).startsWith('Settings:') && await pg.evaluate(() => localStorage.getItem('openfolk-language-backend') === 'en'));
+        && (await pg.textContent('[data-tab=settings]')).trim() === 'Settings' && await pg.evaluate(() => localStorage.getItem('openfolk-language-backend') === 'en'));
 }

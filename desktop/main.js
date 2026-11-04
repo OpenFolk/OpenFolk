@@ -1,11 +1,13 @@
 // OpenFolk as a desktop app for Windows, Linux and macOS: a tray icon on Windows and Linux, Dock and menu bar on the
 // Mac, start at login everywhere. Two ways to run: "on this computer" runs the backend inside the app (backend.js),
-// with the relay embedded or, once joined to a server (or a relay claimed from the app), with the relay there, and shows
-// the web app from that relay; "connect to a relay" loads the web app from a relay elsewhere, like the browser. Login, device key and display settings stay in the app's profile (%APPDATA%\OpenFolk,
-// ~/.config/OpenFolk, ~/Library/Application Support/OpenFolk).
+// with the relay embedded or, once joined to a server (or a relay claimed from the app), with the relay there;
+// "connect to a relay" talks to a relay elsewhere. Either way the window shows the app's own copy of the web app
+// (openfolk://app, like the mobile apps), pointed at that relay, so the app can also hold several relays (webapp/js/relays.js).
+// Login, device key and display settings stay in the app's profile (%APPDATA%\OpenFolk, ~/.config/OpenFolk,
+// ~/Library/Application Support/OpenFolk).
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, shell, ipcMain, nativeImage, dialog, session } = require('electron');
+const { app, BrowserWindow, Tray, Menu, shell, ipcMain, nativeImage, dialog, protocol, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Backend, freePort, guardQuit, joinServer, remoteUrl, root } = require('./backend.js');
@@ -16,6 +18,56 @@ const { startUpdates, updateMenuItems } = require('./updater.js');
 const CONFIG = () => path.join(app.getPath('userData'), 'config.json');
 const SETUP = path.join(__dirname, 'setup.html');
 const MAC = process.platform === 'darwin';
+
+/**
+ * The web app's own address in the app. A scheme of its own, registered as standard and secure, so the page has an
+ * origin (storage, crypto, IndexedDB) and the relays can allow exactly it (relay/src/auth.ts, originAllowed).
+ */
+const APP = 'openfolk://app/';
+protocol.registerSchemesAsPrivileged([{ scheme: 'openfolk', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
+
+const WEBAPP = () => path.join(root(), 'webapp');
+/** The libraries the web app loads from the relay's /vendor/ (relay/src/relay.ts): here from the bundled node_modules. */
+const VENDOR = {
+    '/vendor/marked.umd.js': ['marked', 'lib', 'marked.umd.js'],
+    '/vendor/purify.min.js': ['dompurify', 'dist', 'purify.min.js'],
+    '/vendor/qrcode.js': ['qrcode-generator', 'dist', 'qrcode.js'],
+    '/vendor/jsQR.js': ['jsqr', 'dist', 'jsQR.js'],
+};
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png' };
+
+/** The web app's files for openfolk://app/…; nothing outside webapp/ and the vendor files, nothing from a relay. */
+function serveWebApp(request) {
+    const url = new URL(request.url);
+    const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
+    const file = VENDOR[pathname] ? path.join(root(), 'node_modules', ...VENDOR[pathname]) : path.resolve(WEBAPP(), '.' + pathname);
+    if (!VENDOR[pathname] && !file.startsWith(WEBAPP() + path.sep)) return new Response('', { status: 403 });
+    let body;
+    try { body = fs.readFileSync(file); } catch { return new Response('', { status: 404 }); }
+    // The relay's security headers (relay.ts), with connect-src open: the page talks to relays elsewhere
+    return new Response(body, {
+        headers: {
+            'content-type': TYPES[path.extname(file)] || 'application/octet-stream',
+            'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
+                + "connect-src https: wss: http: ws:; manifest-src 'self'; worker-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
+            'x-content-type-options': 'nosniff',
+        },
+    });
+}
+
+/**
+ * The page for a relay: `#relay=` names it, a pairing link's `#pair=…&e2e=…` follows (webapp/js/core.js takes the
+ * relay in, e2e.js the sign-in and the key).
+ * @param {string} relay http(s) address of the relay
+ * @param {string} [hash] the part behind '#' of a pairing link from that relay
+ */
+const appLink = (relay, hash = '') => `${APP}#relay=${encodeURIComponent(relay.replace(/\/+$/, ''))}${hash ? '&' + hash : ''}`;
+
+/** A pairing link of a relay (`https://relay/#pair=…&e2e=…`) as the app's page for that relay. */
+function appLinkFromPairing(link) {
+    const u = new URL(link);
+    return appLink(u.origin, u.hash.replace(/^#/, ''));
+}
 
 /** Texts of the app itself (menus, tray, setup page); the web app from the relay translates itself. */
 const TEXTS = {
@@ -101,6 +153,7 @@ const TEXTS = {
         updateDownloading: 'OpenFolk {version} is being downloaded. The app asks to restart once it is ready.',
         updateFailed: 'Could not check for updates: {error}',
         updateNotHere: 'This build of OpenFolk {version} does not update itself. New versions are on openfolk.app.',
+        countActive: 'Count this installation anonymously',
     },
     de: {
         open: 'OpenFolk öffnen',
@@ -184,6 +237,7 @@ const TEXTS = {
         updateDownloading: 'OpenFolk {version} wird geladen. Die App fragt nach dem Neustart, sobald es fertig ist.',
         updateFailed: 'Die Suche nach Updates ist fehlgeschlagen: {error}',
         updateNotHere: 'Dieser Build von OpenFolk {version} aktualisiert sich nicht selbst. Neue Versionen gibt es auf openfolk.app.',
+        countActive: 'Installation anonym mitzählen',
     },
 };
 
@@ -228,9 +282,6 @@ function loadConfig() {
     if (process.env.OPENFOLK_URL) Object.assign(config, { mode: 'relay', url: process.env.OPENFOLK_URL });
 }
 
-/** Origin the web app comes from: the embedded relay or the relay's address. */
-const appUrl = () => (config.mode === 'local' && backend ? backend.url : config.url || '');
-
 function saveConfig() {
     fs.mkdirSync(path.dirname(CONFIG()), { recursive: true });
     fs.writeFileSync(CONFIG(), JSON.stringify(config, null, 2));
@@ -250,11 +301,11 @@ function normalizeAddress(input) {
 
 function loadWebApp() {
     if (config.mode === 'local') void startLocal();
-    else if (config.mode === 'relay' && config.url) win.loadURL(config.url);
+    else if (config.mode === 'relay' && config.url) win.loadURL(appLink(config.url));
     else win.loadFile(SETUP);
 }
 
-/** Starts the backend (once) and shows the web app from its relay; the first time with a pairing link. */
+/** Starts the backend (once) and shows the web app for its relay; the first time with a pairing link. */
 async function startLocal() {
     win.loadFile(SETUP, { query: { starting: '1' } });
     if (!config.localPort) {
@@ -272,7 +323,7 @@ async function startLocal() {
     }
     // Signed in at this relay already; a relay claimed from the app or joined by invitation needs a new sign-in
     if (config.paired === backend.url) {
-        win.loadURL(backend.url);
+        win.loadURL(appLink(backend.url));
         return;
     }
     await pairAgain();
@@ -282,12 +333,24 @@ async function startLocal() {
 async function pairAgain() {
     if (!backend) return;
     try {
-        win.loadURL(await backend.pairingUrl());
+        win.loadURL(appLinkFromPairing(await backend.pairingUrl()));
         config.paired = backend.url;
         saveConfig();
     } catch (e) {
         win.loadFile(SETUP, { query: { error: e.message, log: backend.log } });
     }
+}
+
+/** The window signed itself in at a relay with a pairing link in its address: remembered, so the next start needs no new one. */
+function notePairing(url) {
+    if (config.mode !== 'local' || !url.startsWith(APP)) return;
+    const params = new URLSearchParams(url.split('#')[1] || '');
+    const relay = params.get('relay');
+    if (!params.get('pair') || !relay || !/^https?:\/\//.test(relay)) return;
+    const paired = relay.replace(/\/?$/, '/');
+    if (config.paired === paired) return;
+    config.paired = paired;
+    saveConfig();
 }
 
 function createWindow() {
@@ -330,18 +393,14 @@ function createWindow() {
         return { action: 'deny' };
     });
     win.webContents.on('will-navigate', (e, url) => {
-        if (url.startsWith('file://')) return;
-        if (appUrl() && url.startsWith(appUrl())) {
-            // The web app follows its backend to a relay claimed from the app, with a pairing link of that relay
-            if (config.mode === 'local' && url.includes('#pair=') && config.paired !== appUrl()) {
-                config.paired = appUrl();
-                saveConfig();
-            }
-            return;
-        }
+        if (url.startsWith('file://') || url.startsWith(APP)) return;
         e.preventDefault();
         shell.openExternal(url);
     });
+    // The web app follows its backend to a relay claimed from the app: it puts that relay's pairing link into its
+    // address and loads again (webapp/js/relays.js), which is no will-navigate; both events carry the address with '#'
+    win.webContents.on('did-navigate', (e, url) => notePairing(url));
+    win.webContents.on('did-navigate-in-page', (e, url) => notePairing(url));
     win.webContents.on('did-fail-load', (e, code, text, url) => {
         if (code === -3 || !url || url.startsWith('file://')) return; // -3 = aborted (own navigation)
         win.loadFile(SETUP, { query: { error: `${text} (${code})`, url: config.url || '', ...(backend ? { log: backend.log } : {}) } });
@@ -531,6 +590,7 @@ if (!app.requestSingleInstanceLock()) {
 
     app.whenReady().then(() => {
         loadConfig();
+        protocol.handle('openfolk', serveWebApp);
         // Allow microphone (voice messages) and notifications without a browser prompt
         session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => {
             callback(['media', 'notifications', 'clipboard-read', 'clipboard-sanitized-write', 'fullscreen'].includes(permission));

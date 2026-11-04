@@ -1,5 +1,5 @@
 // Codex as a second engine: chip "Codex" in the model switch (as soon as the machine reports Codex models), the header
-// shows the Codex model, account of both plans in the footer, limits of Claude and Codex separate, Codex in the bot editor.
+// shows the Codex model, account of both plans on the status page, limits of Claude and Codex separate, Codex in the bot editor.
 import { bot } from './harness.mjs';
 
 const MODELS = [
@@ -43,16 +43,17 @@ export default async function ({ start, check }) {
 
     // account and limits of both plans
     await h.push({ type: 'account', subscription: 'max', model: 'claude-opus-5-5', version: '2.5.0', apiKeySource: 'none' });
-    await h.push({ type: 'usage', usage: { status: 'allowed', fiveHour: { utilization: 0.4 }, sevenDay: { utilization: 0.1 }, updatedAt: '' } });
+    await h.push({ type: 'usage', usage: { status: 'allowed', fiveHour: { utilization: 0.4 }, sevenDay: { utilization: 0.1 }, models: [{ name: 'Fable', utilization: 0.55, resetsAt: 1791648803 }], updatedAt: '' } });
     await h.wait(100);
     const bars = () => p.locator('#usage .usage-bar > span:first-child').allTextContents();
-    check('only Claude: bars without prefix', (await bars()).join('|') === '5 h|Week', await bars());
+    check('only Claude: bars without prefix, Fable as a bar of its own', (await bars()).join('|') === '5 h|Week|Fable Week', await bars());
+    check('the bars say when the window resets', (await p.locator('#usage .usage-reset').count()) === 1 && (await p.textContent('#usage .usage-reset')).startsWith('resets '), await p.locator('#usage .usage-reset').allTextContents());
     await h.push({ type: 'account', subscription: 'plus', model: 'gpt-6.1-sol', version: '0.162.1', apiKeySource: 'none', engine: 'codex' });
     await h.push({ type: 'usage', engine: 'codex', usage: { status: 'rejected', fiveHour: { utilization: 1, resetsAt: 1791648803 }, sevenDay: { utilization: 0.3 }, resetsAt: 1791648803, updatedAt: '' } });
     await h.wait(100);
     const account = await p.textContent('#account');
     check('account shows both plans', account.includes('max · Claude Code 2.5.0') && account.includes('ChatGPT plus · Codex 0.162.1'), account);
-    check('bars per plan', (await bars()).join('|') === 'Claude 5 h|Claude Week|Codex 5 h|Codex Week', await bars());
+    check('bars per plan', (await bars()).join('|') === 'Claude 5 h|Claude Week|Fable Week|Codex 5 h|Codex Week', await bars());
     const limit = await p.locator('#usage .limit').allTextContents();
     check('Codex limit reported, Claude not', limit.length === 1 && limit[0].startsWith('Codex limit reached'), limit);
 

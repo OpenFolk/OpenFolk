@@ -1,9 +1,10 @@
 // The desktop app end to end, from source (desktop/) or as a built app, each run with a profile of its own:
-// 1. "On this computer": the app starts its backend with the embedded relay, signs its window in with a pairing link,
-//    and the web app shows the connected machine. Then the first steps move it to a relay on a server (claimed with
-//    the setup code from that relay's log): the window follows, signed in there, and the backend connects there.
+// 1. "On this computer": the app starts its backend with the embedded relay, signs its window (the app's own copy of
+//    the web app, openfolk://app) in with a pairing link, and the web app shows the connected machine. Then the first
+//    steps move it to a relay on a server (claimed with the setup code from that relay's log): the window follows,
+//    signed in there, and the backend connects there.
 // 2. "Connect this computer to my server": the link from "Add machine" on the setup page joins the computer to a relay;
-//    the backend runs in the app and the window comes from that relay.
+//    the backend runs in the app and the window is pointed at that relay.
 // The relays are real relay processes on 127.0.0.1. The app is quit gently each time.
 //   node scripts/desktop-smoke.mjs [--exe <packaged app>]   (--exe: the built app, e.g. win-unpacked/OpenFolk.exe)
 import { spawn } from 'node:child_process';
@@ -76,6 +77,12 @@ async function quit(run) {
 const machineConnected = (win) => win.waitForFunction(() => document.querySelector('.welcome-steps li:nth-child(1)')?.classList.contains('done'), null, { timeout: 60_000 })
     .then(() => true, () => false);
 
+/** The window is the app's own page (openfolk://app), pointed at the relay `origin`; waits through a reload. */
+const relayShown = (win, origin, ms = 90_000) => until(async () => {
+    if (!win.url().startsWith('openfolk://app/')) return false;
+    return win.evaluate(() => localStorage.getItem('openfolk-relay')).then((v) => v === origin, () => false);
+}, ms);
+
 function showLog(run) {
     try { console.log(fs.readFileSync(path.join(run.profile, 'data', 'local.log'), 'utf8').slice(-2500)); } catch { /* no log */ }
 }
@@ -87,10 +94,11 @@ function showLog(run) {
     let port = 0;
     try {
         const win = await run.app.firstWindow();
-        await win.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90_000 });
+        await win.waitForURL(/^openfolk:\/\/app\//, { timeout: 90_000 });
+        await until(() => run.config().localPort, 30_000);
         port = run.config().localPort;
         check('a port of its own, kept in the profile', Number.isInteger(port) && port > 0, run.config());
-        check('the window comes from the embedded relay', win.url().startsWith(`http://127.0.0.1:${port}/`), win.url());
+        check('the window is the app\'s own page, pointed at the embedded relay', await relayShown(win, `http://127.0.0.1:${port}`), win.url());
         await win.waitForSelector('#chat-list .welcome', { timeout: 60_000 });
         check('signed in without a password, the machine is connected', await machineConnected(win));
         check('the pairing link is gone from the address bar', !win.url().includes('e2e='), win.url());
@@ -104,7 +112,7 @@ function showLog(run) {
         await win.fill(`${form} input[name="address"]`, server.origin);
         await win.fill(`${form} input[name="code"]`, 'MNPQR-STUVW');
         await win.click(`${form} button`);
-        const moved = await win.waitForURL((u) => u.href.startsWith(`${server.origin}/`), { timeout: 30_000 }).then(() => true, () => false);
+        const moved = await relayShown(win, server.origin, 30_000);
         check('claimed from the app: the window follows to the relay on the server', moved, win.url());
         check('there signed in again and the machine is connected', moved && await machineConnected(win));
         check('the backend connected to that relay', await until(() => / connected from /.test(server.log()), 20_000), server.log().slice(-800));
@@ -137,8 +145,8 @@ function showLog(run) {
         check('setup page: a broken link is refused with a reason', (await win.waitForFunction(() => document.getElementById('join-error').textContent, null, { timeout: 15_000 }).then(() => true, () => false)));
         await win.fill('#join', `${server.origin}/#join=${invite.token}&e2e=${key}`);
         await win.click('#join-form button');
-        const loaded = await win.waitForURL((u) => u.href.startsWith(`${server.origin}/`), { timeout: 90_000 }).then(() => true, () => false);
-        check('joined: the window comes from the relay on the server', loaded, win.url());
+        const loaded = await relayShown(win, server.origin);
+        check('joined: the window is pointed at the relay on the server', loaded, win.url());
         check('signed in there, the machine of this computer is connected', loaded && await machineConnected(win));
         check('the profile\'s .env has the relay, a token of its own and the key', /RELAY_URL=ws:\/\/127\.0\.0\.1/.test(run.env()) && /AGENT_TOKEN=\S+/.test(run.env())
             && run.env().includes(`E2E_KEY=${key}`) && !run.env().includes(AGENT_TOKEN));
@@ -180,8 +188,8 @@ if (process.platform === 'win32') {
         const app = await electron.launch({ executablePath: exe, args: packaged ? [] : [appDir], env: env2 });
         run = { app, profile, config: () => readJson(path.join(profile, 'config.json')), env: () => '' };
         const win = await app.firstWindow();
-        const loaded = await win.waitForURL((u) => u.href.startsWith(`${server.origin}/`), { timeout: 90_000 }).then(() => true, () => false);
-        check('with the task on: the window comes from the relay, signed in', loaded && await machineConnected(win), win.url());
+        const loaded = await relayShown(win, server.origin);
+        check('with the task on: the window is pointed at the relay, signed in', loaded && await machineConnected(win), win.url());
         check('with the task on: the app started no backend of its own', !log().includes('Start backend (desktop app'));
         await quit(run);
         run = null;

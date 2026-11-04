@@ -25,6 +25,7 @@ accepted('new routine (empty id)', { type: 'routine_save', routine: { id: '', bo
 accepted('fact', { type: 'knowledge_save', botId: 'cloud', location: { scope: 'all', key: '' }, fact: { name: 'servers', type: 'reference', description: 'Hosts', text: '...' }, oldName: undefined });
 accepted('answer to a question', { type: 'approval_reply', id: 'q1', allow: true, answers: { 'Which?': 'A, B' } });
 accepted('check a folder', { type: 'folder_check', folder: '/work/website' });
+accepted('list the allowed roots', { type: 'folder_list', folder: '' });
 accepted('clone a repository', { type: 'folder_clone', url: 'https://git.example.com/team/website.git' });
 accepted('denial with a reason', { type: 'approval_reply', id: 'a1', message: 'not now', allow: false });
 accepted('read state', { type: 'seen', state: { cloud: { until: '2026-10-13T08:00:00Z', updatedAt: '2026-10-13T08:00:00Z' }, pdf: { until: undefined, unread: true, updatedAt: '2026-10-13T08:00:00Z' } } });

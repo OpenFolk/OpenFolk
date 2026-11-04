@@ -21,6 +21,9 @@ Object.assign(process.env, {
     FCM_SERVICE_ACCOUNT_FILE: path.join(dir, 'firebase.json'),
 });
 delete process.env.APNS_ENV;
+// The address the apps store for this relay: their notifications name it, so an app on several relays opens the right one
+process.env.APP_URL = 'https://relay.example.com';
+const LINK = '/?chat=cloud&relay=https%3A%2F%2Frelay.example.com';
 
 const { transport, resetNativeConfig } = await import('../../shared/push-native.ts');
 const { saveSubscription, subscriptions, mergeSubscriptions, sendPush, pushChannels } = await import('./push.ts');
@@ -69,11 +72,11 @@ await sendPush({ title: 'Cloud agent', body: 'Deploy finished: 3 services restar
 const a = apnsCalls[0];
 check('APNs: production host and device path', a?.host === 'api.push.apple.com' && a.path === `/3/device/${IPHONE}`, a);
 check('APNs: topic is the app id, alert push', a?.headers['apns-topic'] === 'io.openfolk.app' && a.headers['apns-push-type'] === 'alert');
-check('APNs: priority 10, collapse id = tag', a?.headers['apns-priority'] === '10' && a.headers['apns-collapse-id'] === 'cloud');
+check('APNs: priority 10, collapse id = tag', a?.headers['apns-priority'] === '10' && a.headers['apns-collapse-id'] === 'relay.example.com:cloud');
 const at = verifyJwt(a.headers.authorization.replace(/^bearer /, ''), apnsKeys.publicKey, true);
 check('APNs token: ES256 signature valid, key id and team', at.ok && at.header.alg === 'ES256' && at.header.kid === 'KEY123' && at.claims.iss === 'TEAM456', at);
 const ap = JSON.parse(a.body);
-check('APNs payload: only the title by default, link to the chat', ap.aps.alert.title === 'Cloud agent' && ap.aps.alert.body === undefined && ap.url === '/?chat=cloud', ap);
+check('APNs payload: only the title by default, link to the chat', ap.aps.alert.title === 'Cloud agent' && ap.aps.alert.body === undefined && ap.url === LINK, ap);
 check('APNs payload: with sound, active', ap.aps.sound === 'default' && ap.aps['interruption-level'] === 'active');
 
 // ---- FCM
@@ -84,8 +87,8 @@ check('FCM sign-in: RS256 assertion of the service account', ft.ok && ft.header.
 const send = postCalls.find((c) => c.url?.includes('/messages:send'));
 check('FCM: project from the service account, bearer token', send?.url === 'https://fcm.googleapis.com/v1/projects/openfolk-test/messages:send' && send.headers.authorization === 'Bearer ya29.test');
 const fm = JSON.parse(send?.body ?? '{}').message;
-check('FCM message: token, title only, link as data', fm?.token === PIXEL && fm.notification.title === 'Cloud agent' && fm.notification.body === undefined && fm.data.url === '/?chat=cloud', fm);
-check('FCM message: normal priority, collapses per chat', fm?.android.priority === 'NORMAL' && fm.android.collapse_key === 'cloud' && fm.android.notification.tag === 'cloud');
+check('FCM message: token, title only, link as data', fm?.token === PIXEL && fm.notification.title === 'Cloud agent' && fm.notification.body === undefined && fm.data.url === LINK, fm);
+check('FCM message: normal priority, collapses per chat', fm?.android.priority === 'NORMAL' && fm.android.collapse_key === 'relay.example.com:cloud' && fm.android.notification.tag === 'relay.example.com:cloud');
 
 // ---- quiet, full preview; access token reused
 apnsCalls = [];
@@ -109,7 +112,7 @@ saveSettings({ pushPreview: 'none' });
 apnsCalls = [];
 await sendPush({ title: 'Approval', body: 'rm -rf build', url: '/?chat=cloud' });
 const n = JSON.parse(apnsCalls[0]?.body ?? '{}');
-check('no preview: neither bot nor text, still the link', n.aps?.alert?.title === 'OpenFolk' && n.aps.alert.body === undefined && n.url === '/?chat=cloud', n);
+check('no preview: neither bot nor text, still the link', n.aps?.alert?.title === 'OpenFolk' && n.aps.alert.body === undefined && n.url === LINK, n);
 check('without kind (security warning): high, time-sensitive', n.aps?.['interruption-level'] === 'time-sensitive' && apnsCalls[0].headers['apns-priority'] === '10');
 saveSettings({ pushPreview: 'title' });
 
@@ -150,7 +153,7 @@ relayPush.channels = () => ['fcm'];
 relayPush.send = (subscriptions, message) => { handed.push({ subscriptions, message }); return true; };
 await sendPush({ title: 'Cloud agent', body: 'Deploy finished', url: '/?chat=cloud', tag: 'cloud' }, 'done');
 check('FCM tokens go to the relay, the APNs token (no credentials anywhere) stays home', handed.length === 1 && handed[0].subscriptions.length === 1 && (handed[0].subscriptions[0] as { token: string }).token === PIXEL, handed);
-check('relay gets the preview only (title, no text) and the link', handed[0]?.message.title === 'Cloud agent' && handed[0]?.message.body === '' && handed[0]?.message.url === '/?chat=cloud' && handed[0]?.message.priority === 'normal', handed[0]?.message);
+check('relay gets the preview only (title, no text) and the link', handed[0]?.message.title === 'Cloud agent' && handed[0]?.message.body === '' && handed[0]?.message.url === LINK && handed[0]?.message.priority === 'normal', handed[0]?.message);
 check('web app learns the relay\'s channel as deliverable', pushChannels().join() === 'web,fcm');
 process.env.APNS_KEY_FILE = path.join(dir, 'AuthKey.p8');
 process.env.APNS_KEY_ID = 'KEY123';

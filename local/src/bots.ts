@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.ts';
 import { t } from './i18n.ts';
+import { rememberable } from './policy.ts';
 import { readJson, readJsonCached, setTombstone, slug, writeJson } from './store.ts';
-import { botIdOf, type ApprovalPolicy, type Bot, type BotInput, type Group, type GroupInput } from '../../shared/protocol.ts';
+import { BOT_VOICES, botIdOf, type ApprovalPolicy, type Bot, type BotInput, type BotVoice, type Group, type GroupInput } from '../../shared/protocol.ts';
 
 const POLICIES: ApprovalPolicy[] = ['never', 'risky', 'write'];
 
@@ -112,6 +113,10 @@ export function saveBot(input: BotInput): Bot {
         tone: input.tone ?? '',
         avatar: input.avatar ?? '',
         approval: POLICIES.includes(input.approval) ? input.approval : 'risky',
+        // '' = guess from the name; an app without the field leaves it as it is
+        voice: input.voice === undefined ? existing?.voice : BOT_VOICES.includes(input.voice as BotVoice) ? input.voice as BotVoice : undefined,
+        // The editor can only take tools off the list; they come onto it from an approval card (allowTool)
+        allowedTools: input.allowedTools === undefined ? existing?.allowedTools : toolList(input.allowedTools.filter((tool) => existing?.allowedTools?.includes(tool))),
         canMessage: input.canMessage === undefined ? existing?.canMessage
             : input.canMessage === null ? undefined : [...new Set(input.canMessage)].filter((b) => b !== id && bots.some((x) => x.id === b)),
         machine,
@@ -288,6 +293,22 @@ export function saveGroup(input: GroupInput): Group {
 }
 
 /** Mark a bot or group (chatId 'g:<id>') as favorite or remove the mark. */
+const toolList = (tools: string[]): string[] | undefined => {
+    const list = [...new Set(tools)].filter(rememberable).sort();
+    return list.length ? list : undefined;
+};
+
+/** "Always for this bot" on an approval card: the tool no longer asks for this bot, on every machine. */
+export function allowTool(botId: string, tool: string): Bot {
+    const bots = loadBots();
+    const bot = bots.find((b) => b.id === botId);
+    if (!bot) throw new Error(t('bots.botNotFound'));
+    bot.allowedTools = toolList([...(bot.allowedTools ?? []), tool]);
+    bot.updatedAt = new Date().toISOString();
+    saveBots(bots);
+    return bot;
+}
+
 export function setFavorite(chatId: string, on: boolean): void {
     setFlag(chatId, 'favorite', on);
 }

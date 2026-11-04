@@ -1,7 +1,7 @@
 // AI providers in the settings of a machine: a switch per engine, per engine subscription or key, the key field only
 // for the key; switching to a key without one stored sends key and choice together. A backend before the choice
 // shows Claude alone. Claude can also run on both by rules (switch at the limit, a daily cap for the key). The image
-// model's provider decides which key the bots' settings show.
+// model's provider decides what the AI services list says a key is used for.
 
 const SETTINGS = {
     claudeAuth: 'subscription', claudeFallback: 'limit', claudeKeyBudgetUsd: 0, engineAuth: {}, disabledEngines: [], shutdown: true, shutdownDelaySeconds: 60, afterWake: 'ifIdle', afterWakeSeconds: 300,
@@ -19,7 +19,7 @@ export default async function ({ start, check }) {
         settings: { ...SETTINGS, ...settings }, ...more,
     });
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'embedded', container: false, engines: { claude: 'ready', codex: 'sign_in', cursor: 'missing', copilot: 'ready', antigravity: 'ready', opencode: 'ready' } });
-    await p.click('#btn-settings');
+    await p.click('[data-tab=settings]');
     await machineSettings({});
     await h.wait(100);
     await p.click('#settings-machines details summary');
@@ -126,12 +126,14 @@ export default async function ({ start, check }) {
     check('older backend: Claude alone, no switches', f.parts.join() === 'claude' && !Object.keys(f.switches).length, f);
     check('older backend: no subscription and key by rules', (await options('claude')) === 'subscription,apikey');
 
-    // the bots' image model decides which key shows
-    const visibleKeys = () => p.evaluate(() => [...document.querySelectorAll('#settings-bots .settings-key')].filter((b) => !b.hidden).map((b) => b.dataset.key).join());
-    check('image model from Google: only the Gemini key', (await visibleKeys()) === 'gemini', await visibleKeys());
+    // the image model decides what a stored key is used for
+    await h.push({ type: 'settings', machine: 'desk', settings: { language: 'en', apiKeys: { gemini: true, openai: true }, updatedAt: '2026-10-18T10:00:00Z' } });
+    await h.wait(100);
+    const uses = () => p.evaluate(() => [...document.querySelectorAll('#settings-ai-list li[data-provider]')].map((li) => li.dataset.provider + ': ' + li.querySelector('span').textContent.split(' · ')[1]).join('|'));
+    check('image model from Google: Gemini for pictures, OpenAI for the voice', (await uses()) === 'openai: reading aloud|gemini: profile pictures', await uses());
     await p.selectOption('#settings-avatar-model', 'gpt-image-1');
     await h.wait(100);
-    check('image model from OpenAI: only the OpenAI key, at once', (await visibleKeys()) === 'openai', await visibleKeys());
+    check('image model from OpenAI: shown at once', (await uses()) === 'openai: profile pictures, reading aloud|gemini: not used right now', await uses());
     check('no errors', h.errors.length === 0, h.errors);
     await h.close();
 }

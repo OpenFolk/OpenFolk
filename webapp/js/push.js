@@ -1,8 +1,7 @@
 /* OpenFolk web app: push notifications. */
-import { locale, t } from './i18n.js';
+import { t } from './i18n.js';
 import { el, node, state } from './core.js';
-import { bot, fillAvatar, group, isGroup, send } from './e2e.js';
-import { baseChats, toggleMuted } from './connection.js';
+import { send } from './e2e.js';
 import { pushChannel, pushPermission, pushSubscription } from './platform.js';
 
 // ================================================================ Push
@@ -78,30 +77,6 @@ export function renderPushSettings() {
             send({ type: 'push_settings', kinds: { [kind]: select.value } });
         });
         el.pushKinds.append(l, select);
-    }
-
-    el.pushChats.innerHTML = '';
-    const chats = baseChats().map((id) => [id, isGroup(id) ? group(id) : bot(id)]).filter(([, o]) => o)
-        .sort((a, b) => a[1].name.localeCompare(b[1].name, locale()));
-    if (!chats.length) el.pushChats.appendChild(node('li', 'empty-small', t('push.noBots')));
-    for (const [id, o] of chats) {
-        const li = document.createElement('li');
-        const label = document.createElement('label');
-        const box = document.createElement('input');
-        box.type = 'checkbox';
-        box.checked = !!o.muted;
-        box.disabled = !state.agentOnline;
-        const badge = node('span', 'muted-badge', '🔕');
-        badge.hidden = !o.muted;
-        box.addEventListener('change', () => {
-            if (!!o.muted !== box.checked) toggleMuted(id);
-            badge.hidden = !box.checked;
-        });
-        const av = node('div', 'avatar' + (isGroup(id) ? ' group' : ''));
-        fillAvatar(av, o, id);
-        label.append(box, av, node('span', 'name', o.name), badge);
-        li.appendChild(label);
-        el.pushChats.appendChild(li);
     }
 }
 

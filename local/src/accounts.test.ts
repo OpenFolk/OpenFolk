@@ -129,7 +129,15 @@ const guestEngines = path.join(dir, 'accounts', 'guest', 'engines');
 const guestEnv = inAccount('guest', () => home.claudeEnv());
 check('other account: own Claude folder in its data', guestEnv.CLAUDE_CONFIG_DIR === path.join(guestEngines, 'claude') && fs.existsSync(path.join(guestEngines, 'claude')));
 check('other account: never the owner\'s API key', !('ANTHROPIC_API_KEY' in guestEnv) && inAccount('guest', home.accountAuth) === 'subscription'
-    && inAccount('guest', home.claudeSettings) === undefined);
+    && !('apiKeyHelper' in inAccount('guest', home.claudeSettings)));
+{
+    const machine = await import('./machine-settings.ts');
+    check('claude.ai connectors off unless the machine settings let them in', inAccount('guest', home.claudeSettings).disableClaudeAiConnectors === true
+        && inAccount('main', home.claudeSettings).disableClaudeAiConnectors === true);
+    machine.saveMachineSettings({ claudeAiConnectors: true });
+    check('connectors switched on in the machine settings: no switch-off', !('disableClaudeAiConnectors' in inAccount('main', home.claudeSettings)));
+    machine.saveMachineSettings({ claudeAiConnectors: false });
+}
 const mainEnv = inAccount('main', () => home.claudeEnv());
 check('main: the machine\'s Claude folder and its API key, as before', !('CLAUDE_CONFIG_DIR' in mainEnv) && mainEnv.ANTHROPIC_API_KEY === 'sk-test-owner'
     && inAccount('main', home.accountAuth) === 'apikey');

@@ -28,6 +28,7 @@ check('origin: proxy rewrote Host, X-Forwarded-Host matches', originAllowed('htt
 check('origin: foreign page refused', !originAllowed('https://evil.example', 'relay.example.com', undefined));
 check('origin: lookalike refused', !originAllowed('https://relay.example.com.evil.example', 'relay.example.com'));
 check('origin: mobile apps allowed', originAllowed('capacitor://localhost', 'relay.example.com') && originAllowed('https://localhost', 'relay.example.com'));
+check('origin: desktop app allowed', originAllowed('openfolk://app', 'relay.example.com') && !originAllowed('openfolk://evil', 'relay.example.com'));
 check('origin: none (not a browser) allowed', originAllowed(undefined, 'relay.example.com'));
 check('origin: garbage refused', !originAllowed('null', 'relay.example.com'));
 

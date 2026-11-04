@@ -4,7 +4,7 @@
 export default async function ({ start, check }) {
     const h = await start({});
     const p = h.page;
-    await p.click('#btn-settings');
+    await p.click('[data-tab=settings]');
     await h.wait(100);
     check('the settings ask the relay', h.sent.some((f) => f.type === 'totp_status'));
     check('hidden until the relay answers', !(await p.isVisible('#totp-box')));

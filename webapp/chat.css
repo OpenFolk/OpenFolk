@@ -88,7 +88,9 @@ pre { white-space: pre-wrap; word-break: break-word; }
 /* ---------------------------------------------------------------- Base grid */
 .app {
     display: grid;
-    grid-template-columns: 360px 1fr;
+    --sidebar-width: 360px;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
     height: 100dvh;
     max-width: 1500px;
     margin: 0 auto;
@@ -99,24 +101,33 @@ pre { white-space: pre-wrap; word-break: break-word; }
 /* Several panes side by side, or the info panel as a column of its own: the whole width counts */
 .app.multi, .app.info-docked { max-width: none; }
 /* Wide screens: the bot info is a column of its own next to the chats instead of covering them */
-.app.info-docked { grid-template-columns: 360px 1fr 400px; }
+.app.info-docked { grid-template-columns: var(--sidebar-width) 1fr 400px; }
 .app.info-docked > #info { position: static; z-index: auto; background: none; display: flex; border-left: 1px solid var(--line); min-width: 0; min-height: 0; }
 .app.info-docked > #info > .dialog.panel { max-width: none; width: 100%; box-shadow: none; }
-/* Wide screens: the settings are a pane after the chats, with a header and X like a chat's (panes.js) */
-#settings > .settings-bar { display: none; }
-.panes > #settings {
+/* The settings: a page like the repos and status pages, a head with the title and the content below it over the
+   whole width (each block at most as wide as on the status page). Wide screens: a pane after the chats with the X of
+   a chat's head (panes.js); phone: over everything, with the arrow back. */
+#settings {
     position: static; z-index: auto; padding: 0; background: var(--surface); flex-direction: column; align-items: stretch;
     justify-content: flex-start; min-width: 0; min-height: 0;
 }
 .pane:not([hidden]) ~ #settings { border-left: 1px solid var(--line); }
-.panes > #settings > .settings-bar { display: flex; }
-.panes > #settings > .dialog {
-    flex: 1; min-height: 0; max-width: none; max-height: none; border-radius: 0; box-shadow: none;
-    padding: 18px max(22px, calc((100% - 640px) / 2));
+#settings > .settings-bar .page-back { margin: 0; align-self: center; }
+/* The heads of the repos, status and settings pages: without the back arrow (tablet, PC) the title starts on the
+   same edge as the content below it */
+.git-page > .bar, #settings > .settings-bar { padding-left: 16px; }
+#settings > .dialog {
+    flex: 1; min-height: 0; width: 100%; max-width: none; max-height: none; border-radius: 0; box-shadow: none;
+    padding: 14px 16px; animation: none;
 }
-.panes > #settings > .dialog > h2, .panes > #settings .settings-close-row { display: none; }
-.sidebar { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-width: 0; min-height: 0; }
-.chat { display: flex; min-width: 0; min-height: 0; background: var(--chat-bg); }
+#settings > .dialog > * { max-width: 640px; }
+.sidebar { grid-area: 1 / 1; position: relative; display: flex; flex-direction: column; border-right: 1px solid var(--line); min-width: 0; min-height: 0; }
+/* The desktop apps: drag the sidebar's right edge to change its width, a double click restores it (start.js) */
+.sidebar-resize { display: none; position: absolute; top: 0; bottom: 0; right: -4px; width: 8px; z-index: 5; cursor: col-resize; touch-action: none; }
+:root[data-platform="desktop"] .sidebar-resize { display: block; }
+.sidebar-resize:hover, .sidebar-resize:focus-visible, .sidebar-resize.dragging { outline: none; background: linear-gradient(to right, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); }
+.app.sidebar-resizing { cursor: col-resize; user-select: none; }
+.chat { grid-area: 1 / 2; display: flex; min-width: 0; min-height: 0; background: var(--chat-bg); }
 .chat > * { flex: 1 1 0; min-width: 0; }
 .chat-content { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
@@ -164,7 +175,6 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .brand-text { display: flex; flex-direction: column; min-width: 0; }
 /* not a sub line: the name keeps the size and colour of a title */
 .bar .title .brand-text { font-size: inherit; color: inherit; }
-.brand:hover strong { color: var(--accent); }
 .status { display: inline-flex; align-items: center; gap: 6px; }
 .status i { width: 8px; height: 8px; border-radius: 50%; background: #9aa5ad; }
 .status.online i { background: #25d366; }
@@ -176,7 +186,8 @@ pre { white-space: pre-wrap; word-break: break-word; }
     cursor: pointer; color: var(--muted); flex: 0 0 auto;
 }
 .round:hover { background: var(--hover); color: var(--text); }
-.back { display: none; }
+/* Back arrows only on the phone, where a page covers the list; next to it (tablet, PC) the list and the tabs are there */
+.back, #git-back { display: none; }
 
 .avatar {
     width: 44px; height: 44px; border-radius: 50%; flex: 0 0 auto;
@@ -218,7 +229,7 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .field-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border: 0; border-radius: 50%; background: none; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
 .field-clear svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .field-x input:placeholder-shown + .field-clear { display: none; }
-.search-results { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 0; }
+.search-results { list-style: none; margin: 0; padding: 0 0 var(--tab-room); overflow-y: auto; flex: 1; min-height: 0; }
 .search-results li { padding: 10px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .search-results li:active { background: var(--hover); }
 .search-results .s-head { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; font-size: 14px; }
@@ -226,7 +237,7 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .search-results .s-text { color: var(--muted); font-size: 13.5px; margin-top: 2px; overflow-wrap: anywhere; }
 .search-results mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--text); border-radius: 3px; padding: 0 1px; }
 .search-results .empty-hint { color: var(--muted); text-align: center; cursor: default; padding: 24px 16px; }
-.chat-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 0; }
+.chat-list { list-style: none; margin: 0; padding: 0 0 var(--tab-room); overflow-y: auto; flex: 1; min-height: 0; }
 .chat-list li {
     display: grid; grid-template-columns: 48px 1fr auto; gap: 12px; align-items: center;
     padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--line);
@@ -254,7 +265,13 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .chat-list .last { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-list .last.working { color: var(--accent); }
 .chat-list .last.waiting { color: var(--warning); font-weight: 600; }
-.chat-list .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.chat-list .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+/* Every line of the meta column is 17 px high, so a row with git, queue and conversations is as high as a plain one */
+.chat-list .meta > * { height: 17px; display: flex; align-items: center; }
+.chat-list .meta-icons { gap: 6px; }
+.chat-list .meta-icons .badge { height: 17px; min-width: 17px; font-size: 11px; padding: 0 5px; }
+.chat-list .meta-icons .collapse { height: 17px; }
+.chat-list .meta-icons .collapse svg { width: 13px; height: 13px; }
 /* Time of the last message at the top right, in the accent color when unread */
 .chat-list .time { font-size: 11.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .chat-list li.unread .time { color: var(--accent); font-weight: 600; }
@@ -277,10 +294,6 @@ pre { white-space: pre-wrap; word-break: break-word; }
 /* Open git changes in the folder: branch icon with the number of repos, tappable */
 .git-badge { display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; padding: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--warning); font-variant-numeric: tabular-nums; cursor: pointer; }
 .git-badge svg { width: 13px; height: 13px; }
-/* Total list at the bottom left, also with a collapsed footer */
-.git-total { display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 2px 0; font: inherit; color: var(--warning); cursor: pointer; text-align: left; }
-.git-total[hidden] { display: none; }
-.git-total svg { width: 15px; height: 15px; flex: 0 0 auto; }
 /* Collapse/expand the conversations of a bot: count and arrow, collapsed the arrow points to the right */
 .collapse { position: relative; border: 0; background: var(--bar-bg); color: var(--muted); border-radius: 10px; height: 22px; padding: 0 4px 0 7px; display: inline-flex; align-items: center; gap: 1px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .collapse svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
@@ -303,11 +316,47 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .archive-date { color: var(--muted); font-size: 12px; }
 .chat-list .empty-hint { padding: 30px 20px; color: var(--muted); text-align: center; cursor: default; display: block; }
 
-.footer { border-top: 1px solid var(--line); padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
-.footer-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; min-height: 18px; }
+/* ---------------------------------------------------------------- Tabs: a floating, translucent pill over the list's end */
+/* Like iOS's own floating bar: the pill reaches a little into the home indicator's area */
+.app { --tab-gap: max(calc(env(safe-area-inset-bottom) - 14px), 4px); --tab-room: calc(80px + var(--tab-gap)); }
+.tab-bar {
+    grid-area: 1 / 1; align-self: end; position: relative; z-index: 19; display: flex; gap: 2px;
+    margin: 0 12px var(--tab-gap); padding: 4px; border-radius: 30px;
+    border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+    background: color-mix(in srgb, var(--surface) 38%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .12);
+}
+.tab {
+    flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px;
+    border: 0; border-radius: 24px; background: none; color: var(--muted); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.tab > span:last-child { font-size: 11px; line-height: 14px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab.on { color: var(--text); background: rgba(0, 0, 0, .07); }
+:root[data-theme="dark"] .tab.on { background: rgba(255, 255, 255, .12); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tab.on { background: rgba(255, 255, 255, .12); } }
+.tab:active { opacity: .6; }
+.tab-icon { position: relative; display: flex; }
+.tab-badge {
+    position: absolute; top: -5px; left: 14px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+    border: 1.5px solid var(--surface); background: var(--warning); color: #fff; font-size: 10px; line-height: 15px;
+    font-weight: 700; text-align: center;
+}
 .link { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font-size: 12px; font-weight: 600; }
+/* The tab "Machines": machines, usage of the plans, the engines' versions */
+/* Declared before .git-page-content, so the padding needs the double class to win */
+.git-page-content.machines-page { gap: 14px; padding: 14px 16px var(--tab-room); font-size: 13.5px; color: var(--muted); }
+.machines-page > * { max-width: 640px; }
+.machines-page h3 { margin: 0; font-size: 14px; color: var(--text); }
+.machines-page h3 + .usage, .machines-page h3 + .machines { margin-top: -4px; }
+/* The line under a machine: bots, engines, backend, repos */
+.machine-details { margin: -4px 0 4px 19px; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.account-line { margin: 0; font-size: 12.5px; }
 .usage { display: flex; flex-direction: column; gap: 4px; }
-.usage-bar { display: grid; grid-template-columns: 44px 1fr 40px; gap: 8px; align-items: center; }
+.usage-bar { display: grid; grid-template-columns: 44px 1fr 40px; gap: 2px 8px; align-items: center; }
+/* both plans: the labels carry the plan's name */
+.usage.two .usage-bar { grid-template-columns: 100px 1fr 40px; }
+.usage-bar .usage-reset { grid-column: 2 / -1; font-size: 11.5px; }
 .usage-bar .track { height: 6px; background: var(--hover); border-radius: 3px; overflow: hidden; }
 .usage-bar .fill { display: block; height: 100%; background: var(--ok); border-radius: 3px; }
 .usage-bar.warning .fill { background: var(--warning); }
@@ -316,18 +365,16 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .limit { color: var(--danger); font-weight: 600; }
 
 /* Machines and waking */
-.machines { display: flex; flex-direction: column; gap: 3px; padding-bottom: 4px; border-bottom: 1px solid var(--line); margin-bottom: 2px; }
-.machine-row { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+.machines { display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.machine-row { display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.machines .link {
+    font-size: 13px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface);
+    white-space: nowrap;
+}
+.machines .link:active { background: var(--hover); }
 .machine-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .machine-text strong { color: var(--text); font-weight: 600; }
 .machines-error { color: var(--danger); }
-/* Collapsed: only the row of the connected machine (otherwise the first); the handle expands the rest */
-.footer { position: relative; }
-.footer-handle { display: block; width: 100%; height: 24px; margin: -8px 0 -10px; border: 0; background: none; cursor: pointer; padding: 0; }
-.footer-handle::before { content: ''; display: block; width: 36px; height: 4px; margin: 0 auto; border-radius: 2px; background: var(--line); }
-.footer.closed .usage, .footer.closed .footer-row, .footer.closed .machines-error, .footer.closed .machine-row:not(.main) { display: none; }
-.footer.closed .machines { border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }
-.footer .machine-text { cursor: pointer; }
 .dot.on { background: #25d366; }
 .dot.half { background: var(--warning); }
 .dot.off { background: transparent; border: 1.5px solid var(--muted); }
@@ -500,6 +547,33 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .speak svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .speak.speaking { color: var(--accent); }
 .speak.speaking .wave { animation: pulse 1s infinite; }
+/* While a message is read aloud: a row of its own below sidebar and chats, it takes over the safe area */
+.speech-bar {
+    grid-column: 1 / -1; grid-row: 2; min-width: 0; display: flex; flex-direction: column;
+    padding: 2px 6px calc(6px + env(safe-area-inset-bottom)) 12px;
+    background: var(--bar-bg); border-top: 1px solid var(--line);
+}
+.speech-bar[hidden] { display: none; }
+.speech-bar-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.speech-bar-play, .speech-bar-play:hover { color: var(--accent); }
+.speech-bar-play .icon-play { fill: currentColor; }
+.speech-bar .icon-play, .speech-bar.paused .icon-pause { display: none; }
+.speech-bar.paused .icon-play { display: block; }
+.speech-bar.paused .speech-bar-open .wave { animation: none; }
+.speech-bar-time { display: flex; align-items: center; gap: 10px; padding-right: 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.speech-bar-time input { flex: 1; min-width: 0; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.app.speaking .composer { padding-bottom: 8px; }
+/* the speech bar takes the bottom edge with its safe area */
+.app.speaking { --tab-gap: 4px; }
+.speech-bar-open {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 0; background: none;
+    padding: 6px 0; cursor: pointer; text-align: left; font-size: 13.5px;
+}
+.speech-bar-open svg { flex: 0 0 auto; width: 20px; height: 20px; color: var(--accent); stroke-width: 1.8; }
+.speech-bar-open .wave { animation: pulse 1s infinite; }
+.speech-bar-open strong { flex: 0 0 auto; }
+.speech-bar-open span { min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.speech-bar-open:hover strong { color: var(--accent); }
 .read-ticks { display: inline-block; vertical-align: -1px; margin-left: 4px; }
 .read-ticks svg { width: 16px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .read-ticks:not(.read) .second { display: none; }
@@ -653,6 +727,11 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .device-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .device-list li { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
 .device-list li.current-device { border-color: var(--accent); }
+/* The accounts list: a relay's head row, its accounts indented below it */
+.device-list li.relay-head { border: 0; border-radius: 0; padding: 10px 0 2px; margin-top: 4px; }
+.device-list li.relay-head:first-child { margin-top: 0; padding-top: 0; }
+.device-list li.relay-head .d-text strong { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.device-list li.relay-head ~ li:not(.relay-head) { margin-left: 10px; }
 /* Accounts: the actions get a row of their own below the name, beside it a phone has no room */
 #accounts-list li { flex-wrap: wrap; }
 #accounts-list .d-text { flex: 1 1 100%; }
@@ -667,10 +746,6 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 /* Notifications: priority per kind, muted chats */
 .push-kinds { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; }
 .dialog .push-kinds select { width: auto; min-width: 120px; }
-.push-chats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
-.dialog .push-chats label { display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 5px 2px; cursor: pointer; color: var(--text); font-size: 14px; }
-.push-chats .avatar { width: 28px; height: 28px; font-size: 12px; }
-.push-chats .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Settings: autologin per machine, entry to the other dialogs */
 .settings-machines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .settings-machines li { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
@@ -690,6 +765,13 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .settings-machine label.check { flex-direction: row; align-items: center; }
 .settings-number input { max-width: 8em; }
 .settings-key { margin: 8px 0; }
+/* AI services: the form for one key below the list */
+/* The forms of "Add" live in their block and show in the settings dialog */
+.settings-form { display: flex; flex-direction: column; gap: 10px; }
+.settings-form[hidden] { display: none; }
+#settings-dialog { z-index: 30; }
+#settings-dialog-body { display: flex; flex-direction: column; gap: 12px; }
+#settings-dialog-body > .pair-box { margin-top: 0; }
 /* An engine that runs on the machine: its state and sign-in, below its switch */
 .settings-engine { padding-left: 26px; margin-bottom: 8px; }
 .settings-engine > .settings-hint { padding-left: 0; }
@@ -880,7 +962,15 @@ details summary { cursor: pointer; }
 /* ---------------------------------------------------------------- Phone */
 @media (max-width: 760px) {
     .app { grid-template-columns: 1fr; }
+    .chat { grid-area: 1 / 1; }
+    /* In a chat the tabs give way; over the pages they open they stay */
+    .app.chat-open:not(.tab-page) .tab-bar { display: none; }
+    /* A tab like the repos and the status, not a page sliding in from the right; the X of the pane gives way to the arrow */
+    #settings { position: fixed; z-index: 19; animation: none; }
+    #settings > .settings-bar .pane-close { display: none; }
+    #settings > .dialog { height: auto; padding-top: 14px; padding-bottom: var(--tab-room); }
     .sidebar { border-right: 0; }
+    :root[data-platform="desktop"] .sidebar-resize { display: none; }
     .chat { display: none; }
     .app.chat-open .sidebar { display: none; }
     .app.chat-open .chat { display: flex; }
@@ -888,7 +978,9 @@ details summary { cursor: pointer; }
     .app.chat-open.swiping .sidebar { display: flex; }
     .app.swiping .sidebar, .app.swiping .chat { grid-area: 1 / 1; }
     .app.swiping .chat { position: relative; z-index: 1; box-shadow: -8px 0 24px rgba(0, 0, 0, .25); will-change: transform; }
-    .back { display: inline-flex; }
+    .back, #git-back { display: inline-flex; }
+    /* with the arrow the heads keep the padding of a chat's */
+    .git-page > .bar, #settings > .settings-bar { padding-left: 12px; }
     .bubble { max-width: 88%; }
     .answer { max-width: 92%; }
     .dialog.panel { max-width: none; }
@@ -914,18 +1006,10 @@ details summary { cursor: pointer; }
     #row-menu.menu-page .git-list { max-height: none; max-width: none; }
     .two-columns { grid-template-columns: 1fr; }
     [data-el="btn-attach"] { width: 36px; }
-    /* Footer: machines, usage, devices, notifications with finger-sized tap targets */
-    .footer { font-size: 13.5px; gap: 10px; padding-top: 10px; }
-    .machines { gap: 6px; padding-bottom: 10px; }
+    /* Machines with finger-sized tap targets */
     .machine-row { min-height: 40px; }
-    .footer .link {
-        font-size: 14px; padding: 9px 14px; min-height: 40px; border: 1px solid var(--line); border-radius: 20px;
-        background: var(--surface); display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    }
-    .footer .link:active { background: var(--hover); }
-    .footer-row { flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
-    .footer-row #account { flex: 1 0 100%; }
-    .footer-row .link { flex: 1 1 auto; white-space: nowrap; }
+    .machines .link { font-size: 14px; padding: 9px 14px; min-height: 40px; border-radius: 20px; }
+    .git-page-content:not(.machines-page) { padding-bottom: var(--tab-room); }
     /* iOS zooms in when tapping fields below 16 px; afterwards the page could be swiped sideways */
     input, textarea, select, .composer textarea, .approval .free,
     .dialog input:not([type=checkbox]), .dialog select, .dialog textarea { font-size: 16px; }

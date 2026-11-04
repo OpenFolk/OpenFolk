@@ -54,9 +54,10 @@ read, before any code. `README.md` is for people who run OpenFolk.
 The most common defect is a change that works where you tested it and is missing elsewhere. Before calling a
 change done, walk this list and say which entries applied:
 
-- **Clients.** Browser, desktop (loads the web app from the relay, or runs the backend itself "on this computer")
-  and mobile (brings the web app along, needs the relay address, has native push and a Keychain). Anything
-  platform-specific belongs in `webapp/js/platform.js`.
+- **Clients.** Browser (served by its relay), desktop (brings the web app along under `openfolk://app`, runs the
+  backend itself "on this computer" or talks to a relay elsewhere) and mobile (brings the web app along, needs the
+  relay address, has native push and a Keychain). The apps can hold several relays. Anything platform-specific
+  belongs in `webapp/js/platform.js`.
 - **Setups.** The relay inside the backend (no `RELAY_URL`, also the desktop app), a relay of one's own (claimed or
   with tokens), relay and backend in containers. Does your change need a value the user has to set, and does each
   setup get it?

@@ -94,10 +94,14 @@ export default async function ({ start, check }) {
     // rename with a long press (with the mouse: right click), only for conversations
     const rowItems = () => p.locator('#row-menu button').allTextContents();
     await p.locator('#chat-list li[data-chat="skool"]').click({ button: 'right' });
-    check('bot row: no rename', !(await rowItems()).includes('Rename conversation'), await rowItems());
-    await p.mouse.click(5, 5);
+    check('bot row: no rename, but edit the bot', !(await rowItems()).includes('Rename conversation') && (await rowItems()).includes('Edit bot'), await rowItems());
+    await p.locator('#row-menu button', { hasText: 'Edit bot' }).click();
+    await h.wait(200);
+    check('"Edit bot" opens the editor with the bot', await p.isVisible('#editor') && (await p.inputValue('#editor-name')) === 'Skool Sven', await p.inputValue('#editor-name'));
+    await p.click('#editor [data-page-back]');
+    await h.wait(200);
     await p.locator('#chat-list li[data-chat="skool~aa11"]').click({ button: 'right' });
-    check('conversation: rename offered', (await rowItems()).includes('Rename conversation'), await rowItems());
+    check('conversation: rename and edit the bot offered', (await rowItems()).includes('Rename conversation') && (await rowItems()).includes('Edit bot'), await rowItems());
     await p.locator('#row-menu button', { hasText: 'Rename conversation' }).click();
     await h.wait(100);
     const field = await p.evaluate(() => {

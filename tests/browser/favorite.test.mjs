@@ -48,6 +48,12 @@ export default async function ({ start, check }) {
     await h.wait(300);
     check('swiped to the right: marked as unread, chat stays closed', await isUnread() && !(await open()) && favRequests().length === 2);
     check('unread stays after re-rendering', await p.evaluate(() => { renderChatList(); return [...document.querySelectorAll('#chat-list li.unread')].length === 1; }));
+    check('finished and unread: on top of the list', (await sections()) === '[Done, unread] Anna [All] Cloud Carlo', await sections());
+    await h.push({ type: 'state', machine: 'desk', botId: 'anna', state: 'thinking', chatId: 'anna' });
+    await h.wait(150);
+    check('unread but working again: under "Running now"', (await sections()) === '[Running now] Anna [All] Cloud Carlo', await sections());
+    await h.push({ type: 'state', machine: 'desk', botId: 'anna', state: 'idle' });
+    await h.wait(150);
     z = await row('Anna');
     await h.swipe(z.x + 40, z.y, z.x + 170, z.y, 8, 20);
     await h.wait(300);

@@ -1,29 +1,31 @@
 /* OpenFolk web app: wire up events, devices and keys, light/dark, language, start. */
 import { applyI18n, t } from './i18n.js';
-import { $, ACCOUNTS_KEY, AVATAR_EDGE, DEVICE_KEY, deviceAccounts, loadedAccount, FOOTER_OPEN_KEY, TEMPLATES, THEME_KEY, el, node, state, storage, templateValues, closest, control, toast } from './core.js';
+import { $, AVATAR_EDGE, deviceAccounts, deviceRelays, loadedAccount, relayEntry, relayScope, SIDEBAR_WIDTH_KEY, TEMPLATES, THEME_KEY, el, node, state, storage, templateValues, closest, control, toast } from './core.js';
 import { adoptKey, adoptPairingLink, askForKey, bot, e2eStart, fillAvatar, forgetKey, group, isGroup, responsibleMachine, send } from './e2e.js';
 import { allChats, checkConnection, checkTotp, connect, credentials, renderAccount, setAgentStatus, showLogin } from './connection.js';
-import { isNative, onNotificationOpen, parsePairingLink, relayAddress, requestPushPermission, setRelayAddress } from './platform.js';
-import { CHAT_DRAG, activePane, closeSettings, createPane, layoutPanes, paneOf, panes, setActivePane, visibleChats } from './panes.js';
+import { bundled, platformKind, onNotificationOpen, parsePairingLink, relayAddress, requestPushPermission, setRelayAddress } from './platform.js';
+import { CHAT_DRAG, SIDEBAR_PX, activePane, closeSettings, createPane, layoutPanes, paneOf, panes, setActivePane, setSidebarWidth, visibleChats } from './panes.js';
 import { closeChatSearch, listTap, onChatSearchInput, onSearchInput, renderChatList, renderUsage, setupListLongPress, setupListSwipe, setupSearchBox, stepChatSearch } from './list.js';
 import { addEmptyPane, closeChat, dropChat, openChat, paneActivated, renderChatHeader, setupSwipeBack, swipeBack } from './chat.js';
-import { renderMachines, showFooter, toggleFooter, wake } from './machines.js';
+import { renderMachines, wake } from './machines.js';
 import { checkMention, closeMention, markSeen, mentionKey, renderHistory, renderPinned, scroll, setReply, setupMessageMenu, tapPinned, unpinShown } from './chat-features.js';
 import { renderQueue, sendMessage, setupQueueSwipe, textHeight } from './queue.js';
+import { AUTO_READ_KEY, primeReadAloud, readWaitingAnswer, setupSpeechBar } from './read-aloud.js';
 import { addFiles, pauseRecording, shrinkImage, startRecording, stopRecording } from './voice.js';
 import {
-    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, openGitPage,
-    renderGitTotal, submitText, toggleHeaderSwitch,
+    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, openGitPage, openMachinesPage,
+    renderGitTotal, renderPageTitle, submitText, toggleHeaderSwitch,
 } from './menus.js';
 import { adoptVscodeSession, renderVscodeAdoptButton, renderVscodeSub, showInVscode, showVscodeList, vs } from './vscode.js';
 import {
-    canMessageChanged, editorValues, folderChanged, folderTyped, knowledgeSection, machineChanged, openEditor, openGroupEditor,
+    canMessageChanged, chooseFolder, editorValues, folderChanged, folderTyped, knowledgeSection, machineChanged, openEditor, openFolderPicker, openGroupEditor,
     openInfo, openKnowledgeEditor, openRoutineEditor, renderEditorAvatar, renderKnowledge, renderRoutines,
     repoChanged, repoTyped, requestSuggestion, routineCron, routineFields, submitEditor,
 } from './editors.js';
 import { checkPush, renderPushSettings, subscribePush } from './push.js';
-import { askMachineJoin, chooseAllAccounts, chooseLanguage, chooseShared, openSettings, renderAvatarKeys, renderSettings, showE2eStatus } from './settings.js';
-import { addAccount, cancelAddAccount, createAccount, openAccountMenu, openAccounts, saveOwnAccount, showAccountField, switchAccount } from './accounts.js';
+import { askMachineJoin, chooseAllAccounts, chooseLanguage, chooseShared, closeAiForm, openAiForm, openSettings, renderAiServices, renderSettings, saveAiKey, showE2eStatus } from './settings.js';
+import { cancelAddAccount, createAccount, joinAny, openAccountMenu, openAccounts, redeemLink, saveOwnAccount, scanAny, showAccountField, showNewAccountForm, switchAccount } from './accounts.js';
+import { openRelay, switchRelay } from './relays.js';
 import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, startQrLogin, stopQrLogin } from './qr-login.js';
 
 // The first pane exists from the start; on phones and laptops it stays the only one
@@ -31,23 +33,29 @@ createPane();
 
 // ================================================================ Events
 
-/** The address typed into the app's start page; a device key and its accounts belong to one relay. */
-function useRelayAddress(text) {
-    const before = relayAddress();
+/**
+ * The address typed into the app's start page. Another relay than the page was loaded for keeps what this device
+ * stored for the previous one (relays.js) and loads the page for the new one, with the rest of a pairing link in
+ * `params`; then null.
+ * @param {string} text
+ * @param {URLSearchParams} [params]
+ */
+function useRelayAddress(text, params) {
     const address = setRelayAddress(text);
-    if (address && before && before !== address) {
-        storage.remove(DEVICE_KEY);
-        storage.remove(ACCOUNTS_KEY);
+    if (address && relayEntry(address).scope !== relayScope) {
+        openRelay(params);
+        return null;
     }
     return address;
 }
 
 el.loginForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    if (isNative) {
+    if (bundled) {
         // The field takes the relay's address or a whole pairing link (address, one-time sign-in, end-to-end key)
         const link = parsePairingLink(el.loginRelay.value);
-        const address = link ? useRelayAddress(link.address) : '';
+        const address = link ? useRelayAddress(link.address, link.params) : '';
+        if (address === null) return;
         if (!address) {
             showLogin(t('login.relayInvalid'));
             el.loginRelay.focus();
@@ -82,12 +90,12 @@ el.loginScan.addEventListener('click', () => void scanToSignIn());
 el.loginQrRenew.addEventListener('click', renewQrLogin);
 el.devicesScan.addEventListener('click', () => void scanToApprove());
 el.loginRelay.addEventListener('change', () => {
-    if (!isNative) return;
+    if (!bundled) return;
     void checkTotp(true);
     const link = parsePairingLink(el.loginRelay.value);
     if (!link || link.params.get('pair')) return;
     const before = relayAddress();
-    if (!useRelayAddress(link.address)) return;
+    if (!useRelayAddress(link.address, link.params)) return;
     if (relayAddress() !== before) stopQrLogin();
     void startQrLogin();
 });
@@ -100,16 +108,20 @@ el.accountSwitch.addEventListener('click', (ev) => {
     if (!open) openAccountMenu();
 });
 el.accountMenu.addEventListener('click', (ev) => {
-    const b = closest(ev, '[data-account], [data-account-action]');
+    const b = closest(ev, '[data-account], [data-relay], [data-account-action]');
     if (!b) return;
     el.accountMenu.hidden = true;
     if (b.dataset.account) switchAccount(b.dataset.account);
-    else if (b.dataset.accountAction === 'add') addAccount();
+    else if (b.dataset.relay) switchRelay(b.dataset.relay);
     else openAccounts();
 });
+el.accountsJoin.addEventListener('click', joinAny);
+el.accountsScan.addEventListener('click', () => void scanAny());
 el.accountsOwnSave.addEventListener('click', saveOwnAccount);
-el.accountsAdd.addEventListener('click', addAccount);
 el.accountsCreate.addEventListener('click', createAccount);
+el.accountsLinkGo.addEventListener('click', redeemLink);
+el.accountsLink.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); redeemLink(); } });
+el.accountsNewCancel.addEventListener('click', () => showNewAccountForm(false));
 el.loginCancel.addEventListener('click', cancelAddAccount);
 el.loginOtherAccount.addEventListener('click', showAccountField);
 el.settingsAllAccounts.addEventListener('change', chooseAllAccounts);
@@ -207,6 +219,7 @@ setupListLongPress();
 setupQueueSwipe();
 setupSearchBox();
 setupMessageMenu();
+setupSpeechBar();
 const releaseList = (ms) => {
     clearTimeout(listTap.timer);
     listTap.timer = setTimeout(() => {
@@ -223,11 +236,21 @@ el.chatList.addEventListener('pointerdown', () => {
 });
 // only after the click that follows pointerup
 for (const kind of ['pointerup', 'pointercancel']) el.chatList.addEventListener(kind, () => releaseList(350));
-el.footerHandle.addEventListener('click', toggleFooter);
-// without stopPropagation the click catcher of the menu would close the list right away
-el.gitTotal.addEventListener('click', (ev) => { ev.stopPropagation(); openGitPage(); });
+// Tabs: the list, the repos of all bots, the machines, the settings. Without stopPropagation the click catcher of the
+// menus would close the long-press menu's git list right away.
+el.tabBar.addEventListener('click', (ev) => {
+    const tab = closest(ev, '.tab')?.dataset.tab;
+    if (!tab) return;
+    ev.stopPropagation();
+    closeAllMenus();
+    if (tab === 'repos') return openGitPage();
+    if (tab === 'machines') return openMachinesPage();
+    // On wide screens the settings are a pane, and the panes hide behind the page
+    if (!el.gitPage.hidden) closeGitPage();
+    if (tab === 'settings') openSettings();
+    else if (!el.settings.hidden) closeSettings();
+});
 el.gitBack.addEventListener('click', closeGitPage);
-showFooter(storage.get(FOOTER_OPEN_KEY) === '1');
 setupSwipeBack();
 document.addEventListener('click', closeAllMenus);
 // No zooming with a two-finger gesture: Safari on iPhone/iPad ignores user-scalable=no in the viewport
@@ -269,7 +292,8 @@ const PANE_CLICKS = {
     'btn-mic': (p) => { startRecording(p); },
     'rec-discard': () => { stopRecording(false); },
     'rec-pause': () => pauseRecording(),
-    'rec-send': () => { stopRecording(true); },
+    // unlocking the sound needs this tap; the answer may come minutes later
+    'rec-send': () => { primeReadAloud(); stopRecording(true); },
     'btn-stop': (p) => { if (p.chatId) send({ type: 'interrupt', chatId: p.chatId }); },
     'btn-attach': (p) => p.el.fileInput.click(),
     'to-bottom': (p) => scroll(p, true),
@@ -379,19 +403,55 @@ el.paneAdd.addEventListener('drop', (ev) => {
     dropChat(ev.dataTransfer.getData(CHAT_DRAG), null);
 });
 el.paneAdd.addEventListener('click', addEmptyPane);
-// More or fewer panes fit after resizing; at most once per frame
+// More or fewer panes fit after resizing the window or the sidebar; at most once per frame
 let layoutFrame = 0;
-window.addEventListener('resize', () => {
+function relayout() {
     if (layoutFrame) return;
     layoutFrame = requestAnimationFrame(() => {
         layoutFrame = 0;
         paneActivated();
     });
+}
+window.addEventListener('resize', relayout);
+
+// The desktop apps: the sidebar's right edge changes its width (CSS shows the handle only there)
+function resizeSidebar(px) {
+    const width = setSidebarWidth(px);
+    if (width === SIDEBAR_PX) storage.remove(SIDEBAR_WIDTH_KEY);
+    else storage.set(SIDEBAR_WIDTH_KEY, String(width));
+    relayout();
+}
+el.sidebarResize.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    const handle = el.sidebarResize;
+    const left = el.app.getBoundingClientRect().left;
+    handle.setPointerCapture(ev.pointerId);
+    handle.classList.add('dragging');
+    el.app.classList.add('sidebar-resizing');
+    const move = (/** @type {PointerEvent} */ e) => resizeSidebar(e.clientX - left);
+    const end = () => {
+        handle.classList.remove('dragging');
+        el.app.classList.remove('sidebar-resizing');
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', end);
+        handle.removeEventListener('pointercancel', end);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+});
+el.sidebarResize.addEventListener('dblclick', () => resizeSidebar(SIDEBAR_PX));
+el.sidebarResize.addEventListener('keydown', (ev) => {
+    const step = ev.key === 'ArrowLeft' ? -20 : ev.key === 'ArrowRight' ? 20 : 0;
+    if (!step) return;
+    ev.preventDefault();
+    resizeSidebar(el.sidebarResize.parentElement.getBoundingClientRect().width + step);
 });
 
 // Dialogs: "Cancel"/"×", Escape and a click on the backdrop close them. The backdrop only counts if the pointer
 // was also pressed there – otherwise selecting text that ends outside would close it.
-for (const o of [el.editor, el.gEditor, el.info, el.rEditor, el.kEditor, el.keyDialog, el.vscode, el.textDialog, el.settings]) {
+for (const o of [el.editor, el.folderPicker, el.gEditor, el.info, el.rEditor, el.kEditor, el.keyDialog, el.vscode, el.textDialog, el.settingsDialog, el.settings]) {
     let pressedOnBackdrop = false;
     o.addEventListener('pointerdown', (ev) => { pressedOnBackdrop = ev.target === o; });
     o.addEventListener('click', (ev) => {
@@ -406,21 +466,24 @@ document.addEventListener('keydown', (ev) => {
     if (large && !large.hidden) { large.hidden = true; return; }
     // the docked info panel is a column, not a dialog: Escape closes it only from inside
     const docked = el.app.classList.contains('info-docked') && !el.info.contains(document.activeElement);
-    for (const o of [el.textDialog, el.keyDialog, el.settings, el.rEditor, el.kEditor, el.editor, el.gEditor, el.info, el.vscode]) {
+    for (const o of [el.textDialog, el.keyDialog, el.settingsDialog, el.settings, el.rEditor, el.kEditor, el.folderPicker, el.editor, el.gEditor, el.info, el.vscode]) {
         if (o.hidden || (o === el.info && docked)) continue;
         closeDialog(o);
         return;
     }
 });
-// Phone: the detail dialogs are pages; back (arrow or swipe to the right) leaves the VS Code history for its list first
+// Phone: the detail dialogs are pages; back (arrow or swipe to the right) leaves the VS Code history for its list first.
+// The settings are a tab like the repos and the status: the arrow leads back, a swipe does not.
 for (const o of document.querySelectorAll('.overlay.page')) {
     const back = () => {
         if (o === el.vscode && !el.vsBack.hidden) showVscodeList();
         else closeDialog(o);
     };
     o.querySelector('[data-page-back]').addEventListener('click', back);
+    if (o === el.settings) continue;
     swipeBack(/** @type {HTMLElement} */ (o), {
         allowed: (ev) => !closest(ev, 'textarea, input, select, pre, table'),
+        // the pages lie on a backdrop, only their card moves
         moved: () => /** @type {HTMLElement} */ (o.querySelector('.dialog')),
         close: back,
     });
@@ -435,7 +498,7 @@ el.gActions.addEventListener('click', (ev) => {
     const g = state.groupEditorGroup;
     if (!k || !g) return;
     if (!chatMenuAction('g:' + g.id, k.dataset.action, el.gActions)) return;
-    if (k.dataset.action === 'favorite') el.gActions.replaceChildren(...chatMenuButtons('g:' + g.id, true));
+    if (k.dataset.action === 'favorite' || k.dataset.action === 'mute') el.gActions.replaceChildren(...chatMenuButtons('g:' + g.id, true));
     else closeDialog(el.gEditor);
 });
 el.textForm.addEventListener('submit', (ev) => { ev.preventDefault(); submitText(); });
@@ -485,6 +548,8 @@ el.editorFolder.addEventListener('input', folderTyped);
 el.editorFolder.addEventListener('change', folderChanged);
 el.editorRepo.addEventListener('input', repoTyped);
 el.editorRepo.addEventListener('change', repoChanged);
+el.editorFolderBrowse.addEventListener('click', openFolderPicker);
+el.pickerChoose.addEventListener('click', chooseFolder);
 
 // Group editor
 el.gImage.addEventListener('change', async () => {
@@ -505,7 +570,6 @@ el.gForm.addEventListener('submit', (ev) => {
 // Info panel
 el.infoKnowledgeNew.addEventListener('click', () => openKnowledgeEditor(knowledgeSection(), null));
 el.infoRoutineNew.addEventListener('click', () => openRoutineEditor(null));
-el.infoEdit.addEventListener('click', () => { const b = bot(state.infoBot); if (closeDialog(el.info) && b) openEditor(b); });
 
 // Routine editor
 el.rKind.addEventListener('change', routineFields);
@@ -553,8 +617,8 @@ el.kDelete.addEventListener('click', () => {
 });
 
 // Settings, with the blocks for notifications, devices and accounts
-el.btnSettings.addEventListener('click', openSettings);
 el.machineAdd.addEventListener('click', askMachineJoin);
+el.settingsAutoRead.addEventListener('change', () => storage.set(AUTO_READ_KEY, el.settingsAutoRead.checked ? 'on' : 'off'));
 el.settingsTheme.addEventListener('change', () => {
     if (el.settingsTheme.value === 'auto') storage.remove(THEME_KEY);
     else storage.set(THEME_KEY, el.settingsTheme.value);
@@ -564,8 +628,16 @@ el.settingsTheme.addEventListener('change', () => {
 el.settingsLanguage.addEventListener('change', () => chooseLanguage(el.settingsLanguage.value));
 el.settingsAvatarModel.addEventListener('change', () => {
     chooseShared('avatarModel', el.settingsAvatarModel.value);
-    renderAvatarKeys();
+    renderAiServices();
 });
+el.settingsReadAloud.addEventListener('change', () => {
+    chooseShared('readAloud', el.settingsReadAloud.value);
+    renderAiServices();
+});
+el.aiAdd.addEventListener('click', () => openAiForm());
+el.aiCancel.addEventListener('click', closeAiForm);
+el.aiSave.addEventListener('click', saveAiKey);
+el.aiKey.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); saveAiKey(); } });
 el.settingsVoiceLanguage.addEventListener('change', () => chooseShared('voiceLanguage', el.settingsVoiceLanguage.value));
 el.settingsPushPreview.addEventListener('change', () => chooseShared('pushPreview', el.settingsPushPreview.value));
 el.settingsGitPull.addEventListener('change', () => chooseShared('gitAutoPull', el.settingsGitPull.checked));
@@ -583,8 +655,13 @@ el.pushEnable.addEventListener('click', async () => {
 });
 onNotificationOpen((url) => {
     const params = new URL(url, location.href).searchParams;
-    // From another account this device is signed in to: load the page in that one (core.js picks it)
+    // From another relay or account this device is signed in to: load the page in that one (core.js picks both)
+    const relay = params.get('relay');
     const account = params.get('account') || 'main';
+    if (relay && relay !== relayAddress() && deviceRelays().some((r) => r.url === relay)) {
+        location.href = url;
+        return;
+    }
     if (account !== loadedAccount && deviceAccounts().some((a) => a.id === account)) {
         location.href = url;
         return;
@@ -638,7 +715,7 @@ function rerenderLanguage() {
     applyTheme(storage.get(THEME_KEY) || 'auto');
     buildNewMenu();
     fillTemplateOptions();
-    showFooter(!el.footer.classList.contains('closed'));
+    renderPageTitle();
     if (state.onlineKnown) setAgentStatus(state.online.length > 0);
     else el.agentStatus.querySelector('span').textContent = t(state.ws ? 'status.connecting' : 'status.disconnected');
     renderChatList();
@@ -674,6 +751,7 @@ document.addEventListener('visibilitychange', () => {
     else if (hiddenSince && Date.now() - hiddenSince >= HIDDEN_CHECK_MS) checkConnection();
     if (!document.hidden) hiddenSince = 0;
     send({ type: 'presence', visible: !document.hidden });
+    if (!document.hidden) readWaitingAnswer();
     if (!document.hidden && state.signedIn) send({ type: 'wake_status' });
     if (!document.hidden && !state.ws && !state.rejected && credentials()) connect();
     // back in the app with open chats: they count as seen now
@@ -686,6 +764,7 @@ document.addEventListener('visibilitychange', () => {
 applyI18n();
 applyTheme(storage.get(THEME_KEY) || 'auto');
 showScanButtons();
+if (platformKind === 'desktop') setSidebarWidth(Number(storage.get(SIDEBAR_WIDTH_KEY)) || SIDEBAR_PX);
 // not paneActivated(): that would drop ?chat= from the address before the panes are restored
 layoutPanes();
 buildNewMenu();

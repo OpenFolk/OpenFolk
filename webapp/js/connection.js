@@ -5,16 +5,16 @@ import { activePane, capacity, createPane, isWide, paneFor, panes, rememberedPan
 import { askForKey, bot, botIdOf, decrypt, e2e, group, imageOriginal, isGroup, mergeStates, plain, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList, renderSearchResult, renderUsage, setSearchMarks } from './list.js';
 import { BRIEFLY_GONE_MS, closeChat, loadingBar, openChat, renderChatHeader, renderHeaders, updateSendAllowed } from './chat.js';
-import { BACKEND_GONE_MS, renderMachines, scheduleWakePoll } from './machines.js';
+import { BACKEND_GONE_MS, refreshMachinesPage, renderMachines, scheduleWakePoll } from './machines.js';
 import { historyUnchanged, markSeen, noteIncoming, receiveSeen, renderEntry, renderHistory, renderPinned, scroll, setRead } from './chat-features.js';
-import { approvalsToBottom, attachmentBar, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
+import { approvalsToBottom, attachmentBar, dropStaleLive, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
 import { imageRequested, playback, removeVoicePending, startPlayback } from './voice.js';
-import { isNative, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
+import { bundled, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
 import { closeDialog, gitError, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
 import { receiveVscodeHistory, receiveVscodeSessions, renderVscodeAdoptButton, showVscodeList, vs, vscodeError, vscodeShown } from './vscode.js';
 import {
-    fillInfo, folderRequestUnknown, knowledgeError, openInfo, receiveCloned, receiveFolderChecked, receiveFolderProposed, receiveSuggestion, renderRoutines,
-    suggestButton,
+    fillInfo, folderRequestUnknown, knowledgeError, openInfo, pickerFailed, receiveCloned, receiveFolderChecked, receiveFolderListed, receiveFolderProposed,
+    receiveSuggestion, renderRoutines, suggestButton,
 } from './editors.js';
 import { checkPush, renderPushSettings } from './push.js';
 import {
@@ -26,6 +26,7 @@ import { connectOthers } from './others.js';
 import { signInTerminalAnswer } from './welcome.js';
 import { relayClaimed, relayClaimFailed } from './relay-claim.js';
 import { approvalError, approvalLink, approvalWaiting, receivePairApproved, receivePairRequest, startApproval, startQrLogin, stopQrLogin } from './qr-login.js';
+import { answerDone, speechAudio } from './read-aloud.js';
 
 // ================================================================ Connection
 
@@ -42,7 +43,7 @@ export async function checkTotp(other = false) {
     el.loginTotpField.hidden = !totpActive;
     let base;
     try {
-        base = new URL('/health', isNative ? el.loginRelay.value.trim() : location.origin);
+        base = new URL('/health', bundled ? el.loginRelay.value.trim() : location.origin);
     } catch {
         return;
     }
@@ -57,16 +58,16 @@ export function showLogin(message) {
     el.login.hidden = false;
     el.loginError.textContent = message || '';
     el.loginError.hidden = !message;
-    // The apps bring the web app along and need the relay's address; browser and desktop app are served by it,
-    // so there the field only shows where this page comes from
-    el.loginIntro.textContent = t(isNative ? 'login.introApp' : 'login.intro');
+    // The apps bring the web app along and need the relay's address; the browser's page is served by the relay, so
+    // there the field only shows where this page comes from
+    el.loginIntro.textContent = t(bundled ? 'login.introApp' : 'login.intro');
     const relayLabel = /** @type {HTMLElement} */ (el.loginRelay.previousElementSibling);
-    relayLabel.dataset.i18n = isNative ? 'login.relay' : 'login.server';
+    relayLabel.dataset.i18n = bundled ? 'login.relay' : 'login.server';
     relayLabel.textContent = t(relayLabel.dataset.i18n);
-    el.loginRelay.readOnly = !isNative;
-    el.loginRelay.tabIndex = isNative ? 0 : -1;
-    if (!isNative || !el.loginRelay.value) el.loginRelay.value = relayAddress();
-    const first = isNative && !el.loginRelay.value ? el.loginRelay : totpActive && el.loginToken.value ? el.loginTotp : el.loginToken;
+    el.loginRelay.readOnly = !bundled;
+    el.loginRelay.tabIndex = bundled ? 0 : -1;
+    if (!bundled || !el.loginRelay.value) el.loginRelay.value = relayAddress();
+    const first = bundled && !el.loginRelay.value ? el.loginRelay : totpActive && el.loginToken.value ? el.loginTotp : el.loginToken;
     first.focus();
     void checkTotp();
     // A scanned QR code of a new device: this one has to be signed in before it can approve it
@@ -184,8 +185,11 @@ export function checkConnection() {
     }, ALIVE_TIMEOUT_MS);
 }
 
-/** Frames that arrive unencrypted even with end-to-end encryption: the relay's own (RelayFrame) and errors. */
-const PLAIN_TYPES = new Set(['agents', 'auth', 'devices', 'accounts', 'account_created', 'account_invite', 'pair_request', 'pair_approved', 'machine_status', 'wake_result', 'error']);
+/**
+ * Frames that arrive unencrypted even with end-to-end encryption: the relay's own (RelayFrame) and errors. pair_wait and
+ * pair_first are RelayFrames too, but they only reach the sign-in page (qr-login.js), which has its own socket.
+ */
+const PLAIN_TYPES = new Set(['agents', 'auth', 'devices', 'accounts', 'account_created', 'account_invite', 'pair_request', 'pair_approved', 'machine_status', 'wake_result', 'machine_tokens', 'totp', 'totp_setup', 'error']);
 let plainWarned = false;
 
 async function handleIncoming(f) {
@@ -451,6 +455,7 @@ function receive(f) {
             const last = f.entries[f.entries.length - 1];
             setLast(f.chatId, last);
             noteIncoming(f.chatId, f.entries);
+            dropStaleLive(f.chatId, f.live, f.machine);
             // a preview (limit 1) must not replace the full history of an open chat
             const p = paneFor(f.chatId);
             if (p && (f.entries.length > 1 || f.live.length || !state.history[f.chatId] || f.entries.length === 0)) {
@@ -542,6 +547,7 @@ function receive(f) {
         case 'backend_status':
             state.backendPerMachine[f.machine || '?'] = f;
             renderGitTotal();
+            refreshMachinesPage();
             break;
         case 'setup_status':
             state.setupPerMachine[f.machine || '?'] = f;
@@ -549,6 +555,7 @@ function receive(f) {
             // the engines' states in the machine settings
             if (!el.settings.hidden) renderSettings();
             renderGitTotal();
+            refreshMachinesPage();
             break;
         case 'engine_login':
             state.engineLogin[`${f.machine || '?'}:${f.engine}`] = f;
@@ -640,6 +647,7 @@ function receive(f) {
             // open and visible: counts as seen
             if (!document.hidden && visibleChats().includes(f.chatId)) markSeen(f.chatId);
             renderChatList();
+            answerDone(f.chatId, e);
             break;
         }
         case 'state':
@@ -657,6 +665,7 @@ function receive(f) {
                 mergeStates();
             }
             renderChatList();
+            refreshMachinesPage();
             for (const p of panes) {
                 if (!p.chatId) continue;
                 renderChatHeader(p);
@@ -715,6 +724,10 @@ function receive(f) {
                 folderRequestUnknown(f.request, message);
                 break;
             }
+            if (f.request === 'folder_list') {
+                pickerFailed(message);
+                break;
+            }
             if (f.request === 'backend_restart') {
                 alert(message);
                 break;
@@ -749,6 +762,9 @@ function receive(f) {
         case 'folder_proposed':
             receiveFolderProposed(f);
             break;
+        case 'folder_listed':
+            receiveFolderListed(f);
+            break;
         case 'models':
             state.models = f.models || [];
             renderHeaders();
@@ -776,6 +792,9 @@ function receive(f) {
             }
             fillInfo(f.info);
             break;
+        case 'speech':
+            speechAudio(f);
+            break;
         case 'file':
             if (playback.has(f.path)) startPlayback(f);
             else if (imageRequested.delete(f.path)) imageOriginal(f);
@@ -801,7 +820,7 @@ function receive(f) {
     }
 }
 
-/** Account line in the footer: one part per engine that reported. */
+/** Account line on the machines page: one part per engine that reported. */
 export function renderAccount() {
     const a = state.accounts || {};
     el.account.textContent = [

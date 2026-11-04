@@ -61,6 +61,7 @@ export function cleanMachineSettings(s: Partial<Record<keyof MachineSettings, un
         voicePreload: bool('voicePreload'),
         gitPushUser: typeof s.gitPushUser === 'string' ? s.gitPushUser.trim() : d.gitPushUser,
         gitPushHost: typeof s.gitPushHost === 'string' && /^[a-z0-9.:-]*$/i.test(s.gitPushHost.trim()) ? s.gitPushHost.trim().toLowerCase() : d.gitPushHost,
+        claudeAiConnectors: bool('claudeAiConnectors'),
     };
 }
 

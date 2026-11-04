@@ -9,9 +9,23 @@ import type { ApprovalPolicy } from '../../shared/protocol.ts';
 /** Tools that only read or plan: never ask. */
 const READ_ONLY = new Set([
     'Read', 'Glob', 'Grep', 'LS', 'WebSearch', 'WebFetch', 'TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet',
-    'NotebookRead', 'ToolSearch', 'Skill', 'EnterPlanMode', 'ExitPlanMode', 'ListMcpResourcesTool', 'ReadMcpResourceTool',
+    'NotebookRead', 'ToolSearch', 'Skill', 'EnterPlanMode', 'ExitPlanMode',
     'Monitor', 'TaskOutput', 'BashOutput',
 ]);
+
+/** Claude's own tools that read from MCP servers: what they return comes from a foreign service, like an mcp__ tool's. */
+const MCP_RESOURCES = new Set(['ListMcpResourcesTool', 'ReadMcpResourceTool']);
+
+/** A foreign MCP tool or one of the resource tools: Claude's PreToolUse hook sends these through the decision (session.ts). */
+export const foreignMcp = (tool: string): boolean => (tool.startsWith('mcp__') && !tool.startsWith('mcp__openfolk__')) || MCP_RESOURCES.has(tool);
+
+/**
+ * Tools a bot may be allowed for good (Bot.allowedTools): a foreign MCP tool named by its server. Not ACP calls,
+ * which are named after their title, and not the resource tools, which reach every server.
+ */
+export function rememberable(tool: string): boolean {
+    return foreignMcp(tool) && !MCP_RESOURCES.has(tool) && !tool.startsWith('mcp__acp__') && tool.split('__').length >= 3;
+}
 
 /** Tools that write or execute. */
 const WRITING = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'KillShell', 'TaskStop']);
@@ -64,14 +78,15 @@ export function secretRead(tool: string, input: Record<string, unknown>): string
     return null;
 }
 
-export function needsApproval(policy: ApprovalPolicy, tool: string, input: Record<string, unknown>, folder: string): Decision {
+export function needsApproval(policy: ApprovalPolicy, tool: string, input: Record<string, unknown>, folder: string, allowed: readonly string[] = []): Decision {
     if (tool === 'AskUserQuestion') return { ask: true, reason: t('policy.question') };
     const secret = secretRead(tool, input);
     if (secret) return { ask: false, deny: true, reason: secret };
     if (tool.startsWith('mcp__openfolk__')) return { ask: false };
+    if (allowed.includes(tool) && rememberable(tool)) return { ask: false };
     if (policy === 'never' || READ_ONLY.has(tool)) return { ask: false };
 
-    const writing = WRITING.has(tool) || tool.startsWith('mcp__');
+    const writing = WRITING.has(tool) || foreignMcp(tool);
     if (policy === 'write') return { ask: writing, reason: t('policy.writing') };
 
     // risky: writing outside the bot folder, risky commands, foreign MCP tools with external effect
@@ -91,14 +106,9 @@ export function needsApproval(policy: ApprovalPolicy, tool: string, input: Recor
         const risk = shellRisk(command, folder);
         return risk ? { ask: true, reason: t(`policy.${risk}`) } : { ask: false };
     }
-    if (tool.startsWith('mcp__')) {
-        // ACP calls of unknown kind are named after their title ("list and delete branches"), which proves nothing
-        if (tool.startsWith('mcp__acp__')) return { ask: true, reason: t('policy.externalService') };
-        // Reading MCP tools are mostly called get/list/search/read …
-        const short = tool.split('__').pop() ?? '';
-        if (/^(get|list|search|read|query|find|fetch|describe|explore|validate|resolve|help)/i.test(short)) return { ask: false };
-        return { ask: true, reason: t('policy.externalService') };
-    }
+    // A name like get_ or search_ says nothing about what comes back: mail, documents, the variables of a server.
+    // A bot that read a prepared page could otherwise fetch them without a card.
+    if (foreignMcp(tool)) return { ask: true, reason: t('policy.externalService') };
     return { ask: false };
 }
 

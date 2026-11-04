@@ -18,7 +18,7 @@ open to OpenFolk's own pages, and the app starts without a connection. Backend (
 - **Files** the bots send open the share sheet (save to Files, send, open in another app).
 - **Number on the app icon** (iOS): unread chats.
 - **Voice messages** use the microphone; the app asks once.
-- **Version check:** if app and a backend no longer fit (`PROTOCOL_VERSION` in `shared/protocol.ts`), the footer
+- **Version check:** if app and a backend no longer fit (`PROTOCOL_VERSION` in `shared/protocol.ts`), the Repos tab
   says which side needs an update.
 
 Everything that differs between browser, desktop and mobile goes through `webapp/js/platform.js`. OpenFolk's own

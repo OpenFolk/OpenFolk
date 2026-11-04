@@ -73,8 +73,12 @@ export function claudeEnv(auth = accountAuth()): Record<string, string | undefin
     return engineEnv(cliEnv(auth, auth === 'apikey' ? anthropicKey() : ''));
 }
 
-export function claudeSettings(auth = accountAuth()): ReturnType<typeof cliSettings> {
-    return cliSettings(auth);
+/**
+ * The claude.ai connectors come with the login, even without any settings source; only this setting keeps them out.
+ * It wins over a false in the user's own settings, so the machine settings decide for every account.
+ */
+export function claudeSettings(auth = accountAuth()): { apiKeyHelper?: string; disableClaudeAiConnectors?: boolean } {
+    return { ...cliSettings(auth), ...(machineSettings().claudeAiConnectors ? {} : { disableClaudeAiConnectors: true }) };
 }
 
 /** The command that signs the account in to Claude Code on this machine (the setup checklist shows it). */

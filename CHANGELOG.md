@@ -5,9 +5,48 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-04
+
 ### Added
 - `docker-compose.coolify.yml` runs relay and backend in Coolify from the prebuilt images, without a host port and
   with a setup code that Coolify generates; `docker-compose.server.yml` built both images on the server there.
+- "Always for this bot" on the approval card of an external MCP tool: the tool no longer asks for that bot, on
+  every machine. The bot editor lists these tools; unticking one makes it ask again.
+- The desktop apps let you drag the chat list's right edge to change its width (260 to 640 px); the width is kept,
+  a double click restores it.
+
+### Changed
+- Muting a bot or group moved from the push settings to its page and the list's menu ("Mute", next to the favorite).
+- One block "Accounts" in the settings for everything that is a sign-in: one list grouped by relay with the accounts
+  of this device (switch, remove) and, for an admin, everyone else on the relay (invitation, admin, delete); one "Add"
+  takes an invitation, a pairing link of another relay, an address or, for an admin, a new person; the switch for the
+  shared list sits below it. The blocks "Relays" and "All accounts" and "Sign in to another account" in the sidebar
+  menu are gone; the main account has nothing of its own to edit; signing out stays under "Devices and security". The
+  settings are a page like the repos page (a head with the title, the content over the whole width), without icons
+  in the headings; the back arrows of the pages show on the phone only. Adding something there (an AI key, a person
+  or link, a machine, a device) opens a small dialog like the bot editor instead of a form inside the page.
+- The desktop apps take their update feed from openfolk.app, straight from GitHub when that does not answer. The first
+  check of a day counts the installation anonymously (daily totals per system and version, no IP, no identifier,
+  public at `openfolk.app/update/stats.json`); "Count this installation anonymously" in the menu switches it off.
+- Moving a bot to a sleeping machine asks before waking it; declined, nothing is woken and the move is not started.
+- The accounts settings explain themselves: signing this device in to another account has its own section, the list
+  and the form for new accounts say what an invitation link and the admin right do, and the buttons name what they make.
+
+### Fixed
+- "Add machine" and the second factor in the settings stayed empty once the device had the end-to-end key: the web
+  app dropped the relay's own answers as unencrypted (#17).
+- A bot's row in the chat list no longer grows when it shows open git changes, further conversations, a queue or a
+  mute mark; these marks share one line.
+
+### Security
+- The connectors of the claude.ai account Claude Code is signed in with (Gmail, Google Drive and others) no longer
+  reach the bots' sessions. They came with the login, so a bot that read a prepared page or file could have been
+  talked into reading mail or a server's variables. "Connectors" in the settings of a machine lets them in again.
+- In *risky*, every call of an external MCP tool asks, also those named get, list, search or read: the name says
+  nothing about what comes back. The MCP resource tools (`ListMcpResourcesTool`, `ReadMcpResourceTool`) and allow
+  rules in the user's Claude Code settings no longer skip the approval.
+- `docs/running.md` explains that a container reaches the host's ports through the Docker gateway, past the hosting
+  provider's firewall.
 
 ## [0.1.2] - 2026-10-20
 
@@ -125,7 +164,8 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/OpenFolk/OpenFolk/releases/tag/v0.1.0

@@ -3,10 +3,10 @@ import { locale, t, tn } from './i18n.js';
 import { MIN_BACKEND_PROTOCOL, PROTOCOL_VERSION, el, node, state } from './core.js';
 import { activePane, layoutPanes, paneFor } from './panes.js';
 import { bot, clockTime, conversation, conversationTitle, group, isConversation, isGroup, modelOf, responsibleMachine, send, upper } from './e2e.js';
-import { archivedOf, isFavorite, toggleFavorite } from './connection.js';
+import { archivedOf, isFavorite, isMuted, toggleFavorite, toggleMuted } from './connection.js';
 import { listTap, openChatSearch, renderChatList, rowMenu } from './list.js';
 import { closeChat, openChat, paneActivated, renderChatHeader, renderHeaders } from './chat.js';
-import { wake } from './machines.js';
+import { refreshMachinesPage, renderMachines, wake } from './machines.js';
 import { closeVscodeSession, openVscode } from './vscode.js';
 import { openEditor, openGroupEditor, openInfo } from './editors.js';
 
@@ -32,6 +32,8 @@ export const ICONS = {
     sliders: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
     star: '<path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
     starOff: '<path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/><path d="M3 3l18 18"/>',
+    bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+    bellOff: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/><path d="M3 3l18 18"/>',
     restart: '<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>',
     delete: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
     archive: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/>',
@@ -44,6 +46,7 @@ export const ICONS = {
     stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
     copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
     monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    folder: '<path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
     git: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 3-11 5.5"/>',
 };
 
@@ -65,23 +68,26 @@ export function chatMenuButtons(id, onPage = false) {
     // Without an awake machine nobody answers a new conversation or the git list
     const asleep = Boolean(b) && !responsibleMachine(b);
     const fav = isFavorite(id) ? ['favorite', 'starOff', t('menu.unfavorite')] : ['favorite', 'star', t('menu.favorite')];
+    // No notification for answers and routines of this chat; approvals and questions still come (every device)
+    const mute = isMuted(id) ? ['mute', 'bell', t('menu.unmute')] : ['mute', 'bellOff', t('menu.mute')];
     const open = b ? gitOpenOf(b).length : 0;
     const git = ['git', 'git', open ? t('git.openChangesCount', { repos: repoCount(open) }) : t('git.openChanges'), '', asleep];
     const search = ['search', 'search', t('menu.searchChat')];
     const conversationNew = ['conversation_new', 'conversation', t('conversation.new'), '', asleep];
     const vscode = ['vscode', 'monitor', t('menu.vscode')];
     const restart = ['restart', 'restart', t('menu.newSession')];
+    const editBot = ['edit', 'pencil', t('menu.editBot')];
     const entries = !b
-        ? [search, ...(onPage ? [] : [['group', 'group', t('menu.editGroup')]]), fav, ['group_delete', 'delete', t('menu.deleteGroup'), 'danger']]
+        ? [search, ...(onPage ? [] : [['group', 'group', t('menu.editGroup')]]), fav, mute, ['group_delete', 'delete', t('menu.deleteGroup'), 'danger']]
         : isConversation(id)
             ? [...(onPage ? [] : [git]), search, conversationNew, ['main_chat', 'back', t('menu.mainChat', { name: b.name })], vscode,
-                ['rename', 'pencil', t('menu.renameConversation')], restart,
+                ['rename', 'pencil', t('menu.renameConversation')], editBot, restart,
                 ['to_archive', 'archive', t('menu.toArchive')], ['conversation_delete', 'delete', t('menu.deletePermanently'), 'danger']]
             : onPage
-                ? [search, conversationNew, vscode, fav, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']]
+                ? [search, conversationNew, vscode, editBot, fav, mute, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']]
                 : [git, search, conversationNew,
                     ...(archivedOf(b).length ? [['archive', 'archive', t('menu.archiveCount', { n: archivedOf(b).length })]] : []),
-                    vscode, ['info', 'info', t('menu.info')], fav, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']];
+                    vscode, ['info', 'info', t('menu.info')], editBot, fav, mute, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']];
     return entries.map(([action, icon, text, cls, disabled]) => {
         const k = menuButton(icon, text, cls);
         k.dataset.action = action;
@@ -110,10 +116,7 @@ export function chatSwitches(id, picked) {
     return parts;
 }
 
-/**
- * The menu of a chat on a long press or right click in the list: switches, then the entries. Editing a bot goes
- * through its page (info), muting through the push settings.
- */
+/** The menu of a chat on a long press or right click in the list: switches, then the entries. */
 export function fillChatMenu(menu, id) {
     delete menu.dataset.view;
     menu.replaceChildren(...chatSwitches(id, () => { menu.hidden = true; }), ...chatMenuButtons(id));
@@ -182,7 +185,8 @@ function chooseModel(chatId, model) {
 }
 
 // Machine switch below: active is the machine the bot lives on. A tap on another one opens the bot editor to move it
-// there, because the bot needs a folder on that machine (chosen or cloned); a sleeping one is woken for that.
+// there, because the bot needs a folder on that machine (chosen or cloned); a sleeping one is woken for that once
+// the user confirms it.
 // Applies to the whole bot including conversations; the Claude sessions follow it, the history is shared.
 function machineSwitch(b, picked) {
     if (!b) return null;
@@ -214,8 +218,11 @@ function chooseMachine(b, host) {
     // The sessions move along; a running job would be cut off
     const working = Object.entries(state.states).some(([cid, s]) => bot(cid) === b && (s === 'thinking' || s === 'waiting'));
     if (working) { alert(t('machine.moveBusy', { name: b.name })); return; }
-    // Only an awake machine can check or clone the folder there
-    if (!state.online.includes(host) && !state.waking[host]) wake(host);
+    // Only an awake machine can check or clone the folder there; waking it is asked first
+    if (!state.online.includes(host) && !state.waking[host]) {
+        if (!confirm(t('machine.moveWakeConfirm', { name: b.name, machine: upper(host) }))) return;
+        wake(host);
+    }
     openEditor(b, host);
 }
 
@@ -228,7 +235,9 @@ export function chatMenuAction(id, action, menu, show = (...k) => { menu.replace
     const b = bot(id);
     const g = group(id);
     if (action === 'favorite') toggleFavorite(id);
+    if (action === 'mute') toggleMuted(id);
     if (action === 'info' && b) openInfo(id);
+    if (action === 'edit' && b) openEditor(b);
     if (action === 'restart' && b) {
         if (!confirm(t('menu.newSessionConfirm', { name: isConversation(id) ? conversationTitle(id) : b.name }))) return false;
         send({ type: 'restart', botId: b.id, chatId: id });
@@ -250,7 +259,9 @@ export function chatMenuAction(id, action, menu, show = (...k) => { menu.replace
     if (action === 'to_archive' && b) archiveConversation(id, true);
     if (action === 'archive' && b) {
         // continue in the same menu: the archived conversations to bring back
-        show(node('div', 'menu-info', t('menu.archiveHint')), ...archiveButtons(b, () => { menu.hidden = true; }));
+        const head = node('div', 'menu-info');
+        head.append(node('strong', '', t('info.archive')), node('span', '', t('menu.archiveHint')));
+        show(head, ...archiveButtons(b, () => { menu.hidden = true; }));
     }
     if (action === 'git' && b) {
         if (window.innerWidth <= 760) openGitPage(b, Boolean(p));
@@ -283,7 +294,7 @@ export function renderInfoChat(force = false) {
     const conv = isConversation(id) ? conversation(id) : null;
     const archived = conv ? [] : archivedOf(b);
     const key = JSON.stringify([id, locale(), conv && conv.title, modelOf(id), b.machine, responsibleMachine(b), state.online, state.machineStatus && Object.keys(state.machineStatus.hosts || {}),
-        state.models.map((m) => m.value), state.context[id], isFavorite(id), archived]);
+        state.models.map((m) => m.value), state.context[id], isFavorite(id), isMuted(id), archived]);
     if (!force && key === infoShown) return;
     infoShown = key;
     const parts = chatSwitches(id, () => renderInfoChat());
@@ -306,7 +317,13 @@ function leaveInfo() {
 /** An entry on the bot's page. */
 export function infoAction(action) {
     const id = state.infoChat;
-    if (!chatMenuAction(id, action, el.infoActions) || ['favorite', 'rename', 'restart'].includes(action)) {
+    // the editor takes the place of the page, as a page of its own
+    if (action === 'edit') {
+        const b = bot(id);
+        if (closeDialog(el.info) && b) openEditor(b);
+        return;
+    }
+    if (!chatMenuAction(id, action, el.infoActions) || ['favorite', 'mute', 'rename', 'restart'].includes(action)) {
         renderInfoChat(true);
         return;
     }
@@ -623,24 +640,29 @@ export function receiveGitStatus(f) {
     state.gitPerMachine[f.machine || '?'] = f.status || {};
     renderChatList();
     renderGitTotal();
+    refreshMachinesPage();
 }
 
-/** Row "Open changes" at the bottom left (visible even when collapsed, as long as there are any); keeps an open total list current. */
+/**
+ * The tab "Repos": the number of repos with open changes as a badge, "!" when there are only hints (versions, restart,
+ * push access); the summary is its title. Keeps an open total list current.
+ */
 export function renderGitTotal() {
     const open = gitOpenAll();
     const inRows = restartInRows(open.map((r) => ({ b: bot(r.botId), r })));
     const old = outdatedBackends().filter((m) => !inRows.has(m));
     const mismatch = protocolMismatches();
     const noPush = pushGaps();
-    el.gitTotal.hidden = !open.length && !outdatedBackends().length && !mismatch.length && !noPush.length;
-    el.gitTotal.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.git}</svg>`;
     const parts = [
         mismatch.length ? t('protocol.notice', { machines: mismatch.map((m) => upper(m.machine)).join(', ') }) : '',
         open.length ? tn('git.reposWithChanges', open.length) : '',
         old.length ? t('backend.restartNeeded', { machines: old.map(upper).join(', ') }) : '',
         noPush.length ? t('git.noPushNotice', { machines: [...new Set(noPush.map((g) => upper(g.machine)))].join(', ') }) : '',
-    ];
-    el.gitTotal.appendChild(node('span', '', parts.filter(Boolean).join(' · ')));
+    ].filter(Boolean);
+    const hints = mismatch.length || outdatedBackends().length || noPush.length;
+    el.tabReposBadge.hidden = !open.length && !hints;
+    el.tabReposBadge.textContent = open.length ? String(open.length) : '!';
+    el.tabRepos.title = parts.join(' · ');
     if (gitViewOpen()) renderGitList();
 }
 
@@ -742,16 +764,39 @@ export const gitPageFromChat = () => gitFromChat && !el.gitPage.hidden;
  * page was opened from).
  */
 export function openGitPage(b, fromChat = false) {
-    gitFromChat = fromChat;
-    rowMenu.hidden = true;
-    el.settings.hidden = true;
-    el.gitPage.hidden = false;
-    layoutPanes();
+    showPage(b ? 'bot' : 'repos', fromChat);
     el.gitSub.textContent = b ? b.name : t('git.allBots');
     const show = (...parts) => el.gitPageContent.replaceChildren(...parts);
     if (b) return showGitChanges(b, el.gitPage, show);
     Object.assign(gitView, { botId: '*', menu: el.gitPage, show, repos: [], busy: gitView.all ? gitView.busy : null, message: null });
     renderGitList();
+}
+
+/** The tab "Status": the machines with waking and shutting down, the plans' quota and the engines' versions. */
+export function openMachinesPage() {
+    showPage('machines', false);
+    el.gitSub.textContent = '';
+    renderMachines();
+}
+
+/** The page frame over the panes, with the repos of all bots, of one bot, or the machines. */
+function showPage(page, fromChat) {
+    gitFromChat = fromChat;
+    rowMenu.hidden = true;
+    el.settings.hidden = true;
+    el.gitPage.hidden = false;
+    el.gitPage.dataset.page = page;
+    // a git answer arriving later must not fill the page while it shows the machines
+    if (page === 'machines') delete el.gitPage.dataset.view;
+    el.gitPageContent.hidden = page === 'machines';
+    el.machinesPage.hidden = page !== 'machines';
+    renderPageTitle();
+    layoutPanes();
+}
+
+/** The page's title, also after a change of language. */
+export function renderPageTitle() {
+    el.gitTitle.textContent = t(el.gitPage.dataset.page === 'machines' ? 'tabs.status' : 'git.openChanges');
 }
 
 export function closeGitPage() {
@@ -810,7 +855,37 @@ export function toggleHeaderSwitch(p, kind) {
 // ================================================================ Dialogs
 
 /** Closes a dialog right away, changes or not; true, for callers that go on afterwards. */
+/** What the settings dialog holds right now and where it came from. @type {{ content: HTMLElement, parent: HTMLElement, next: Node | null } | null} */
+let settingsDialogHome = null;
+
+/**
+ * Adding something in the settings: `content` (a form or a result box of a block) moves into the small dialog and
+ * shows there; closing hides it and puts it back. `ownActions`: the content brings its own buttons, no "Close" row.
+ * @param {string} title
+ * @param {HTMLElement} content
+ */
+export function openSettingsDialog(title, content, ownActions = false) {
+    if (settingsDialogHome && settingsDialogHome.content !== content) closeSettingsDialog();
+    if (!settingsDialogHome) settingsDialogHome = { content, parent: /** @type {HTMLElement} */ (content.parentElement), next: content.nextSibling };
+    el.settingsDialogTitle.textContent = title;
+    el.settingsDialogBody.replaceChildren(content);
+    content.hidden = false;
+    el.settingsDialogActions.hidden = ownActions;
+    el.settingsDialog.hidden = false;
+}
+
+/** Closes the settings dialog, with `content` only if that is what it holds. @param {HTMLElement} [content] */
+export function closeSettingsDialog(content) {
+    const home = settingsDialogHome;
+    if (!home || (content && home.content !== content)) return;
+    settingsDialogHome = null;
+    home.content.hidden = true;
+    home.parent.insertBefore(home.content, home.next);
+    el.settingsDialog.hidden = true;
+}
+
 export function closeDialog(o) {
+    if (o === el.settingsDialog) { closeSettingsDialog(); return true; }
     o.hidden = true;
     if (o === el.info) { state.infoBot = null; state.infoChat = null; infoShown = ''; layoutPanes(); }
     if (o === el.settings) layoutPanes();

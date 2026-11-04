@@ -57,6 +57,22 @@ saving a file (download, or the share sheet) and the number on the app icon. Fea
 and does not test `navigator` itself. A new native capability gets a function there first and a stand-in in the
 browser tests (`native-app.test.mjs`), which is how the app paths are tested without a device.
 
+## Several relays
+
+The apps can be signed in to several relays, typically one per customer, each with its own end-to-end key, devices,
+accounts and machines (`js/relays.js`; the settings show them as one list grouped by relay in the accounts block,
+`js/accounts.js`: the device's sign-ins and, for an admin, everyone on the relay, where one "Add" takes an invitation,
+a pairing link of another relay, an address or a new person). The page still belongs to one relay at a time: `core.js` picks the relay's
+scope while loading and appends it to everything kept per relay (device key, accounts, seen state, panes, the key's
+slot `e2e<scope>`), and switching loads the page again, as switching accounts does. The first relay's scope is
+empty, so a device from before keeps its data without a migration; scopes never change, so removing one relay cannot
+touch another's keys. This needs a page that brings the web app along (`bundled` in `platform.js`): the mobile apps,
+and the desktop app, which serves the web app itself under `openfolk://app` (`desktop/main.js`) and hands it the
+relay as `#relay=` next to a pairing link's parameters; every relay allows that origin (`relay/src/auth.ts`). The
+browser's page is served by its relay, whose `connect-src 'self'` and Origin check keep it on that one. The shared
+chat list (`others.js`) also opens one connection per account of every other relay, each with that relay's address
+and end-to-end key; a tap loads the page with `?relay=`, as does a notification of another relay.
+
 ## Texts
 
 Every text a user reads is a key in `webapp/i18n/en.js` and `de.js`, with the same keys and the same

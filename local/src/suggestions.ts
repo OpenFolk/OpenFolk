@@ -12,7 +12,7 @@ import { underAllowedRoot } from './bots.ts';
 import { projectRoot } from './config.ts';
 import { language, t } from './i18n.ts';
 import { apiKey, avatarModel } from './settings.ts';
-import type { Language, SuggestionRequest, SuggestionResult } from '../../shared/protocol.ts';
+import type { BotVoice, Language, SuggestionRequest, SuggestionResult } from '../../shared/protocol.ts';
 
 const MAX_CONTEXT = 2500;
 // Realistic portraits need many gradients and strands, hence more room than a flat drawing.
@@ -34,7 +34,7 @@ const SCHEMAS = {
         properties: {
             suggestions: {
                 type: 'array', minItems: 3, maxItems: 3,
-                items: { type: 'object', properties: { name: { type: 'string' }, area: { type: 'string' } }, required: ['name', 'area'], additionalProperties: false },
+                items: { type: 'object', properties: { name: { type: 'string' }, area: { type: 'string' }, voice: { type: 'string', enum: ['female', 'male'] } }, required: ['name', 'area', 'voice'], additionalProperties: false },
             },
         },
         required: ['suggestions'], additionalProperties: false,
@@ -95,7 +95,8 @@ export function prompt(a: SuggestionRequest, context: string, task: Task = a.wha
                 `${languageName} first name, sometimes female, sometimes male. The field of work is a real ${languageName} word or short term`,
                 'for what the bot does (from role, folder or tone): a full word rather than an abbreviation or tech jargon, capitalized,',
                 'at most 24 characters. A matching initial letter is nice but not required; together they should sound natural, not',
-                'like a tongue twister. No quotation marks, no hyphen.',
+                'like a tongue twister. No quotation marks, no hyphen. For each name say which voice reads the answers of the bot',
+                'aloud: "female" or "male", as the name suggests.',
                 a.previous?.length ? `Do not suggest again: ${a.previous.join(', ')}.` : '');
             break;
         case 'role':
@@ -139,14 +140,14 @@ export function resultFrom(what: SuggestionRequest['what'], data: unknown): Sugg
     switch (what) {
         case 'name': {
             const clean = (v: unknown) => typeof v === 'string' ? v.replace(/["„“]/g, '').trim().slice(0, 40) : '';
-            const pairs = new Map<string, string>();
+            const pairs = new Map<string, { area: string; voice: BotVoice }>();
             for (const s of Array.isArray(o.suggestions) ? o.suggestions : []) {
                 const name = clean(s?.name);
-                if (name && !pairs.has(name)) pairs.set(name, clean(s?.area));
+                if (name && !pairs.has(name)) pairs.set(name, { area: clean(s?.area), voice: s?.voice === 'male' ? 'male' : 'female' });
             }
             if (!pairs.size) throw new Error('No names received');
             const chosen = [...pairs].slice(0, 3);
-            return { what, names: chosen.map(([n]) => n), areas: chosen.map(([, a]) => a) };
+            return { what, names: chosen.map(([n]) => n), areas: chosen.map(([, x]) => x.area), voices: chosen.map(([, x]) => x.voice) };
         }
         case 'role': {
             const role = typeof o.role === 'string' ? o.role.trim().replace(/\.$/, '').slice(0, 80) : '';

@@ -10,6 +10,7 @@ import { isRead, renderEntry, scroll, setReply } from './chat-features.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 import { canRecord, imageRequested, rec, renderUploads } from './voice.js';
+import { dropExpected } from './read-aloud.js';
 
 // ---------------------------------------------------------- Queue
 // Own messages that arrive while the bot is still working are not in the history, but collapsed above the
@@ -364,6 +365,24 @@ export function getLive(chatId, botId) {
     return chat[botId];
 }
 
+/**
+ * Drop running answers the backend no longer reports: their `done` got lost while the connection was down, and the
+ * relay does not replay it. A backend only knows its own sessions, so only its bots' answers are dropped.
+ */
+export function dropStaleLive(chatId, live, machine) {
+    const chat = state.live[chatId];
+    if (!chat) return;
+    const running = new Set((live || []).map((lt) => lt.botId));
+    for (const [botId, l] of Object.entries(chat)) {
+        if (running.has(botId)) continue;
+        const bot = state.bots.find((b) => b.id === botId);
+        if (machine && bot && bot.machine && bot.machine !== machine) continue;
+        if (l.timer) clearTimeout(l.timer);
+        if (l.wrap) l.wrap.remove();
+        delete chat[botId];
+    }
+}
+
 export function liveWrap(chatId, botId) {
     const l = getLive(chatId, botId);
     if (!l.wrap || !l.wrap.isConnected) {
@@ -510,6 +529,7 @@ function approvalCard(a) {
     actions.append(
         button(t('approval.deny'), 'btn danger', { allow: false }),
         button(t('approval.alwaysAllow'), 'btn', { allow: true, always: true }),
+        ...(a.rememberable ? [button(t('approval.alwaysBot'), 'btn', { allow: true, remember: true })] : []),
         button(t('approval.allow'), 'primary', { allow: true }),
     );
     k.appendChild(actions);
@@ -530,6 +550,7 @@ export function sendMessage(p) {
         attachments: p.uploads.length ? p.uploads.map((u) => ({ name: u.name, type: u.type, data: u.data, thumb: u.thumb })) : undefined,
         replyTo: p.replyTo || undefined,
     }, b ? responsibleMachine(b) : undefined);
+    dropExpected(chatId);
     setReply(p, null);
     p.el.text.value = '';
     p.uploads = [];

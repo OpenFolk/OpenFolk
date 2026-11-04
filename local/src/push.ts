@@ -170,6 +170,20 @@ export interface PushMessage {
     tag?: string;
 }
 
+/** The web app's address as the apps store it: APP_URL, otherwise the relay's own (pairing.ts has the same rule). */
+function relayOrigin(): string {
+    const raw = process.env.APP_URL?.trim() || config.relayUrl;
+    const u = new URL(raw);
+    u.protocol = u.protocol === 'wss:' ? 'https:' : u.protocol === 'ws:' ? 'http:' : u.protocol;
+    return u.origin;
+}
+
+/** The message for the apps: `relay=` in the link, the relay's host in front of the tag. */
+export function withRelay(n: PushMessage): PushMessage {
+    const origin = relayOrigin();
+    return { ...n, url: `${n.url}${n.url.includes('?') ? '&' : '?'}relay=${encodeURIComponent(origin)}`, ...(n.tag ? { tag: `${new URL(origin).host}:${n.tag}` } : {}) };
+}
+
 /** Delivery per priority: urgency for the push service and how long it keeps trying. */
 const DELIVERY: Record<Exclude<PushPriority, 'off'>, { urgency: 'low' | 'normal' | 'high'; TTL: number }> = {
     quiet: { urgency: 'low', TTL: 3600 },
@@ -196,6 +210,9 @@ export async function sendPush(n: PushMessage, kind?: PushKind): Promise<void> {
     const body = n.body.length > 240 ? n.body.slice(0, 239) + '…' : n.body;
     // `prio` carries the same value for service workers that still read the old field name
     const payload = JSON.stringify({ ...n, priority, prio: priority, body });
+    // An app can be signed in to several relays (one per customer): its notification names the relay to open, and the
+    // same chat id on two relays does not replace the other's notification. A browser's push is per origin anyway.
+    n = withRelay(n);
     const native = nativeChannels();
     const gone: StoredSubscription[] = [];
     const sandbox: StoredSubscription[] = [];

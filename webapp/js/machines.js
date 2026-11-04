@@ -1,7 +1,7 @@
 /* OpenFolk web app: machines and waking. */
 import { t, tn } from './i18n.js';
-import { FOOTER_OPEN_KEY, el, node, state, storage } from './core.js';
-import { clockTime, colorOf, group, send, upper } from './e2e.js';
+import { el, node, state } from './core.js';
+import { clockTime, colorOf, group, responsibleMachine, send, upper } from './e2e.js';
 import { renderHeaders } from './chat.js';
 import { textHeight } from './queue.js';
 
@@ -26,11 +26,54 @@ function runsWithoutBackend(host) {
     return ' ' + t(state.shutdownPlanned[host] ? 'machine.shutdownStuck' : 'machine.backendGone', { time: clockTime(gone) });
 }
 
+/**
+ * The line under a machine on the status page: its bots and what they do, the engines ready there, the backend's
+ * start and setup, its open repos. Only what the web app already knows; a machine that is off has only its bots.
+ */
+/** Display names like ENGINE_NAMES in shared/protocol.ts (the web app has no build and does not load it). */
+const ENGINE_NAMES = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', copilot: 'Copilot', antigravity: 'Antigravity', opencode: 'OpenCode' };
+
+function machineDetails(host, connected) {
+    const parts = [];
+    const bots = state.bots.filter((b) => (b.machine || responsibleMachine(b)) === host);
+    if (bots.length) parts.push(tn('status.bots', bots.length));
+    if (!connected) return parts;
+    const per = state.perMachine[host];
+    if (per) {
+        const working = bots.filter((b) => per.states[b.id] === 'thinking' || per.states[b.id] === 'waiting').length;
+        if (working) parts.push(tn('status.working', working));
+        let queued = 0;
+        for (const perChat of Object.values(per.queues || {})) for (const n of Object.values(perChat)) queued += n;
+        if (queued) parts.push(tn('status.queued', queued));
+    }
+    const setup = state.setupPerMachine[host];
+    if (setup) {
+        const ready = Object.entries(setup.engines || {}).filter(([, s]) => s === 'ready').map(([e]) => ENGINE_NAMES[e] || e);
+        if (ready.length) parts.push(ready.join(', '));
+        if (setup.container) parts.push(t('status.container'));
+        if (setup.relay === 'embedded') parts.push(t('status.relayEmbedded'));
+    }
+    const backend = state.backendPerMachine[host];
+    if (backend) {
+        parts.push(t('status.backendSince', { time: clockTime(backend.since) }));
+        if ((backend.changed || []).length) parts.push(t('status.outdated'));
+    }
+    const repos = Object.values(state.gitPerMachine[host] || {}).flat().filter((r) => r.files.length || r.more || r.ahead || r.behind || r.error).length;
+    if (repos) parts.push(tn('status.openRepos', repos));
+    return parts;
+}
+
+/** The details under the machines change with many frames; while the status page is open they are redrawn. */
+export function refreshMachinesPage() {
+    if (!el.machinesPage.hidden) renderMachines();
+}
+
 export function renderMachines() {
     const st = state.machineStatus;
     const hosts = new Set([...state.online, ...(st ? Object.keys(st.hosts || {}) : [])]);
     el.machines.innerHTML = '';
     el.machines.hidden = hosts.size === 0;
+    el.machinesNone.hidden = hosts.size > 0;
     for (const h of [...hosts].sort()) {
         const info = (st && st.hosts && st.hosts[h]) || {};
         const connected = state.online.includes(h);
@@ -56,27 +99,12 @@ export function renderMachines() {
             if (machineCan(h, 'shutdown')) button(t('machine.shutDown'), () => askShutdown(h));
         }
         else if (!waking && !info.active && st && st.configured && !info.error) button(t('machine.wake'), () => wake(h));
-        if (connected) row.classList.add('main');
-        text.addEventListener('click', toggleFooter);
         el.machines.appendChild(row);
+        const details = machineDetails(h, connected);
+        if (details.length) el.machines.appendChild(node('div', 'machine-details', details.join(' · ')));
     }
-    // No machine connected: when collapsed show the first row (with "wake")
-    if (!el.machines.querySelector('.main') && el.machines.firstElementChild) el.machines.firstElementChild.classList.add('main');
     if (st && st.error) el.machines.appendChild(node('div', 'machines-error', st.error));
     if (!el.settings.hidden) renderSettings();
-}
-
-export function showFooter(open) {
-    el.footer.classList.toggle('closed', !open);
-    el.footerHandle.setAttribute('aria-expanded', String(open));
-    el.footerHandle.setAttribute('aria-label', open ? t('footer.showLess') : t('footer.showMore'));
-}
-
-export function toggleFooter() {
-    const open = el.footer.classList.contains('closed');
-    if (open) storage.set(FOOTER_OPEN_KEY, '1');
-    else storage.remove(FOOTER_OPEN_KEY);
-    showFooter(open);
 }
 
 function askShutdown(host, restart = false) {

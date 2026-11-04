@@ -28,7 +28,11 @@ export default async function ({ start, check }) {
     const h = await start({
         secure: true,
         path: `#e2e=${KEY.toString('base64url')}`,
-        before: () => { window.alert = (m) => { window.__alerts = (window.__alerts || []).concat(String(m)); }; },
+        before: () => {
+            window.alert = (m) => { window.__alerts = (window.__alerts || []).concat(String(m)); };
+            const warn = console.warn;
+            console.warn = (...a) => { window.__warned = (window.__warned || []).concat(a.join(' ')); warn(...a); };
+        },
     });
     const p = h.page;
     const listed = async (name) => (await p.locator('#chat-list li', { hasText: name }).count()) > 0;
@@ -61,6 +65,18 @@ export default async function ({ start, check }) {
     await h.push(encrypt(botsFrame(bot('old', 'Old backend'))));
     await h.wait(200);
     check('frame of a backend without guard (before protocol 2) shown', await listed('Old backend'));
+
+    // Answers the relay makes itself arrive unencrypted and count (issue 17: "Add machine" and the second factor)
+    await h.push({ type: 'machine_tokens', list: [] });
+    await h.push({ type: 'totp', active: false, available: true });
+    await h.push({ type: 'totp_setup', secret: 'JBSWY3DPEHPK3PXP', uri: 'otpauth://totp/OpenFolk?secret=JBSWY3DPEHPK3PXP' });
+    await h.wait(200);
+    const relayFrames = await p.evaluate(async () => {
+        const { state } = await import('/js/core.js');
+        return { tokens: Array.isArray(state.machineTokens), warned: window.__warned || [] };
+    });
+    const dropped = relayFrames.warned.filter((w) => /unencrypted (machine_tokens|totp|totp_setup) /.test(w));
+    check('relay frames for machines and the second factor taken unencrypted', relayFrames.tokens && dropped.length === 0, relayFrames);
 
     // What the app sends
     await h.openChat('Old backend');

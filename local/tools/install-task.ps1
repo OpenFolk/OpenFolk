@@ -118,8 +118,13 @@ if ($Run) {
             Write-BotLog "Start backend on $env:COMPUTERNAME ($node)"
             # cmd /c only for the redirect into the log; input from NUL so nothing waits for a question
             $cmdArgs = '/c ""{0}" src\index.ts < NUL >> "{1}" 2>&1"' -f $node, $Log
+            # Not -Wait: in PowerShell 5.1 that waits for every descendant, so a process a bot left running (a dev
+            # server, a browser) kept the loop from ever starting the backend again. WaitForExit waits for cmd.exe
+            # only; touching Handle right away keeps ExitCode readable after the exit.
             $p = Start-Process -FilePath "$env:WINDIR\System32\cmd.exe" -ArgumentList $cmdArgs -WorkingDirectory $Local `
-                -WindowStyle Hidden -Wait -PassThru
+                -WindowStyle Hidden -PassThru
+            $null = $p.Handle
+            $p.WaitForExit()
             # Requested restart (npm run restart, local/src/restart.ts): start again right away instead of after 30 s.
             # neustart.schnell is the marker of older backend versions.
             $wait = $RetrySeconds

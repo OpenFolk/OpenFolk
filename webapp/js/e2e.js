@@ -1,6 +1,6 @@
 /* OpenFolk web app: end-to-end encryption, chat helpers and sending. */
 import { locale, t } from './i18n.js';
-import { COLORS, el, node, startParams, state } from './core.js';
+import { COLORS, E2E_SLOT, el, node, startParams, state } from './core.js';
 import { connect } from './connection.js';
 import { secureStore } from './platform.js';
 import { startApproval, takeApproval } from './qr-login.js';
@@ -69,26 +69,27 @@ export async function adoptKey(text) {
     const raw = unb64(text.includes('#e2e=') ? text.split('#e2e=')[1] : text);
     if (raw.length !== 32) throw new Error(t('e2e.keyLength'));
     const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
-    if (secureStore) await secureStore.set('e2e', b64(raw));
+    if (secureStore) await secureStore.set(E2E_SLOT, b64(raw));
     else {
-        try { await idbSet('e2e', key); } catch { /* without IndexedDB only for this session */ }
+        try { await idbSet(E2E_SLOT, key); } catch { /* without IndexedDB only for this session */ }
     }
     e2e.key = key;
 }
 
-/** Delete the key on this device. */
-export async function forgetKey() {
-    if (secureStore) await secureStore.set('e2e', '').catch(() => undefined);
-    try { await idbSet('e2e', undefined); } catch { /* ignore */ }
-    e2e.key = null;
+/** Delete the key on this device: the current relay's, or the one in `slot` (a relay that is removed, relays.js). */
+export async function forgetKey(slot = E2E_SLOT) {
+    if (secureStore) await secureStore.set(slot, '').catch(() => undefined);
+    try { await idbSet(slot, undefined); } catch { /* ignore */ }
+    if (slot === E2E_SLOT) e2e.key = null;
 }
 
-async function loadKey() {
+/** The key in `slot`: the current relay's, or another relay's for the shared list (others.js). */
+export async function loadKey(slot = E2E_SLOT) {
     if (secureStore) {
-        const raw = await secureStore.get('e2e');
+        const raw = await secureStore.get(slot);
         return raw ? crypto.subtle.importKey('raw', unb64(raw), 'AES-GCM', false, ['encrypt', 'decrypt']) : null;
     }
-    return (await idbGet('e2e')) || null;
+    return (await idbGet(slot)) || null;
 }
 
 /**
@@ -144,16 +145,19 @@ export function newChannel() {
 }
 const mainChannel = newChannel();
 
-async function encrypt(frame, ch = mainChannel) {
+async function encrypt(frame, ch = mainChannel, key = e2e.key) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const guarded = Object.assign({}, frame, { _r: { t: Date.now(), s: ch.sender, n: ++ch.counter } });
-    const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: AAD_TO_BACKEND }, e2e.key, textEnc.encode(JSON.stringify(guarded)));
+    const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: AAD_TO_BACKEND }, key, textEnc.encode(JSON.stringify(guarded)));
     return { type: 'e2e', iv: b64(iv), data: b64(data) };
 }
 
-/** The frame, or null when it is a replay. Backends before protocol version 2 send no guard; their frames pass. */
-export async function decrypt(f, ch = mainChannel) {
-    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(f.iv), additionalData: AAD_FROM_BACKEND }, e2e.key, unb64(f.data));
+/**
+ * The frame, or null when it is a replay. Backends before protocol version 2 send no guard; their frames pass. `key`:
+ * another relay's, for a connection of the shared list.
+ */
+export async function decrypt(f, ch = mainChannel, key = e2e.key) {
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(f.iv), additionalData: AAD_FROM_BACKEND }, key, unb64(f.data));
     const { _r: r, ...frame } = JSON.parse(new TextDecoder().decode(plain));
     if (r && typeof r.s === 'string' && typeof r.n === 'number') {
         if (Math.abs(Date.now() - r.t) > REPLAY_WINDOW_MS || r.n <= (ch.seen.get(r.s) || 0)) {
@@ -278,15 +282,15 @@ export function send(frame, machine) {
     sendOn(state.ws, mainChannel, frame, machine);
 }
 
-/** Like send(), over another connection with its own replay guard (others.js). */
-export function sendOn(ws, ch, frame, machine) {
+/** Like send(), over another connection with its own replay guard and, for another relay, its key (others.js). */
+export function sendOn(ws, ch, frame, machine, key = e2e.key) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    if (RELAY_TYPES.has(frame.type) || !e2e.key) {
+    if (RELAY_TYPES.has(frame.type) || !key) {
         ws.send(JSON.stringify(machine ? Object.assign({}, frame, { machine }) : frame));
         return;
     }
     ch.chain = ch.chain.then(async () => {
-        const v = await encrypt(frame, ch);
+        const v = await encrypt(frame, ch, key);
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(machine ? Object.assign(v, { machine }) : v));
     }).catch((e) => console.warn('Encrypt:', e));
 }

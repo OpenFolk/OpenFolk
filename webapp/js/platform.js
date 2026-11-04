@@ -11,6 +11,12 @@ export const isNative = !!(cap && typeof cap.isNativePlatform === 'function' && 
 export const platformKind = isNative ? cap.getPlatform() : /\bElectron\//.test(navigator.userAgent) ? 'desktop' : 'web';
 // For CSS, e.g. the desktop apps fill the whole window instead of capping the layout width
 document.documentElement.dataset.platform = platformKind;
+/**
+ * The page brings the web app along instead of being served by a relay: the mobile apps, and the desktop app, which
+ * serves it under its own scheme (desktop/main.js). Such a page asks for the relay's address and may know several
+ * relays (relays.js); the browser's page belongs to the relay it came from.
+ */
+export const bundled = isNative || location.protocol === 'openfolk:';
 
 /** A native plugin of the mobile app, or null (browser, desktop, plugin not built into the app). */
 function plugin(name) {
@@ -23,19 +29,19 @@ function plugin(name) {
 const RELAY_KEY = 'openfolk-relay';
 
 /**
- * Base address of the relay (https://…). The browser and the desktop app load the web app from the relay, so it is
- * the page's own origin; the mobile apps bring the web app along and ask for the address once.
+ * Base address of the relay (https://…). The browser loads the web app from the relay, so it is the page's own
+ * origin; the apps bring the web app along and ask for the address once.
  */
 export function relayAddress() {
-    return isNative ? readSetting(RELAY_KEY) : location.origin;
+    return bundled ? readSetting(RELAY_KEY) : location.origin;
 }
 
-/** The mobile app has no relay address yet; the login form asks for it. */
-export const needsRelayAddress = () => isNative && !relayAddress();
+/** The app has no relay address yet; the login form asks for it. */
+export const needsRelayAddress = () => bundled && !relayAddress();
 
 /**
- * https, and http only in the browser (a relay on this computer): iOS (App Transport Security) and Android (no
- * cleartext traffic) refuse plain http, the app would only fail to connect.
+ * https, and http only in the browser and the desktop app (a relay on this computer): iOS (App Transport Security)
+ * and Android (no cleartext traffic) refuse plain http, the app would only fail to connect.
  * @param {URL} url
  */
 function usableProtocol(url) {
@@ -173,9 +179,9 @@ async function webScan(instructions) {
     });
 }
 
-/** WebSocket address of a relay path, e.g. '/ws/client'. */
-export function socketUrl(path) {
-    const url = new URL(path, relayAddress());
+/** WebSocket address of a relay path, e.g. '/ws/client'; `base`: another relay than the page's (the shared list). */
+export function socketUrl(path, base = relayAddress()) {
+    const url = new URL(path, base);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     return url.href;
 }

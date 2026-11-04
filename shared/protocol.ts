@@ -73,6 +73,10 @@ export function codexModelId(model: string | undefined): string | undefined {
 /** When a bot asks before acting. */
 export type ApprovalPolicy = 'never' | 'risky' | 'write';
 
+/** The voice that reads a bot's answers aloud. */
+export const BOT_VOICES = ['female', 'male'] as const;
+export type BotVoice = (typeof BOT_VOICES)[number];
+
 export interface Bot {
     id: string;
     name: string;
@@ -87,7 +91,11 @@ export interface Bot {
     tone: string;
     /** Avatar as data URL or empty. */
     avatar: string;
+    /** Voice for reading aloud; missing = the web app guesses from the name. */
+    voice?: BotVoice;
     approval: ApprovalPolicy;
+    /** Foreign MCP tools (`mcp__server__tool`) the user allowed for this bot for good: they no longer ask. */
+    allowedTools?: string[];
     /**
      * Bots this bot may give jobs with message_bot (and sees in list_bots); missing = all, empty = none. Group chats
      * are not limited by it: their members are what the user chose there.
@@ -125,7 +133,7 @@ export interface Conversation {
 }
 
 /** `canMessage`: null = all bots; missing (apps before it existed) keeps what the bot has. */
-export type BotInput = Omit<Bot, 'sessionId' | 'createdAt' | 'updatedAt' | 'conversations' | 'canMessage'> & { canMessage?: string[] | null };
+export type BotInput = Omit<Bot, 'sessionId' | 'createdAt' | 'updatedAt' | 'conversations' | 'canMessage' | 'allowedTools'> & { canMessage?: string[] | null; allowedTools?: string[] };
 
 /** Bot id for a chatId (main chat or conversation). */
 export function botIdOf(chatId: string): string {
@@ -172,6 +180,11 @@ export type PushPreview = (typeof PUSH_PREVIEWS)[number];
 /** API keys kept in the shared settings; the keys themselves never reach a browser. */
 export const SHARED_API_KEYS = ['gemini', 'openai'] as const;
 export type SharedApiKey = (typeof SHARED_API_KEYS)[number];
+/** Voice for reading messages aloud: the first cloud voice with a key, the device's own, or one provider. */
+export const READ_ALOUD_VOICES = ['auto', 'device', 'openai', 'gemini'] as const;
+export type ReadAloudVoice = (typeof READ_ALOUD_VOICES)[number];
+/** Longest text of one "speech_get"; OpenAI takes 4096 characters at a time. */
+export const SPEECH_TEXT_MAX = 4000;
 
 /**
  * Settings shared by all devices and machines of an account (newer wins). Missing optional fields mean the default;
@@ -187,13 +200,15 @@ export interface SharedSettings {
     gitAutoPull?: boolean;
     /** What Apple and Google see of an app notification (default 'title'). */
     pushPreview?: PushPreview;
+    /** Voice for reading aloud (default 'auto'). */
+    readAloud?: ReadAloudVoice;
     /** Which API keys are stored (only in what goes to browsers). */
     apiKeys?: Partial<Record<SharedApiKey, boolean>>;
     updatedAt: string;
 }
 
 /** What a browser may change of the shared settings. */
-export type SharedSettingsInput = Partial<Pick<SharedSettings, 'language' | 'avatarModel' | 'voiceLanguage' | 'gitAutoPull' | 'pushPreview'>>;
+export type SharedSettingsInput = Partial<Pick<SharedSettings, 'language' | 'avatarModel' | 'voiceLanguage' | 'gitAutoPull' | 'pushPreview' | 'readAloud'>>;
 
 /** Faster-whisper models for voice messages; '' = automatic (large-v3-turbo, small without a graphics card). */
 export const VOICE_MODELS = ['', 'large-v3-turbo', 'medium', 'small', 'base'] as const;
@@ -260,12 +275,17 @@ export interface MachineSettings {
      */
     gitPushUser: string;
     gitPushHost: string;
+    /**
+     * The connectors of the claude.ai account Claude Code is signed in with (Gmail, Drive …) reach the bots' sessions.
+     * Off by default: a bot that reads a prepared page must not find the user's mail among its tools. Missing from older backends.
+     */
+    claudeAiConnectors: boolean;
 }
 
 export const MACHINE_SETTINGS_DEFAULT: MachineSettings = {
     claudeAuth: 'subscription', claudeFallback: 'limit', claudeKeyBudgetUsd: 0, engineAuth: {}, disabledEngines: [], shutdown: true, shutdownDelaySeconds: 60, afterWake: 'ifIdle', afterWakeSeconds: 300,
     afterWakeWaitMinutes: 60, idleMinutes: 15, handoverIde: true, handoverTerminal: true, voiceModel: '', voiceDevice: 'auto',
-    voicePreload: true, gitPushUser: '', gitPushHost: '',
+    voicePreload: true, gitPushUser: '', gitPushHost: '', claudeAiConnectors: false,
 };
 
 /**
@@ -377,6 +397,8 @@ export interface Approval {
     ts: string;
     /** Machine the bot waits on (the answer must go there). */
     machine?: string;
+    /** The card may offer "always for this bot" (a foreign MCP tool, Bot.allowedTools). */
+    rememberable?: boolean;
 }
 
 export interface UsageWindow {
@@ -392,7 +414,13 @@ export interface Usage {
     sevenDay?: UsageWindow;
     /** With status 'rejected': when it continues (Unix seconds). */
     resetsAt?: number;
+    /** Weekly windows of single models the plan limits separately (e.g. Fable), as the server names them; Claude only. */
+    models?: ModelWindow[];
     updatedAt: string;
+}
+
+export interface ModelWindow extends UsageWindow {
+    name: string;
 }
 
 export interface Routine {
@@ -555,8 +583,8 @@ export interface SuggestionRequest {
 }
 
 export type SuggestionResult =
-    /** `areas[i]` is the field of work for `names[i]`; missing from backends before the field existed. */
-    | { what: 'name'; names: string[]; areas?: string[] }
+    /** `areas[i]` is the field of work for `names[i]`, `voices[i]` the voice it calls for; missing from backends before the fields existed. */
+    | { what: 'name'; names: string[]; areas?: string[]; voices?: BotVoice[] }
     | { what: 'role'; role: string }
     /** Profile picture: `image` is a finished photo as data URL (image model, if a key is set), otherwise `svg` markup. */
     | { what: 'avatar'; image?: string; svg?: string };
@@ -577,6 +605,8 @@ export type ClientFrame =
     | { type: 'folder_clone'; url: string; folder?: string }
     /** Where a repository would go on this machine (folder_proposed), for the bot editor's folder field */
     | { type: 'folder_propose'; url: string }
+    /** The subfolders of a folder on this machine (folder_listed), for the bot editor's folder picker; '' = the allowed roots */
+    | { type: 'folder_list'; folder: string }
     | { type: 'group_save'; group: GroupInput }
     | { type: 'group_delete'; groupId: string }
     | { type: 'favorite'; chatId: string; on: boolean }
@@ -637,7 +667,7 @@ export type ClientFrame =
     | { type: 'git_pull'; botId: string; path: string }
     /** Restart this machine's backend once no bot is working; answer "backend_status". */
     | { type: 'backend_restart' }
-    | { type: 'approval_reply'; id: string; allow: boolean; always?: boolean; answers?: Record<string, string>; message?: string }
+    | { type: 'approval_reply'; id: string; allow: boolean; always?: boolean; remember?: boolean; answers?: Record<string, string>; message?: string }
     | { type: 'routines' }
     | { type: 'routine_save'; routine: RoutineInput }
     | { type: 'routine_delete'; id: string }
@@ -647,6 +677,8 @@ export type ClientFrame =
     | { type: 'knowledge_save'; botId: string; location: KnowledgeLocation; fact: Omit<KnowledgeFact, 'updatedAt'>; oldName?: string }
     | { type: 'knowledge_delete'; botId: string; location: KnowledgeLocation; name: string }
     | { type: 'file_get'; path: string }
+    /** Part of a message to read aloud with the cloud voice of the shared settings; answer "speech" with the same `id`. */
+    | { type: 'speech_get'; id: string; text: string; voice?: BotVoice }
     | { type: 'push_subscribe'; subscription: unknown }
     /**
      * A link that signs in one more device without the password: the backend has the relay mint a one-time token
@@ -888,7 +920,14 @@ export type AgentFrame =
     | { type: 'folder_cloned'; url: string; ok: boolean; folder?: string; push?: false; message?: string }
     /** `folder`: where the repository goes; `existing`: a clone of it is there already, saving uses it as it is. */
     | { type: 'folder_proposed'; url: string; ok: boolean; folder?: string; existing?: boolean; message?: string }
+    /**
+     * `folder`: the folder listed ('' = the list of allowed roots), the nearest existing one inside the roots when the
+     * asked one is missing; `parent`: one level up ('' = the list of roots, missing at the top); `folders`: full paths.
+     */
+    | { type: 'folder_listed'; asked: string; ok: boolean; folder?: string; parent?: string; folders?: string[]; message?: string }
     | { type: 'file'; path: string; name: string; mime: string; data: string }
+    /** The audio for "speech_get" (base64), or why there is none; the web app then reads with the device's voice. */
+    | { type: 'speech'; id: string; mime?: string; data?: string; error?: string }
     /** VAPID key for Web Push and the channels this backend can send to ('web', 'apns', 'fcm'; missing = only 'web'). */
     | { type: 'push_key'; publicKey: string; channels?: ('web' | 'apns' | 'fcm')[] }
     | { type: 'push_settings'; settings: PushSettings }

@@ -1,13 +1,20 @@
 // Updates of the desktop app from the GitHub releases (electron-updater, the latest*.yml files CI attaches): a check
 // shortly after start and every six hours, the download in the background, the install on the next quit. "Restart
 // now" installs at once, but only after guardQuit (backend.js) has let the backend end, so no working bot is cut off.
+// The feed comes through openfolk.app (update.php there), straight from GitHub when that does not answer. The first
+// check of a UTC day says "X-OpenFolk-Active: <version>", which openfolk.app adds to a daily total per system; the
+// menu switches that off (update-count.json in the profile).
 'use strict';
 
 const { app, dialog } = require('electron');
 const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const FIRST_CHECK = 30_000;
 const EVERY = 6 * 60 * 60_000;
+const FEED = { provider: 'generic', url: 'https://openfolk.app/update' };
+const GITHUB = { provider: 'github', owner: 'OpenFolk', repo: 'OpenFolk' };
 
 /** electron-updater's autoUpdater, or null where this build does not update itself. */
 let updater = null;
@@ -40,6 +47,53 @@ function supported() {
 
 const text = (key, version) => opts.t(key).replace('{version}', version || '');
 
+const countFile = () => path.join(app.getPath('userData'), 'update-count.json');
+
+/** { day: the UTC day last counted, off: counting switched off in the menu } */
+function countState() {
+    try {
+        return JSON.parse(fs.readFileSync(countFile(), 'utf8'));
+    } catch {
+        return {};
+    }
+}
+
+function saveCountState(state) {
+    try {
+        fs.writeFileSync(countFile(), JSON.stringify(state));
+    } catch {
+        // not counted again today at worst
+    }
+}
+
+function setCounting(on) {
+    saveCountState({ ...countState(), off: !on });
+    opts.onChange();
+}
+
+/**
+ * One check: openfolk.app first, with the active header on the first check of the day; GitHub when that fails.
+ * Rejects only when both fail.
+ */
+async function check() {
+    const today = new Date().toISOString().slice(0, 10);
+    const state = countState();
+    const count = !state.off && state.day !== today;
+    updater.setFeedURL(FEED);
+    updater.requestHeaders = count ? { 'X-OpenFolk-Active': app.getVersion() } : null;
+    try {
+        const result = await updater.checkForUpdates();
+        if (count) saveCountState({ ...state, day: today });
+        return result;
+    } catch {
+        updater.requestHeaders = null;
+        updater.setFeedURL(GITHUB);
+        return updater.checkForUpdates();
+    } finally {
+        updater.requestHeaders = null;
+    }
+}
+
 async function askRestart() {
     const { response } = await dialog.showMessageBox(opts.window() || undefined, {
         type: 'info', title: 'OpenFolk', message: text('updateReadyTitle'), detail: text('updateReadyText', ready),
@@ -70,9 +124,9 @@ function startUpdates(o) {
         opts.onChange();
         void askRestart();
     });
-    const check = () => updater.checkForUpdates().catch(() => undefined);
-    setTimeout(check, FIRST_CHECK).unref();
-    setInterval(check, EVERY).unref();
+    const quietCheck = () => check().catch(() => undefined);
+    setTimeout(quietCheck, FIRST_CHECK).unref();
+    setInterval(quietCheck, EVERY).unref();
     // will-quit comes after guardQuit let the quit through, i.e. after the backend has ended
     app.on('will-quit', () => {
         if (restartAfterQuit && ready) updater.quitAndInstall(true, true);
@@ -85,7 +139,7 @@ async function checkNow() {
     if (!updater) return box(text('updateNotHere', app.getVersion()));
     if (ready) return askRestart();
     try {
-        const result = await updater.checkForUpdates();
+        const result = await check();
         if (!result?.isUpdateAvailable) return box(text('updateNone', app.getVersion()));
         return box(text('updateDownloading', result.updateInfo.version));
     } catch (e) {
@@ -93,11 +147,12 @@ async function checkNow() {
     }
 }
 
-/** Menu entries: "Restart to update" once a version waits, always "Check for updates". */
+/** Menu entries: "Restart to update" once a version waits, always "Check for updates", the switch for counting. */
 function updateMenuItems() {
     return [
         ...(ready ? [{ label: text('updateReadyMenu', ready), click: restart }] : []),
         { label: text('checkUpdates'), click: () => void checkNow() },
+        ...(updater ? [{ label: text('countActive'), type: 'checkbox', checked: !countState().off, click: (m) => setCounting(m.checked) }] : []),
     ];
 }
 

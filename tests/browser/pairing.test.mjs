@@ -48,7 +48,7 @@ export default async function ({ start, check }) {
             if (f.type === 'pair_link') await push({ type: 'pair_link', machine: 'desk', url: 'https://relay.example.com/#pair=new-token&e2e=abc', expiresAt: '2026-10-13T10:15:00Z', svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>', e2e: true });
         },
     });
-    await d.page.click('#btn-settings');
+    await d.page.click('[data-tab=settings]');
     await d.wait(100);
     await d.page.click('#pair-create');
     await d.wait(200);

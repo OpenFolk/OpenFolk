@@ -5,8 +5,8 @@
 
 import { z } from 'zod';
 import {
-    AFTER_WAKE, AVATAR_MODELS, CLAUDE_AUTH_MODES, CLAUDE_FALLBACK, DEVICE_LOGIN_ENGINES, ENGINE_AUTH_MODES, HANDOVER_TARGETS, KEY_ENGINES, KNOWLEDGE_TYPES, LANGUAGES, MACHINE_SETTINGS_MAX,
-    OTHER_ENGINES, PUSH_PREVIEWS, VOICE_DEVICES, VOICE_MODELS, type ClientFrame, type PeerData,
+    AFTER_WAKE, AVATAR_MODELS, BOT_VOICES, CLAUDE_AUTH_MODES, CLAUDE_FALLBACK, DEVICE_LOGIN_ENGINES, ENGINE_AUTH_MODES, HANDOVER_TARGETS, KEY_ENGINES, KNOWLEDGE_TYPES, LANGUAGES, MACHINE_SETTINGS_MAX,
+    OTHER_ENGINES, PUSH_PREVIEWS, READ_ALOUD_VOICES, SPEECH_TEXT_MAX, VOICE_DEVICES, VOICE_MODELS, type ClientFrame, type PeerData,
 } from '../../shared/protocol.ts';
 
 const str = z.string();
@@ -25,7 +25,8 @@ const seenEntry = loose({ until: str.nullish(), unread: z.boolean().optional(), 
 const botInput = loose({
     id: str, name: str, area: str.optional(), role: str.optional(), folder: str, model: str.optional(), tone: str.optional(), avatar: str.nullish(),
     approval: z.enum(['never', 'risky', 'write']).optional(), favorite: z.boolean().optional(), muted: z.boolean().optional(),
-    machine: str.optional(), machineOnly: z.boolean().optional(), canMessage: z.array(str).nullish(),
+    voice: z.enum(['', ...BOT_VOICES]).optional(), machine: str.optional(), machineOnly: z.boolean().optional(), canMessage: z.array(str).nullish(),
+    allowedTools: z.array(str).max(500).optional(),
 });
 const groupInput = loose({ id: str, name: str, avatar: str.nullish(), members: z.array(str), favorite: z.boolean().optional(), muted: z.boolean().optional() });
 const routineInput = loose({ id: str, botId: id, name: str, cron: str, prompt: str, enabled: z.boolean(), wake: z.boolean().optional() });
@@ -44,7 +45,7 @@ const apiKey = z.string().max(500);
 const upTo = (max: number) => z.number().int().min(0).max(max);
 const sharedSettings = loose({
     language: z.enum(LANGUAGES).optional(), avatarModel: z.enum(AVATAR_MODELS).optional(), voiceLanguage: z.enum(['', ...LANGUAGES]).optional(),
-    gitAutoPull: z.boolean().optional(), pushPreview: z.enum(PUSH_PREVIEWS).optional(),
+    gitAutoPull: z.boolean().optional(), pushPreview: z.enum(PUSH_PREVIEWS).optional(), readAloud: z.enum(READ_ALOUD_VOICES).optional(),
 });
 /** One optional value per engine that can run on a key. */
 const perKeyEngine = <T extends z.ZodType>(value: T) => loose(Object.fromEntries(KEY_ENGINES.map((e) => [e, value.optional()])) as Record<(typeof KEY_ENGINES)[number], z.ZodOptional<T>>);
@@ -57,6 +58,7 @@ const machineSettings = loose({
     idleMinutes: upTo(MACHINE_SETTINGS_MAX.idleMinutes).optional(), handoverIde: z.boolean().optional(), handoverTerminal: z.boolean().optional(),
     voiceModel: z.enum(VOICE_MODELS).optional(), voiceDevice: z.enum(VOICE_DEVICES).optional(), voicePreload: z.boolean().optional(),
     gitPushUser: z.string().max(200).optional(), gitPushHost: z.string().max(253).regex(/^[a-z0-9.:-]*$/i).optional(),
+    claudeAiConnectors: z.boolean().optional(),
 });
 
 const frame = <T extends string, S extends z.core.$ZodLooseShape>(type: T, shape: S = {} as S) => loose({ type: z.literal(type), ...shape });
@@ -70,6 +72,7 @@ const SCHEMAS = {
     folder_check: frame('folder_check', { folder: z.string().min(1).max(1000) }),
     folder_clone: frame('folder_clone', { url: z.string().min(1).max(1000), folder: z.string().min(1).max(1000).optional() }),
     folder_propose: frame('folder_propose', { url: z.string().min(1).max(1000) }),
+    folder_list: frame('folder_list', { folder: z.string().max(1000) }),
     group_save: frame('group_save', { group: groupInput }),
     group_delete: frame('group_delete', { groupId: id }),
     favorite: frame('favorite', { chatId: id, on: z.boolean() }),
@@ -103,7 +106,7 @@ const SCHEMAS = {
     work_take: frame('work_take', { botId: id, machine: id, folder: str }),
     backend_restart: frame('backend_restart'),
     approval_reply: frame('approval_reply', {
-        id, allow: z.boolean(), always: z.boolean().optional(), answers: z.record(str, str).optional(), message: str.optional(),
+        id, allow: z.boolean(), always: z.boolean().optional(), remember: z.boolean().optional(), answers: z.record(str, str).optional(), message: str.optional(),
     }),
     routines: frame('routines'),
     routine_save: frame('routine_save', { routine: routineInput }),
@@ -113,6 +116,7 @@ const SCHEMAS = {
     knowledge_save: frame('knowledge_save', { botId: id, location: knowledgeLocation, fact, oldName: str.optional() }),
     knowledge_delete: frame('knowledge_delete', { botId: id, location: knowledgeLocation, name: str }),
     file_get: frame('file_get', { path: z.string().min(1) }),
+    speech_get: frame('speech_get', { id, text: z.string().min(1).max(SPEECH_TEXT_MAX), voice: z.enum(BOT_VOICES).optional() }),
     push_subscribe: frame('push_subscribe', { subscription: pushSubscription }),
     pair_link: frame('pair_link', { token: str.max(200).optional(), expiresAt: str.max(40).optional() }),
     engine_login: frame('engine_login', { engine: z.enum(DEVICE_LOGIN_ENGINES) }),

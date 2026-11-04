@@ -33,10 +33,10 @@ check('photo prompt: person first, photo requirements after', fp.startsWith('A w
 check('result avatar: photo as data URL passes', JSON.stringify(resultFrom('avatar', { image: 'data:image/jpeg;base64,/9j/4AAQ' })) === JSON.stringify({ what: 'avatar', image: 'data:image/jpeg;base64,/9j/4AAQ' }));
 check('result avatar: foreign image URL falls back to SVG and fails', throws(() => resultFrom('avatar', { image: 'https://x/y.jpg' })));
 
-const pairs = (...l: [string, string][]) => ({ suggestions: l.map(([name, area]) => ({ name, area })) });
+const pairs = (...l: [string, string, string?][]) => ({ suggestions: l.map(([name, area, voice]) => ({ name, area, voice })) });
 check('result name: cleaned, without duplicates, at most three, field of work beside each name',
-    JSON.stringify(resultFrom('name', pairs(['„Dan“', 'Deploy'], ['Dan', 'Other'], [' Ada ', ' Accounting '], ['Bo', ''], ['Cy', 'Cloud'])))
-        === JSON.stringify({ what: 'name', names: ['Dan', 'Ada', 'Bo'], areas: ['Deploy', 'Accounting', ''] }));
+    JSON.stringify(resultFrom('name', pairs(['„Dan“', 'Deploy', 'male'], ['Dan', 'Other'], [' Ada ', ' Accounting ', 'female'], ['Bo', ''], ['Cy', 'Cloud'])))
+        === JSON.stringify({ what: 'name', names: ['Dan', 'Ada', 'Bo'], areas: ['Deploy', 'Accounting', ''], voices: ['male', 'female', 'female'] }));
 check('result name: empty is an error', throws(() => resultFrom('name', pairs())));
 check('result role: period at the end removed', JSON.stringify(resultFrom('role', { role: 'Servers and deploys.' })) === JSON.stringify({ what: 'role', role: 'Servers and deploys' }));
 check('result role: missing is an error', throws(() => resultFrom('role', {})));

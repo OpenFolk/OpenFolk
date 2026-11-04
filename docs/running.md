@@ -103,7 +103,15 @@ page offers "Code from the server log" while the main account has no device. The
 seals the pairing link with that key and the code, so the relay passes on a box it cannot open. Not the setup code:
 the relay knows that one. Claude signs in with an Anthropic API key in the first steps, or with its subscription in
 the container (`docker compose -f docker-compose.server.yml exec -u node local claude`); `… exec -u node local npm
-run pair` makes a pairing link as before.
+run pair` makes a pairing link as before. The bots on that server see the connectors of the claude.ai account
+signed in there (Gmail, Drive …) only if the machine settings let them in; an account of its own for the server
+keeps them out for good.
+
+**Other services on the same host:** from inside a container, the Docker gateway (`172.17.0.1` and the like) reaches
+every port of the host that listens on all addresses, such as SSH, a Coolify dashboard or a database. The firewall of
+the hosting provider sits in front of the host and does not filter this way. A bot runs shell commands in the backend
+container, so on a host with other services bind them to `127.0.0.1` or protect them with their own sign-in, or
+block the containers' networks in the host firewall (`DOCKER-USER` chain with iptables).
 
 The backend part works as described in the next paragraph. PCs that should join set `RELAY_URL` to the relay's
 public address and copy `E2E_KEY`, `AGENT_TOKEN` and `PUSH_VAPID_*` from the container

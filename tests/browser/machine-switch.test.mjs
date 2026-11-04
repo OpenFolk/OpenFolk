@@ -1,7 +1,7 @@
 // Machine switch on the bot's page: active is the machine the bot lives on; a tap on another one opens the bot editor
 // to move it there, with its repository in the repository field and the folder there derived from it. The new machine
 // checks the folder before the bot is saved there and clones the repository into it if it is not there yet; a
-// sleeping one is woken. Not in groups. The machine in the page's facts opens the editor too.
+// sleeping one is woken once the user confirms it. Not in groups. The machine in the page's facts opens the editor too.
 import { bot } from './harness.mjs';
 
 const REMOTE = 'https://git.example.com/team/skool.git';
@@ -41,7 +41,8 @@ export default async function ({ start, check }) {
     const saves = () => h.sent.filter((f) => f.type === 'bot_save');
     const editorOpen = () => p.locator('#editor').isVisible();
     let dialog = null;
-    p.on('dialog', (d) => { dialog = d.message(); return d.accept(); });
+    let decline = false;
+    p.on('dialog', (d) => { dialog = d.message(); return decline ? d.dismiss() : d.accept(); });
 
     await h.openChat('Skool Sven');
     await page();
@@ -100,8 +101,16 @@ export default async function ({ start, check }) {
     check('other fields unchanged, no machineOnly', f && f.bot.id === 'skool' && f.bot.model === 'opus' && f.bot.tone === 'brief' && !('machineOnly' in f.bot), f);
     check('editor closed', !(await editorOpen()));
 
-    // Sleeping machine: woken, and nothing can be saved there until it is awake
+    // Sleeping machine: woken only after asking; declined, nothing is woken and no editor opens
     await page();
+    decline = true;
+    dialog = null;
+    await chip('LAPTOP');
+    await h.wait(200);
+    decline = false;
+    check('asked before waking LAPTOP', dialog === 'LAPTOP is asleep. Wake it now to move Skool Sven there?', dialog);
+    check('declined: not woken, no editor', !h.sent.some((x) => x.type === 'wake') && !(await editorOpen()));
+    // Confirmed: woken, and nothing can be saved there until it is awake
     await chip('LAPTOP');
     await h.wait(200);
     const wake = h.sent.find((x) => x.type === 'wake');
