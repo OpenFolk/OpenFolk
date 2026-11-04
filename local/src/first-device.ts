@@ -6,7 +6,9 @@
 // knows that one. The web app opens the box in qr-login.js with the same derivation.
 
 import { randomBytes, webcrypto } from 'node:crypto';
+import fs from 'node:fs';
 import type { PairBox } from '../../shared/protocol.ts';
+import { dataPath } from './store.ts';
 
 const subtle = webcrypto.subtle;
 const enc = new TextEncoder();
@@ -63,6 +65,23 @@ export async function openFirstDevice(privateKey: webcrypto.CryptoKey, id: strin
  * `npm start` shows a pairing link anyway.
  */
 export const firstDeviceCode = process.env.OPENFOLK_CONTAINER === '1' ? newFirstDeviceCode() : '';
+
+/** Written once a device of the main account has talked to this backend: from then on the log keeps the code to itself. */
+const SEEN_FILE = 'first-device-seen';
+let seen: boolean | null = null;
+
+/** A device of the main account has talked to this backend before (in this run or an earlier one). */
+export function deviceSeen(): boolean {
+    seen ??= fs.existsSync(dataPath(SEEN_FILE));
+    return seen;
+}
+
+/** A frame from a device of the main account came in; only a backend that has a code notes it. */
+export function noteDeviceSeen(): void {
+    if (!firstDeviceCode || deviceSeen()) return;
+    seen = true;
+    try { fs.writeFileSync(dataPath(SEEN_FILE), new Date().toISOString()); } catch { /* the log shows the code once more */ }
+}
 
 let busy = false;
 

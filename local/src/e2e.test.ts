@@ -6,7 +6,7 @@ import path from 'node:path';
 
 process.env.E2E_KEY = crypto.randomBytes(32).toString('base64url');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-e2e-'));
-const { e2eEnabled, decrypt, encrypt, setupE2eKey, ReplayError, REPLAY_WINDOW_MS } = await import('./e2e.ts');
+const { e2eEnabled, decrypt, encrypt, parseKey, setupE2eKey, ReplayError, REPLAY_WINDOW_MS } = await import('./e2e.ts');
 
 let failures = 0;
 const check = (name: string, ok: boolean) => { console.log(`${ok ? 'ok    ' : 'FAILED'} ${name}`); if (!ok) failures++; };
@@ -14,6 +14,16 @@ const thrown = (f: () => unknown) => { try { f(); return null; } catch (e) { ret
 const throws = (f: () => unknown) => thrown(f) !== null;
 
 check('enabled with E2E_KEY', e2eEnabled);
+
+// The key as copied: base64 or base64url, with what an editor on Windows adds around it
+const raw = crypto.randomBytes(32);
+const b64 = raw.toString('base64');
+for (const [name, text] of [
+    ['base64 (44 characters)', b64], ['base64url without padding (from a pairing link)', raw.toString('base64url')],
+    ['Windows line end', `${b64}\r\n`], ['byte order mark in front', `﻿${b64}`], ['in quotes', `"${b64}"`], ['zero-width space', `${b64.slice(0, 10)}​${b64.slice(10)}`],
+]) check(`key: ${name}`, parseKey(text, 'E2E_KEY').equals(raw));
+const short = thrown(() => parseKey(b64.slice(0, 30), 'E2E_KEY'));
+check('key too short: the message names the format and what it got', Boolean(short?.message.includes('44 characters') && short.message.includes('got 30 characters')));
 check('E2E_KEY wins, nothing generated', setupE2eKey() === 'env' && !fs.existsSync(path.join(process.env.DATA_DIR, 'e2e-key')));
 const frame = { type: 'send', chatId: 'cloud', text: 'Secret message äöü 🔐' };
 const v = encrypt(frame, 'b2c');

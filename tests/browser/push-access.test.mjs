@@ -8,7 +8,8 @@ export default async function ({ start, check }) {
         online: ['desk', 'cloud'],
         bots: [bot('skool', 'Skool Sven', { machine: 'cloud' }), bot('mail', 'Mail Mia', { machine: 'cloud' }), bot('pdf', 'PDF-Reader', { machine: 'desk' })],
         onSend: async (f, push) => {
-            if (f.type === 'folder_check') await push({ type: 'folder_checked', asked: f.folder, ok: true, folder: f.folder });
+            // the cloned folder holds the repository, as a real backend reports it
+            if (f.type === 'folder_check') await push({ type: 'folder_checked', asked: f.folder, ok: true, folder: f.folder, ...(f.folder === '/work/web' ? { remote: 'https://git.example.com/team/web.git' } : {}) });
             if (f.type === 'folder_clone') await push({ type: 'folder_cloned', url: f.url, ok: true, folder: '/work/web', push: false });
         },
     });

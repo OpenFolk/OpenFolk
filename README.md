@@ -92,8 +92,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
 - **Voice messages.** Recorded in the browser, transcribed locally with faster-whisper on the machine that runs
   the bot (`local/tools/transcribe.py`; model and language in the settings). This is the only part in Python and optional:
   with Python 3.9 or newer on the machine, "Set up voice messages" in its settings installs the rest
-  (`local/tools/requirements-voice.txt`, also by hand). The first voice message downloads the model, about
-  1.6 GB for the default `large-v3-turbo` (without a graphics card `small`, about 0.5 GB).
+  (`local/tools/requirements-voice.txt`, also by hand), with the CUDA libraries where there is an NVIDIA card, and
+  loads the model: about 1.6 GB for the default `large-v3-turbo` (without a graphics card `small`, about 0.5 GB). A
+  Python that has faster-whisper already is used as it is.
 - **Read state, favorites, pinned messages** are synced across all devices and machines.
 - **Columns on wide screens.** Ctrl-click (or the middle button) opens a chat in a column of its own next to the
   others, as many as fit (one per 640 px); "+" at the right edge adds an empty one. With the mouse a chat can also

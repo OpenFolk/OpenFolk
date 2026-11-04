@@ -217,11 +217,11 @@ no askpass), and a bot's shell has no terminal either. For bots to clone and pus
 without a prompt:
 
 - **HTTPS remotes** on your own PC: push once in a terminal so the credential manager of Windows or macOS knows the
-  sign-in; that is enough while the backend runs in your signed-in session. As a task without a sign-in, in a
-  container and on a Linux server set a git token (GitHub, GitLab, Forgejo, Gitea) in the settings of the machine under
-  "Pushing with git" instead: host (the host name only, e.g. `git.example.com`), user, token. The token travels to the
-  machine end-to-end encrypted only and sits in the environment of the bots' sessions there, never in `.git/config`.
-  "Open changes" warns while the host of a bot's repository has no access.
+  sign-in; that is enough while the backend runs in your signed-in session. As a task without a sign-in, in a container
+  and on a Linux server set a git token (GitHub, GitLab, Forgejo, Gitea) in the settings of the machine under "Pushing
+  with git" instead: host (e.g. `git.example.com`; an address pasted there is cut down to the host name), user, token.
+  The token travels to the machine end-to-end encrypted only and sits in the environment of the bots' sessions there,
+  never in `.git/config`. "Open changes" warns while the host of a bot's repository has no access.
 - **SSH remotes** need a key that asks for no passphrase: an SSH agent in the backend's session. On a Mac the desktop
   app ("Start on this computer") inherits the agent launchd provides, and a key in the keychain
   (`ssh-add --apple-use-keychain ~/.ssh/id_ed25519`) loads without a prompt. On Windows the service "OpenSSH

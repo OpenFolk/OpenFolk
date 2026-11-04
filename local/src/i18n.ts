@@ -106,6 +106,10 @@ const en = {
     'voice.startTimeout': 'Whisper does not start (timeout).',
     'voice.pythonFailed': 'Python for Whisper cannot be started ({python}): {error}',
     'voice.tooSlow': 'The transcription takes too long.',
+    'voice.notSetUp': 'Voice messages are not set up on {machine}: "Set up voice messages" in the settings of the machine.',
+    'voice.installing': 'Voice messages are being set up on {machine}; try again in a few minutes.',
+    'voice.unavailable': 'Voice messages are not available on {machine} (a container without Python).',
+    'voice.downloadTimeout': 'The speech model {model} did not finish downloading within half an hour.',
     // ---- suggestions
     'suggest.failed': 'Suggestion failed: {error}',
     'suggest.imageUnreachable': 'Image model not reachable: {error}',
@@ -297,10 +301,12 @@ const en = {
     'setup.pairHere': 'Open this link on the browser or phone you want to use (valid 15 minutes, once; it carries the end-to-end key, do not share it):',
     'setup.pairLater': 'Pair a browser or phone: npm run pair in the OpenFolk folder (in the container: docker compose exec -u node local npm run pair).',
     'setup.firstDeviceCode': 'First device without a terminal: open {url}, choose "Code from the server log" on the sign-in page and enter {code}. The code changes on every start and works only while no device of the main account is signed in.',
+    'setup.firstDeviceHidden': 'A device of the main account has signed in before, so the code for a first device stays out of the log. Further devices: pairing link or QR code from a signed-in device. Without any device left, delete first-device-seen in the data folder and restart.',
     'setup.pairFailed': 'No pairing link ({error}); try again with npm run pair.',
     'setup.claudeSignIn': 'Claude Code is not signed in on this machine: run claude in a terminal and follow the sign-in (or store an API key in the settings of this machine). OpenFolk notices it by itself.',
     'setup.movedToSettings': 'Ignored in the .env, now in the settings of the app: {names}. Set them there and delete the lines.',
     'setup.claudeContainer': 'Claude Code is not signed in in this container: docker compose -f <your compose file> exec -u node local claude, then open the link it prints. OpenFolk notices it by itself.',
+    'setup.claudeSignInAccount': 'Claude Code is not signed in for the account {account} on this machine: {command}, then follow the sign-in (or store an API key in the settings of this machine). OpenFolk notices it by itself.',
     // @@en
 };
 
@@ -407,6 +413,10 @@ const de: Record<Key, string> = {
     'voice.startTimeout': 'Whisper startet nicht (Zeitüberschreitung).',
     'voice.pythonFailed': 'Python für Whisper nicht startbar ({python}): {error}',
     'voice.tooSlow': 'Umwandlung dauert zu lange.',
+    'voice.notSetUp': 'Sprachnachrichten sind auf {machine} nicht eingerichtet: „Sprachnachrichten einrichten“ in den Einstellungen des Rechners.',
+    'voice.installing': 'Sprachnachrichten werden auf {machine} gerade eingerichtet; in ein paar Minuten noch einmal versuchen.',
+    'voice.unavailable': 'Sprachnachrichten gibt es auf {machine} nicht (Container ohne Python).',
+    'voice.downloadTimeout': 'Das Sprachmodell {model} war nach einer halben Stunde noch nicht geladen.',
     // ---- suggestions
     'suggest.failed': 'Vorschlag fehlgeschlagen: {error}',
     'suggest.imageUnreachable': 'Bildmodell nicht erreichbar: {error}',
@@ -598,10 +608,12 @@ const de: Record<Key, string> = {
     'setup.pairHere': 'Diesen Link auf dem Browser oder Handy öffnen, das du nutzen willst (15 Minuten gültig, einmalig; er enthält den Ende-zu-Ende-Schlüssel, nicht weitergeben):',
     'setup.pairLater': 'Browser oder Handy koppeln: npm run pair im OpenFolk-Ordner (im Container: docker compose exec -u node local npm run pair).',
     'setup.firstDeviceCode': 'Erstes Gerät ohne Terminal: {url} öffnen, auf der Anmeldeseite „Code aus dem Server-Log“ wählen und {code} eingeben. Der Code ändert sich bei jedem Start und gilt nur, solange kein Gerät des Hauptzugangs angemeldet ist.',
+    'setup.firstDeviceHidden': 'Ein Gerät des Hauptzugangs war schon angemeldet, deshalb bleibt der Code für ein erstes Gerät aus dem Log. Weitere Geräte: Kopplungslink oder QR-Code von einem angemeldeten Gerät. Ist keins mehr angemeldet, first-device-seen im Datenordner löschen und neu starten.',
     'setup.pairFailed': 'Kein Kopplungslink ({error}); mit npm run pair erneut versuchen.',
     'setup.claudeSignIn': 'Claude Code ist auf diesem Rechner nicht angemeldet: claude im Terminal starten und der Anmeldung folgen (oder in den Einstellungen dieses Rechners einen API-Schlüssel hinterlegen). OpenFolk merkt es von selbst.',
     'setup.movedToSettings': 'In der .env ignoriert, jetzt in den Einstellungen der App: {names}. Dort setzen und die Zeilen löschen.',
     'setup.claudeContainer': 'Claude Code ist in diesem Container nicht angemeldet: docker compose -f <deine Compose-Datei> exec -u node local claude, dann den ausgegebenen Link öffnen. OpenFolk merkt es von selbst.',
+    'setup.claudeSignInAccount': 'Claude Code ist für das Konto {account} auf diesem Rechner nicht angemeldet: {command}, dann der Anmeldung folgen (oder in den Einstellungen dieses Rechners einen API-Schlüssel hinterlegen). OpenFolk merkt es von selbst.',
     // @@de
 };
 

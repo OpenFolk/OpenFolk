@@ -6,7 +6,7 @@
 import { z } from 'zod';
 import {
     AFTER_WAKE, AVATAR_MODELS, BOT_VOICES, CLAUDE_AUTH_MODES, CLAUDE_FALLBACK, DEVICE_LOGIN_ENGINES, ENGINE_AUTH_MODES, HANDOVER_TARGETS, KEY_ENGINES, KNOWLEDGE_TYPES, LANGUAGES, MACHINE_SETTINGS_MAX,
-    OTHER_ENGINES, PUSH_PREVIEWS, READ_ALOUD_VOICES, SPEECH_TEXT_MAX, VOICE_DEVICES, VOICE_MODELS, type ClientFrame, type PeerData,
+    OTHER_ENGINES, PUSH_PREVIEWS, READ_ALOUD_VOICES, SPEECH_TEXT_MAX, VOICE_DEVICES, VOICE_MODELS, gitHostOf, type ClientFrame, type PeerData,
 } from '../../shared/protocol.ts';
 
 const str = z.string();
@@ -57,7 +57,7 @@ const machineSettings = loose({
     afterWakeSeconds: upTo(MACHINE_SETTINGS_MAX.afterWakeSeconds).optional(), afterWakeWaitMinutes: upTo(MACHINE_SETTINGS_MAX.afterWakeWaitMinutes).optional(),
     idleMinutes: upTo(MACHINE_SETTINGS_MAX.idleMinutes).optional(), handoverIde: z.boolean().optional(), handoverTerminal: z.boolean().optional(),
     voiceModel: z.enum(VOICE_MODELS).optional(), voiceDevice: z.enum(VOICE_DEVICES).optional(), voicePreload: z.boolean().optional(),
-    gitPushUser: z.string().max(200).optional(), gitPushHost: z.string().max(253).regex(/^[a-z0-9.:-]*$/i).optional(),
+    gitPushUser: z.string().max(200).optional(), gitPushHost: z.preprocess((v) => (typeof v === 'string' ? gitHostOf(v) : v), z.string().max(253).regex(/^[a-z0-9.:-]*$/i)).optional(),
     claudeAiConnectors: z.boolean().optional(),
 });
 

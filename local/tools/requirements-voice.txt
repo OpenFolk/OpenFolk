@@ -10,6 +10,7 @@
 #
 # The backend finds this environment by itself (or set WHISPER_PYTHON).
 faster-whisper>=1.1
+ctranslate2
 av>=12
 numpy
 # With an NVIDIA graphics card (WHISPER_DEVICE=cuda or auto), additionally:

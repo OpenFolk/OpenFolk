@@ -79,8 +79,9 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   Confluence) kommt über die MCP-Server, die du anbindest.
 - **Sprachnachrichten,** lokal mit faster-whisper umgewandelt. Das ist der einzige, optionale Python-Teil: Mit Python 3.9
   oder neuer auf dem Rechner richtet „Sprachnachrichten einrichten“ in seinen Einstellungen den Rest ein
-  (`local/tools/requirements-voice.txt`, auch von Hand). Die erste Sprachnachricht lädt das Modell, etwa 1,6 GB für
-  `large-v3-turbo` (ohne Grafikkarte `small`, etwa 0,5 GB).
+  (`local/tools/requirements-voice.txt`, auch von Hand), bei einer NVIDIA-Karte mit den CUDA-Bibliotheken, und lädt
+  das Modell: etwa 1,6 GB für `large-v3-turbo` (ohne Grafikkarte `small`, etwa 0,5 GB). Ein Python, das faster-whisper
+  schon hat, wird so genommen.
 - **Gelesen-Stand, Favoriten und fixierte Nachrichten** gelten auf allen Geräten und Rechnern.
 - **Spalten auf breiten Bildschirmen:** Strg-Klick (oder die mittlere Maustaste) öffnet einen Chat in einer eigenen
   Spalte daneben, so viele wie Platz haben; „+“ am rechten Rand fügt eine leere hinzu. Mit der Maus lässt sich ein
@@ -285,12 +286,13 @@ Backend nennt die Ordner beim Start in seinem Log. Nach einer Änderung das Back
 nach einem Passwort fragen; git und SSH werden so gestartet, dass sie statt einer Nachfrage scheitern. Damit Bots
 klonen und pushen können, braucht es Zugangsdaten, die ohne Nachfrage da sind:
 
-- **HTTPS-Remotes** auf dem eigenen PC: einmal in einem Terminal pushen, damit der Credential Manager von Windows
-  oder macOS die Anmeldung kennt; das reicht, solange das Backend in deiner angemeldeten Sitzung läuft. Als Aufgabe
-  ohne Anmeldung, im Container und auf dem Linux-Server stattdessen ein Git-Token (GitHub, GitLab, Forgejo, Gitea) in
-  den Einstellungen des Rechners unter „Pushen mit git“: Host (nur der Hostname, etwa `git.example.com`), Benutzer, Token. Das
-  Token geht nur Ende-zu-Ende-verschlüsselt an den Rechner und steht dort nur in der Umgebung der Bot-Sessions, nie in
-  `.git/config`. „Offene Änderungen“ warnt, solange der Host eines Bot-Repos keinen Zugang hat.
+- **HTTPS-Remotes** auf dem eigenen PC: einmal in einem Terminal pushen, damit der Credential Manager von Windows oder
+  macOS die Anmeldung kennt; das reicht, solange das Backend in deiner angemeldeten Sitzung läuft. Als Aufgabe ohne
+  Anmeldung, im Container und auf dem Linux-Server stattdessen ein Git-Token (GitHub, GitLab, Forgejo, Gitea) in den
+  Einstellungen des Rechners unter „Pushen mit git“: Host (etwa `git.example.com`; eine eingefügte Adresse wird auf den
+  Hostnamen gekürzt), Benutzer, Token. Das Token geht nur Ende-zu-Ende-verschlüsselt an den Rechner und steht dort nur
+  in der Umgebung der Bot-Sessions, nie in `.git/config`. „Offene Änderungen“ warnt, solange der Host eines Bot-Repos
+  keinen Zugang hat.
 - **SSH-Remotes** brauchen einen Schlüssel ohne Passphrase-Abfrage: einen SSH-Agenten, der in der Sitzung des Backends
   läuft. Auf dem Mac nimmt die Desktop-App („Auf diesem Rechner starten“) den Agenten von launchd mit; ein Schlüssel
   im Schlüsselbund (`ssh-add --apple-use-keychain ~/.ssh/id_ed25519`) lädt ohne Nachfrage. Unter Windows hält der Dienst

@@ -57,8 +57,11 @@ function startApp(profile, config) {
     };
     const require = createRequire(import.meta.url);
     const load = Module._load;
+    // main.js asks a relay whether it takes the app's page (relayRefusesApp): here no relay answers, as when it is offline
+    const offline = { request: () => { const req = new (require('node:events').EventEmitter)(); req.end = () => setImmediate(() => req.emit('error', new Error('offline'))); req.destroy = () => undefined; return req; } };
     Module._load = function (request, ...rest) {
         if (request === 'electron') return electron;
+        if ((request === 'node:http' || request === 'node:https') && rest[0]?.filename?.endsWith(path.join('desktop', 'main.js'))) return offline;
         if (request === './handover.js') return { watchHandovers: () => undefined };
         if (request === './updater.js') return { startUpdates: () => undefined, updateMenuItems: () => [] };
         if (request === './backend.js') {
@@ -120,6 +123,7 @@ export default async function ({ check }) {
         await settle();
         menuItem(app, 'Change setup …').click();
         app.win.events.close({ preventDefault: () => undefined });
+        await settle();
         check('tray: in relay mode the relay comes back', app.win.loads[app.win.loads.length - 1].url === appAt('https://relay.example.test'), app.win.loads);
     } finally {
         fs.rmSync(profile, { recursive: true, force: true });

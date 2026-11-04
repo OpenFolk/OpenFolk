@@ -1,5 +1,5 @@
 // Tests for switching between subscription and API key:  node local/src/auth.test.ts
-import { checkSignIn, cliEnv, cliSettings, keyRejected } from './auth.ts';
+import { checkSignIn, claudeSignedIn, cliEnv, cliSettings, keyRejected } from './auth.ts';
 
 let failures = 0;
 const check = (name: string, ok: boolean) => {
@@ -38,6 +38,15 @@ check('API key: key is not in the helper command', !helper.includes('sk-'));
 check('API key, 401: abort', keyRejected('apikey', 401, 'authentication_failed') !== null);
 check('API key, overload (529): keep trying', keyRejected('apikey', 529, 'server_error') === null);
 check('subscription, 401: left to the CLI', keyRejected('subscription', 401, 'authentication_failed') === null);
+
+// Signed in, as the CLI reports the account
+check('signed in: subscription login with e-mail and plan', claudeSignedIn('subscription', { email: 'a@example.com', subscriptionType: 'max', tokenSource: 'claude.ai', apiProvider: 'firstParty' }));
+check('signed in: CLAUDE_CODE_OAUTH_TOKEN, no e-mail, no plan', claudeSignedIn('subscription', { tokenSource: 'CLAUDE_CODE_OAUTH_TOKEN', apiProvider: 'firstParty' }));
+check('not signed in: no token, first party', !claudeSignedIn('subscription', { tokenSource: 'none', apiProvider: 'firstParty' }));
+check('not signed in: nothing but the provider', !claudeSignedIn('subscription', { apiProvider: 'firstParty' }));
+check('older CLI without an answer: not counted as missing', claudeSignedIn('subscription', null));
+check('another provider (Bedrock): signed in there', claudeSignedIn('subscription', { apiProvider: 'bedrock' }));
+check('API key mode: always', claudeSignedIn('apikey', { tokenSource: 'none', apiProvider: 'firstParty' }));
 
 if (failures) process.exit(1);
 console.log('all tests passed');

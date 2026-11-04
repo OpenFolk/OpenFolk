@@ -47,13 +47,29 @@ export function findBot(id: string): Bot | undefined {
     return loadBots().find((b) => b.id === id);
 }
 
+/** A folder outside the allowed root folders; carries both, so the app can show them without reading the message. */
+export class FolderNotAllowed extends Error {
+    readonly folder: string;
+    readonly roots: string[];
+
+    constructor(folder: string) {
+        super(t('bots.folderNotAllowed', { roots: config.allowedRoots.join(', '), folder }));
+        this.folder = folder.replace(/\\/g, '/');
+        this.roots = config.allowedRoots.map((r) => r.replace(/\\/g, '/'));
+    }
+}
+
+/** The refused folder and the allowed ones for an answer to the app, when `e` is such a refusal. */
+export const refusalOf = (e: unknown): { refused: { folder: string; roots: string[] } } | Record<string, never> =>
+    e instanceof FolderNotAllowed ? { refused: { folder: e.folder, roots: e.roots } } : {};
+
 /** Checks the folder: must exist and lie under an allowed root folder. */
 export function checkFolder(folder: string): string {
     const abs = path.resolve(folder);
     if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
         throw new Error(t('bots.folderMissing', { folder: abs }));
     }
-    if (!underAllowedRoot(abs)) throw new Error(t('bots.folderNotAllowed', { roots: config.allowedRoots.join(', '), folder: abs }));
+    if (!underAllowedRoot(abs)) throw new FolderNotAllowed(abs);
     return abs.replace(/\\/g, '/');
 }
 

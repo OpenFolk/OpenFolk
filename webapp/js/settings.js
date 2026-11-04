@@ -163,7 +163,7 @@ export function renderAbout() {
     for (const machine of machines) {
         const st = state.backendPerMachine[machine];
         const protocol = st.protocol ? t('about.protocol', { n: st.protocol }) : t('about.protocolOld');
-        rows.push([t('about.backend', { machine: upper(machine) }), `${protocol} · ${t('about.since', { time: clockTime(st.since) })}`]);
+        rows.push([t('about.backend', { machine: upper(machine) }), `${st.version ? `${st.version} · ` : ''}${protocol} · ${t('about.since', { time: clockTime(st.since) })}`]);
     }
     if (!machines.length) rows.push([t('about.backendNone'), '']);
     el.aboutList.replaceChildren(...rows.flatMap(([label, value]) => {
@@ -321,6 +321,9 @@ function checkField(textKey, checked, onChange, disabled = false) {
 }
 
 /** A text field, sent when it is left with a changed value. */
+/** The host of an address typed as the git host (gitHostOf in shared/protocol.ts). */
+const gitHostOf = (text) => text.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^[^@/]*@/, '').replace(/[/?#].*$/, '').replace(/:(?!\d+$).*$/, '').toLowerCase();
+
 function textField(textKey, value, onChange, placeholderKey = '') {
     const label = node('label', '');
     const input = /** @type {HTMLInputElement} */ (node('input'));
@@ -533,7 +536,13 @@ function machineForm(host, ms) {
     details.appendChild(checkField('settings.handoverTerminal', s.handoverTerminal && ms.offers.terminal, (v) => set({ handoverTerminal: v }), !ms.offers.terminal));
 
     details.appendChild(node('h4', '', t('settings.git')));
-    details.appendChild(textField('settings.gitPushHost', s.gitPushHost, (v) => set({ gitPushHost: v }), 'settings.gitPushHostExample'));
+    // An address is cut down to its host here already: older backends refuse anything else
+    const hostField = textField('settings.gitPushHost', s.gitPushHost, (v) => {
+        const host = gitHostOf(v);
+        /** @type {HTMLInputElement} */ (hostField.querySelector('input')).value = host;
+        if (host !== s.gitPushHost) set({ gitPushHost: host });
+    }, 'settings.gitPushHostExample');
+    details.appendChild(hostField);
     details.appendChild(textField('settings.gitPushUser', s.gitPushUser, (v) => set({ gitPushUser: v })));
     const gitKey = node('div', 'settings-key');
     keyField(gitKey, 'settings.gitPushToken', ms.gitPushToken, (v) => sendMachine(host, {}, { gitPushToken: v }));
@@ -550,11 +559,16 @@ function machineForm(host, ms) {
     return details;
 }
 
+/** Download sizes of the speech models, for the setup's progress line. */
+const MODEL_SIZES = { 'large-v3-turbo': '1.6 GB', medium: '1.5 GB', small: '0.5 GB', base: '0.15 GB' };
+
 /** Whether voice messages work on the machine, and the button that sets them up. */
 function voiceSetupRow(host, voice) {
     const row = node('div', 'settings-voice-setup');
     const detail = voice.detail === 'no_python' ? t('settings.voiceNoPython') : voice.detail || '';
+    const model = voice.state === 'installing' && voice.detail?.startsWith('model:') ? voice.detail.slice(6) : '';
     const text = voice.state === 'ready' ? t('settings.voiceReady')
+        : model ? t('settings.voiceInstallingModel', { model, size: MODEL_SIZES[model] || '?' })
         : voice.state === 'installing' ? t(voice.detail === 'packages' ? 'settings.voiceInstallingPackages' : 'settings.voiceInstalling')
             : voice.state === 'failed' ? t('settings.voiceFailed', { error: detail })
                 : voice.state === 'unavailable' ? t('settings.voiceUnavailable') : t('settings.voiceMissing');

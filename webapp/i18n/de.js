@@ -865,6 +865,7 @@ registerDictionary('de', {
     'settings.voiceRetry': 'Erneut versuchen',
     'settings.voiceInstalling': 'Wird eingerichtet: Python wird vorbereitet …',
     'settings.voiceInstallingPackages': 'Wird eingerichtet: faster-whisper wird geladen (einige Minuten, mit Grafikkarte länger) …',
+    'settings.voiceInstallingModel': 'Wird eingerichtet: das Sprachmodell {model} wird geladen ({size}, das dauert je nach Leitung einige Minuten) …',
     'settings.voiceFailed': 'Einrichten fehlgeschlagen: {error}',
     'settings.voiceNoPython': 'Auf diesem Rechner fehlt Python 3.9 oder neuer (python.org, danach erneut versuchen).',
     'settings.voiceUnavailable': 'Auf diesem Rechner nicht verfügbar (Container ohne Python).',

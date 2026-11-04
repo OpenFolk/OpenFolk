@@ -5,14 +5,16 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { projectRoot } from './config.ts';
+import { config, projectRoot } from './config.ts';
 import { t } from './i18n.ts';
 import { machineSettings } from './machine-settings.ts';
-import { voicePython } from './voice-setup.ts';
+import { voicePython, voiceStatus } from './voice-setup.ts';
 
 const SCRIPT = path.join(projectRoot, 'local', 'tools', 'transcribe.py');
 const IDLE_MIN = 30;
 const START_TIMEOUT_S = 180;
+/** A model not on the machine yet is downloaded at the start (up to 1.6 GB); transcribe.py says so first. */
+const DOWNLOAD_TIMEOUT_S = 30 * 60;
 const JOB_TIMEOUT_S = 180;
 
 export interface Transcript {
@@ -60,7 +62,7 @@ class Transcriber {
         this.ready = new Promise<void>((resolve, reject) => {
             const proc = spawn(python(), ['-u', SCRIPT], { env: whisperEnv(), windowsHide: true });
             this.proc = proc;
-            const startTimer = setTimeout(() => reject(new Error(t('voice.startTimeout'))), START_TIMEOUT_S * 1000);
+            let startTimer = setTimeout(() => reject(new Error(t('voice.startTimeout'))), START_TIMEOUT_S * 1000);
             let errorText = '';
             proc.stderr.on('data', (d: Buffer) => { errorText = (errorText + d.toString()).slice(-2000); });
             proc.stdout.on('data', (d: Buffer) => {
@@ -76,10 +78,17 @@ class Transcriber {
                     } catch {
                         continue;
                     }
+                    if ('downloading' in m) {
+                        clearTimeout(startTimer);
+                        startTimer = setTimeout(() => reject(new Error(t('voice.downloadTimeout', { model: String(m.downloading) }))), DOWNLOAD_TIMEOUT_S * 1000);
+                        log(`downloading the speech model ${String(m.downloading)} first (up to 1.6 GB)`);
+                        continue;
+                    }
                     if ('ready' in m) {
                         clearTimeout(startTimer);
                         if (m.ready) {
                             log(`Whisper ready (${String(m.model)} on ${String(m.device)}) after ${seconds(Date.now() - since)} s`);
+                            if (m.note) log(String(m.note));
                             resolve();
                         } else {
                             reject(new Error(`${String(m.error ?? 'Whisper cannot be loaded')} (Python: ${python()})`));
@@ -131,9 +140,12 @@ class Transcriber {
      */
     preload(): void {
         if (!machineSettings().voicePreload) return;
-        if (!voicePython()) return;
-        log('loading Whisper at start');
-        this.warmUp();
+        // voiceStatus() also finds a Python of the system that has faster-whisper
+        void voiceStatus().then((s) => {
+            if (s.state !== 'ready') return;
+            log('loading Whisper at start');
+            this.warmUp();
+        });
     }
 
     /** `language`: en, de, or '' to detect it. */
@@ -141,6 +153,13 @@ class Transcriber {
         if (this.idle) clearTimeout(this.idle);
         const since = Date.now();
         const cold = !this.ready;
+        // Not set up: say so at once instead of starting some Python and waiting minutes for it
+        if (!this.ready) {
+            const s = await voiceStatus();
+            if (s.state === 'unavailable') throw new Error(t('voice.unavailable', { machine: config.machine.toUpperCase() }));
+            if (s.state === 'installing') throw new Error(t('voice.installing', { machine: config.machine.toUpperCase() }));
+            if (!voicePython()) throw new Error(t('voice.notSetUp', { machine: config.machine.toUpperCase() }));
+        }
         await this.start();
         const waited = Date.now() - since;
         const id = randomUUID();

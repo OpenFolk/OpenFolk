@@ -11,7 +11,7 @@ import {
     type SDKRateLimitInfo,
     type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import { checkSignIn, keyRejected, type AuthMode } from './auth.ts';
+import { checkSignIn, claudeSignedIn, keyRejected, type AuthMode } from './auth.ts';
 import { accountAuth, claudeEnv, claudeSettings, engineAvailable } from './engine-home.ts';
 import { readSessionId, roleLine, setSessionId } from './bots.ts';
 import { ACP_AGENTS, AcpRun, acpModels, type AcpAgent } from './acp.ts';
@@ -141,9 +141,7 @@ export async function claudeModels(): Promise<EngineModels> {
     const q = query({ prompt: noMessage(), options: { settingSources: [], env: claudeEnv(), settings: claudeSettings() } });
     try {
         const [list, account] = await Promise.all([q.supportedModels(), q.accountInfo().catch(() => null)]);
-        // Without a login the CLI reports no account; an unknown answer (older CLI) does not count as missing
-        const signedIn = accountAuth() === 'apikey' || !account || !!account.email || !!account.subscriptionType
-            || (account.apiProvider !== undefined && account.apiProvider !== 'firstParty');
+        const signedIn = claudeSignedIn(accountAuth(), account);
         const models = list.map((m) => ({ value: m.value, resolvedModel: m.resolvedModel ?? m.value, displayName: m.displayName }));
         return { engine: 'claude', models, status: signedIn ? 'ready' : 'sign_in' };
     } finally {
@@ -177,8 +175,11 @@ async function acpStatus(a: AcpAgent): Promise<EngineModels> {
         const models = await acpModels(a);
         return { engine: a.engine, models, status: models.length ? 'ready' : 'missing' };
     } catch (e) {
-        console.log(`${a.engine}-models: ${(e as Error).message}`);
-        return { engine: a.engine, models: [], status: (e as Error).message.startsWith(a.notSignedIn()) ? 'sign_in' : 'missing' };
+        // Not signed in is a state the first steps show, not an error: on a machine that never uses the engine it
+        // would fill every start's log
+        const signIn = (e as Error).message.startsWith(a.notSignedIn());
+        if (!signIn) console.log(`${a.engine}-models: ${(e as Error).message}`);
+        return { engine: a.engine, models: [], status: signIn ? 'sign_in' : 'missing' };
     }
 }
 

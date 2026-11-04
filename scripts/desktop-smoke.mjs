@@ -10,6 +10,7 @@
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright';
@@ -133,6 +134,54 @@ function showLog(run) {
         await quit(run);
         check('quitting the app ends its backend', / disconnected/.test(server.log().split('connected from').pop() ?? ''), server.log().slice(-400));
         server.stop();
+        try { fs.rmSync(run.profile, { recursive: true, force: true, maxRetries: 5 }); } catch { /* a file still held */ }
+    }
+}
+
+// ---- 1b. Updated from 0.1.x: the profile says "signed in", but the page's storage is empty (until 0.1.2 the page ran at
+// the relay's address, since 0.2.0 at openfolk://app). The app pairs itself again instead of showing the sign-in page.
+{
+    const port = 20000 + Math.floor(Math.random() * 20000);
+    const run = await launch({ mode: 'local', localPort: port, paired: `http://127.0.0.1:${port}/` });
+    try {
+        const win = await run.app.firstWindow();
+        await win.waitForURL(/^openfolk:\/\/app\//, { timeout: 90_000 });
+        check('after an update: the window is the own page of the app, at the embedded relay', await relayShown(win, `http://127.0.0.1:${port}`), win.url());
+        await win.waitForSelector('#chat-list .welcome', { timeout: 60_000 });
+        check('after an update: signed in again by itself, no sign-in page, the machine is connected', await machineConnected(win) && !(await win.isVisible('#login')));
+        check('after an update: still remembered as signed in there', run.config().paired === `http://127.0.0.1:${port}/`, run.config());
+    } catch (e) {
+        check(`desktop app ran after an update (${e.message})`, false);
+        showLog(run);
+    } finally {
+        await quit(run);
+        try { fs.rmSync(run.profile, { recursive: true, force: true, maxRetries: 5 }); } catch { /* a file still held */ }
+    }
+}
+
+// ---- 1c. A relay before 0.2.0 refuses the app's own page (origin openfolk://app) with 403: the window shows the web app
+// that relay serves, as up to 0.1.2, instead of a page that cannot connect. Stand-in: refuses every upgrade, serves a page.
+{
+    const old = http.createServer((req, res) => {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end('<!doctype html><title>old relay</title><p id="old">web app of the relay</p>');
+    });
+    old.on('upgrade', (req, socket) => {
+        socket.write(req.headers.origin === 'openfolk://app' ? 'HTTP/1.1 403 Forbidden\r\n\r\n' : 'HTTP/1.1 400 Bad Request\r\n\r\n');
+        socket.destroy();
+    });
+    await new Promise((r) => old.listen(0, '127.0.0.1', () => r(undefined)));
+    const origin = `http://127.0.0.1:${old.address().port}`;
+    const run = await launch({ mode: 'relay', url: `${origin}/` });
+    try {
+        const win = await run.app.firstWindow();
+        const shown = await until(() => win.url().startsWith(origin), 30_000);
+        check('a relay before 0.2.0: the window shows the web app it serves', shown && await win.isVisible('#old'), win.url());
+    } catch (e) {
+        check(`desktop app ran against an old relay (${e.message})`, false);
+    } finally {
+        await run.app.close().catch(() => undefined);
+        old.close();
         try { fs.rmSync(run.profile, { recursive: true, force: true, maxRetries: 5 }); } catch { /* a file still held */ }
     }
 }

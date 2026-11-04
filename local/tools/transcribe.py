@@ -33,20 +33,44 @@ def cuda_dlls():
                 os.environ["PATH"] = p + os.pathsep + os.environ["PATH"]
 
 
+def fetch(name):
+    """Says so before a model that is not on this machine yet is downloaded (up to 1.6 GB), so the backend waits."""
+    from faster_whisper import download_model
+
+    try:
+        download_model(name, local_files_only=True)
+    except Exception:  # noqa: BLE001 - not in the cache
+        report(downloading=name)
+    return name
+
+
 def load_model():
+    """The model, its name, the device and a note when the graphics card could not be used."""
     cuda_dlls()
     import ctranslate2
+    import numpy as np
     from faster_whisper import WhisperModel
 
     name = os.environ.get("WHISPER_MODEL", "large-v3-turbo")
     wanted = os.environ.get("WHISPER_DEVICE", "auto")
     gpu = wanted == "cuda" or (wanted == "auto" and ctranslate2.get_cuda_device_count() > 0)
+    note = ""
     if gpu:
-        return WhisperModel(name, device="cuda", compute_type="float16"), name, "cuda"
+        try:
+            model = WhisperModel(fetch(name), device="cuda", compute_type="float16")
+            # cuBLAS and cuDNN load with the first transcription: a second of silence, so a missing one shows now
+            segments, _ = model.transcribe(np.zeros(16000, dtype=np.float32), beam_size=1)
+            list(segments)
+            return model, name, "cuda", note
+        except Exception as e:  # noqa: BLE001
+            hint = "pip install nvidia-cublas-cu12 nvidia-cudnn-cu12==9.* in this Python"
+            if wanted == "cuda":
+                raise RuntimeError(f"{e} ({hint})") from e
+            note = f"graphics card not usable, running on the CPU: {e} ({hint})"
     # Without a graphics card large is too slow: then a smaller model, unless one is set
     if "WHISPER_MODEL" not in os.environ:
         name = "small"
-    return WhisperModel(name, device="cpu", compute_type="int8"), name, "cpu"
+    return WhisperModel(fetch(name), device="cpu", compute_type="int8"), name, "cpu", note
 
 
 def decode(path):
@@ -80,16 +104,16 @@ def transcribe(model, path, language=None):
 
 def main():
     if len(sys.argv) == 3 and sys.argv[1] == "--file":
-        model, name, device = load_model()
-        report(model=name, device=device, **transcribe(model, sys.argv[2]))
+        model, name, device, note = load_model()
+        report(model=name, device=device, note=note, **transcribe(model, sys.argv[2]))
         return
 
     try:
-        model, name, device = load_model()
+        model, name, device, note = load_model()
     except Exception as e:  # noqa: BLE001 - the error goes to the backend as a message
         report(ready=False, error=f"Whisper cannot be loaded: {e}")
         return
-    report(ready=True, model=name, device=device)
+    report(ready=True, model=name, device=device, note=note)
 
     for line in sys.stdin:
         line = line.strip()

@@ -44,6 +44,17 @@ export function cliSettings(mode: AuthMode, node = process.execPath): { apiKeyHe
     return { apiKeyHelper: `${quote(node)} ${quote(helper)}` };
 }
 
+/**
+ * Whether Claude Code is signed in, from the account the CLI reports. Without a login it reports no e-mail and no plan;
+ * an unknown answer (older CLI) does not count as missing. A token in the environment (CLAUDE_CODE_OAUTH_TOKEN from
+ * `claude setup-token`) brings no e-mail or plan either, only its source; other providers (Bedrock …) sign in elsewhere.
+ */
+export function claudeSignedIn(mode: AuthMode, account: { email?: string; subscriptionType?: string; tokenSource?: string; apiProvider?: string } | null): boolean {
+    return mode === 'apikey' || !account || Boolean(account.email) || Boolean(account.subscriptionType)
+        || (account.tokenSource !== undefined && account.tokenSource !== 'none')
+        || (account.apiProvider !== undefined && account.apiProvider !== 'firstParty');
+}
+
 /** Checks the sign-in the CLI reports at start; returns the error message for a wrong method. */
 export function checkSignIn(mode: AuthMode, apiKeySource: string): string | null {
     if (mode === 'subscription' && apiKeySource !== 'none') {

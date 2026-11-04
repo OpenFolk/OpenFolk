@@ -20,9 +20,16 @@ function aad(direction: Direction): Buffer {
     return Buffer.from(`openfolk:${direction}`);
 }
 
-function parseKey(raw: string, source: string): Buffer {
-    const key = Buffer.from(raw.trim().replace(/-/g, '+').replace(/_/g, '/'), 'base64');
-    if (key.length !== 32) throw new Error(`${source} must be 32 bytes long (base64), see local/tools/e2e.mjs`);
+/**
+ * The key as base64 or base64url, as copied: a byte order mark, invisible characters, quotes and line ends from an
+ * editor on Windows do not count.
+ */
+export function parseKey(raw: string, source: string): Buffer {
+    const text = raw.replace(/[\uFEFF\u200B-\u200D\s"']/g, '');
+    const key = Buffer.from(text.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    if (key.length !== 32) {
+        throw new Error(`${source} must be 32 bytes in base64: 44 characters ending in "=", as in the e2e-key file of the first machine's data folder (npm run env prints it); got ${text.length} characters, ${key.length} bytes`);
+    }
     return key;
 }
 

@@ -20,10 +20,10 @@ import { cloneRepository, inspectFolder, listFolder, originOf, proposeFolder } f
 import type { WarningCode } from './relay-client.ts';
 import {
     archiveConversation, botSessionIds, createConversation, deleteBot, deleteGroup, findBot, findConversation, findGroup, isMuted, isUnder, loadBots, loadGroups, mayMessage,
-    readSessionId, removeConversation, renameConversation, roleLine, saveBot, saveBots, saveGroup, allowTool, setFavorite, setModel, setMuted, setSessionId, underAllowedRoot,
+    readSessionId, refusalOf, removeConversation, renameConversation, roleLine, saveBot, saveBots, saveGroup, allowTool, setFavorite, setModel, setMuted, setSessionId, underAllowedRoot,
 } from './bots.ts';
 import { autologon, canAutologon, type AutologonState } from './autologon.ts';
-import { config } from './config.ts';
+import { BACKEND_VERSION, config } from './config.ts';
 import { pin, pinnedForBrowser } from './pinned.ts';
 import { applySeen, loadSeen } from './seen.ts';
 import { commitAndPush, listChanges, openRepos, overlaps, pullRepo, pullRepos, pullText, pushAccess } from './git.ts';
@@ -46,6 +46,7 @@ import {
     anthropicKey, applyGitPush, engineKey, gitPushToken, machineSettings, noEngine, saveAnthropicKey, saveEngineKey, saveGitPushToken, saveMachineSettings,
 } from './machine-settings.ts';
 import { checkClientFrame } from './frames.ts';
+import { noteDeviceSeen } from './first-device.ts';
 import {
     adoptVapid, publicKey, pushChannels, pushSettings, removeSubscriptions, savePushSettings, saveSubscription, sendPush, vapidKeys, type PushMessage,
 } from './push.ts';
@@ -226,7 +227,9 @@ export class BotManager implements SessionHooks {
                 this.send({ type: 'models', models });
                 if (engines.claude === 'sign_in' && !this.claudeHintShown) {
                     this.claudeHintShown = true;
-                    console.log(t(process.env.OPENFOLK_CONTAINER === '1' ? 'setup.claudeContainer' : 'setup.claudeSignIn'));
+                    // Every account has a sign-in of its own: the log says whose is missing and how to make it
+                    if (this.accountId !== DEFAULT_ACCOUNT) console.log(t('setup.claudeSignInAccount', { account: this.accountId, command: claudeSignInCommand() ?? 'claude' }));
+                    else console.log(t(process.env.OPENFOLK_CONTAINER === '1' ? 'setup.claudeContainer' : 'setup.claudeSignIn'));
                 }
                 this.engines = engines;
                 writeJson('engines.json', engines);
@@ -289,7 +292,7 @@ export class BotManager implements SessionHooks {
         const status = {
             since: new Date(this.startedAt).toISOString(), changed: changedSince(this.startedAt), ...(w ? { requested: w } : {}),
             protocol: PROTOCOL_VERSION, minClientProtocol: MIN_CLIENT_PROTOCOL,
-            handover: this.accountId === DEFAULT_ACCOUNT ? handoverTargets() : [],
+            handover: this.accountId === DEFAULT_ACCOUNT ? handoverTargets() : [], ...(BACKEND_VERSION ? { version: BACKEND_VERSION } : {}),
         };
         const json = JSON.stringify(status);
         if (!cid && json === this.backendStatusJson) return;
@@ -924,6 +927,7 @@ export class BotManager implements SessionHooks {
             this.send({ type: 'error', request: checked.type, message: t('errors.invalidFrame', { machine: config.machine, request: checked.type, problem: checked.problem }) }, cid);
             return;
         }
+        if (this.accountId === DEFAULT_ACCOUNT) noteDeviceSeen();
         // The machine itself and its logins belong to its owner: another account may not shut it down, sign its
         // engines in elsewhere or look at the VS Code sessions under its home folder
         if (this.accountId !== DEFAULT_ACCOUNT && MAIN_ONLY.has(frame.type)) {
@@ -1000,7 +1004,7 @@ export class BotManager implements SessionHooks {
                     const asked = frame.folder;
                     inspectFolder(asked).then(
                         (r) => this.send({ type: 'folder_checked', asked, ok: true, ...r }, cid),
-                        (e: Error) => this.send({ type: 'folder_checked', asked, ok: false, message: e.message }, cid),
+                        (e: Error) => this.send({ type: 'folder_checked', asked, ok: false, message: e.message, ...refusalOf(e) }, cid),
                     );
                     break;
                 }
@@ -1013,7 +1017,7 @@ export class BotManager implements SessionHooks {
                             console.log(`clone: ${shown} into ${folder}`);
                             this.send({ type: 'folder_cloned', url, ok: true, folder, ...(push === false ? { push } : {}) }, cid);
                         },
-                        (e: Error) => { console.log(`clone: ${shown} failed: ${e.message}`); this.send({ type: 'folder_cloned', url, ok: false, message: e.message }, cid); },
+                        (e: Error) => { console.log(`clone: ${shown} failed: ${e.message}`); this.send({ type: 'folder_cloned', url, ok: false, message: e.message, ...refusalOf(e) }, cid); },
                     );
                     break;
                 }
@@ -1123,9 +1127,12 @@ export class BotManager implements SessionHooks {
                     const signIn = changed.includes('claudeAuth') || changed.includes('claudeKeyBudgetUsd') || changed.includes('engineAuth') || frame.anthropicKey !== undefined || engineKeys.length > 0;
                     if (signIn) for (const s of this.sessions.values()) s.reload();
                     if (signIn || changed.includes('disabledEngines')) this.refreshModels();
-                    // New sessions inherit the git token; whether pushing works now shows in "Open changes"
+                    // The sessions get the git credentials through their environment, which a running one took at its start:
+                    // each starts anew on its next turn, otherwise its pushes would fail until a restart of the backend.
+                    // Whether pushing works now shows in "Open changes"
                     if (changed.includes('gitPushUser') || changed.includes('gitPushHost') || frame.gitPushToken !== undefined) {
                         applyGitPush();
+                        if (!signIn) for (const s of this.sessions.values()) s.reload();
                         this.checkPushSoon(0);
                     }
                     this.sendMachineSettings();

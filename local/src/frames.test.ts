@@ -3,6 +3,7 @@
 //   node local/src/frames.test.ts
 // The browser tests additionally run every frame the web app sends there through the same check.
 import { checkClientFrame, checkPeerData } from './frames.ts';
+import { gitHostOf } from '../../shared/protocol.ts';
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown) => {
@@ -52,6 +53,15 @@ rejected('unknown language', { type: 'language', language: 'fr' }, 'language');
 rejected('unknown push priority', { type: 'push_settings', kinds: { done: 'loud' } }, 'kinds');
 
 // ---- unknown types: the backend answers with "does not know the request"
+// ---- the git host of the push credentials: an address is cut down to its host (it was refused as "invalid string")
+for (const [typed, host] of [
+    ['git.example.com', 'git.example.com'], ['https://git.example.com', 'git.example.com'], ['https://git.example.com/', 'git.example.com'],
+    ['  HTTPS://Git.Example.com/team/repo.git ', 'git.example.com'], ['https://user@git.example.com:8443/team/repo', 'git.example.com:8443'],
+    ['git@git.example.com:team/repo.git', 'git.example.com'], ['ssh://git@git.example.com:2222/team/repo.git', 'git.example.com:2222'], ['', ''],
+]) check(`git host of ${JSON.stringify(typed)}`, gitHostOf(typed) === host, gitHostOf(typed));
+accepted('machine settings: git host typed as an address', { type: 'machine_settings_save', settings: { gitPushHost: 'https://git.example.com/' } });
+rejected('machine settings: git host with a space', { type: 'machine_settings_save', settings: { gitPushHost: 'git example.com' } }, 'settings.gitPushHost');
+
 const unknown = checkClientFrame({ type: 'teleport' });
 check('unknown type is reported as unknown', !unknown.ok && unknown.unknown && unknown.type === 'teleport');
 const none = checkClientFrame('ping');

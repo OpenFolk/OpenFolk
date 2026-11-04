@@ -28,6 +28,13 @@ export default async function ({ start, check }) {
     check('and how to allow more: ALLOWED_ROOTS, separator, restart', e.hint.includes('ALLOWED_ROOTS') && e.hint.includes('";"') && e.hint.includes('restart'), e.hint);
     check('where: the desktop app\'s .env, a user variable, Docker', e.hint.includes('%APPDATA%\\OpenFolk\\.env') && e.hint.includes('user environment variable') && e.hint.includes('WORK_DIR'), e.hint);
 
+    // Since 0.2.1 the answer names folder and allowed folders apart: the text no longer matters (a third language,
+    // a folder with ": " in its name)
+    answer = { ok: false, message: 'Dossier refusé', refused: { folder: 'D:/Work/a: b', roots: ['C:/Users/sven', 'E:/Projects'] } };
+    e = await save();
+    check('a refusal with its fields: read from them, not from the text', e.visible && e.head === 'This folder is not allowed: D:/Work/a: b'
+        && e.roots === 'Allowed folders:\nC:/Users/sven\nE:/Projects' && e.hint.includes('ALLOWED_ROOTS'), e);
+
     answer = { ok: false, message: 'Ordner liegt nicht unter C:/Users/sven: D:/Work/site' };
     e = await save();
     check('German refusal of a backend in German: split the same, worded by the language of the app', e.visible && e.head === 'This folder is not allowed: D:/Work/site' && e.roots === 'Allowed folders:\nC:/Users/sven' && e.hint.includes('ALLOWED_ROOTS'), e);

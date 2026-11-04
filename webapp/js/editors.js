@@ -370,6 +370,9 @@ function startClone(url, folder) {
     send({ type: 'folder_clone', url, ...(folder ? { folder } : {}) }, machine);
 }
 
+/** The same repository, with or without ".git" and a trailing slash (sameRepo in local/src/folders.ts). */
+const sameRepository = (a, b) => Boolean(a) && a.trim().replace(/(\.git)?\/*$/, '') === b.trim().replace(/(\.git)?\/*$/, '');
+
 /** `repo`: cloned into the folder when the folder is not there. */
 function checkThenSave(asked, repo = '') {
     const machine = el.editorMachine.value;
@@ -383,7 +386,7 @@ export function receiveCloned(f) {
     if (!cloning || f.url !== cloning.url) return;
     setSaving(false);
     if (el.editor.hidden) return;
-    if (!f.ok) { showEditorError(f.message || t('editor.noAnswer')); return; }
+    if (!f.ok) { showEditorError(f.message || t('editor.noAnswer'), f.refused); return; }
     el.editorFolder.value = f.folder;
     if (f.push === false) {
         let host = '';
@@ -408,7 +411,10 @@ export function receiveFolderChecked(f) {
     }
     const s = saving;
     if (!f.ok && s.repo) { setSaving(false); startClone(s.repo, s.asked); return; }
-    if (!f.ok) { setSaving(false); showEditorError(f.message || t('editor.noAnswer')); return; }
+    // The folder is there but no clone of the repository given (empty, say, after a clone that failed): the backend
+    // clones into it if it is empty and refuses otherwise, instead of the bot being saved without its repository
+    if (f.ok && s.repo && !sameRepository(f.remote, s.repo)) { setSaving(false); startClone(s.repo, s.asked); return; }
+    if (!f.ok) { setSaving(false); showEditorError(f.message || t('editor.noAnswer'), f.refused); return; }
     s.save(f.folder);
 }
 
@@ -500,8 +506,9 @@ function dataUrlToBlob(url) {
 }
 
 /**
- * The backend refuses a folder outside its ALLOWED_ROOTS with a plain message and no code (bots.folderNotAllowed in
- * local/src/i18n.ts, English or German by its language), so the text is what tells it apart.
+ * A folder outside the backend's ALLOWED_ROOTS: since 0.2.1 the answer names folder and allowed folders in `refused`;
+ * a backend before that sends only the message (bots.folderNotAllowed in local/src/i18n.ts, English or German by its
+ * language), so there the text is what tells it apart.
  */
 const folderNotAllowed = (text) => /not\s+under|nicht\s+unter/i.test(text);
 
@@ -518,12 +525,13 @@ function splitFolderRefusal(text) {
     return roots.length ? { roots, folder: m[2].trim() } : null;
 }
 
-function showEditorError(text) {
-    const parts = folderNotAllowed(text) ? splitFolderRefusal(text) : null;
+/** @param {string} text @param {{ folder: string, roots: string[] }} [refused] from the backend's answer */
+function showEditorError(text, refused) {
+    const parts = refused?.folder && Array.isArray(refused.roots) ? refused : folderNotAllowed(text) ? splitFolderRefusal(text) : null;
     el.editorError.textContent = parts ? t('editor.folderNotAllowed', { folder: parts.folder }) : text;
     if (parts) el.editorError.append(node('span', 'error-roots', t('editor.allowedFolders') + '\n' + parts.roots.join('\n')));
     // The desktop app that runs the backend has a menu for it; the .env and the variable stay as the second way
-    if (folderNotAllowed(text)) el.editorError.append(node('span', 'error-hint', (desktopLocal ? t('editor.folderNotAllowedMenu') + '\n' : '') + t('editor.folderNotAllowedHint')));
+    if (refused || folderNotAllowed(text)) el.editorError.append(node('span', 'error-hint', (desktopLocal ? t('editor.folderNotAllowedMenu') + '\n' : '') + t('editor.folderNotAllowedHint')));
     el.editorError.hidden = false;
 }
 

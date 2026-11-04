@@ -57,6 +57,19 @@ try {
     removeTree(elsewhere);
 }
 
+// The refusal carries the folder and the allowed ones, for the app (folder_checked and folder_cloned send them as `refused`)
+{
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-outside-'));
+    let caught: unknown = null;
+    try { bots.checkFolder(outside); } catch (e) { caught = e; }
+    fs.rmSync(outside, { recursive: true, force: true });
+    const refusal = bots.refusalOf(caught);
+    check('refused folder: the error names folder and allowed folders apart', caught instanceof bots.FolderNotAllowed
+        && 'refused' in refusal && refusal.refused.folder === outside.replace(/\\/g, '/') && refusal.refused.roots.join() === repo.replace(/\\/g, '/'), refusal);
+    check('refused folder: the message stays as before', caught instanceof Error && caught.message.includes('not under'), (caught as Error)?.message);
+    check('another error: nothing extra in the answer', Object.keys(bots.refusalOf(new Error('missing'))).length === 0);
+}
+
 if (failures) process.exit(1);
 console.log('all tests passed');
 process.exit(0);

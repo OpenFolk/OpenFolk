@@ -97,7 +97,7 @@ onRelaySwitch((relayUrl) => {
     console.log(`relay: now ${relayUrl}`);
 });
 // The main account's first device from the sign-in page, with the code in this log (containers only, first-device.ts)
-const { answerFirstDevice, firstDeviceCode } = await import('./first-device.ts');
+const { answerFirstDevice, deviceSeen, firstDeviceCode } = await import('./first-device.ts');
 const { e2eKeyForLink } = await import('./e2e.ts');
 relay.onFirstDevice = (id, pk) => answerFirstDevice(id, pk, async () => {
     const { token } = await RelayClient.createPairing(DEFAULT_ACCOUNT);
@@ -116,7 +116,10 @@ relay.onConnected = () => {
  * container log; there the start output says how to get one.
  */
 async function announcePairing(): Promise<void> {
-    if (firstDeviceCode) console.log(t('setup.firstDeviceCode', { code: firstDeviceCode, url: appUrl() }));
+    // Once a device of the main account was there, the code would only fill every start's log; the relay takes it
+    // only while no device is signed in, and further devices come with a pairing link or a QR code
+    if (firstDeviceCode && !deviceSeen()) console.log(t('setup.firstDeviceCode', { code: firstDeviceCode, url: appUrl() }));
+    else if (firstDeviceCode) console.log(t('setup.firstDeviceHidden'));
     const show = process.stdout.isTTY && (embedded !== null || firstStart);
     if (!show) {
         if (firstStart) console.log(t('setup.pairLater'));

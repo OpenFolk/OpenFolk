@@ -9,7 +9,7 @@ import { gitPushCredentials } from './git.ts';
 import { dataPath, PRIVATE, readMachineJson, secureDataDir, writeMachineJson } from './store.ts';
 import {
     AFTER_WAKE, CLAUDE_AUTH_MODES, CLAUDE_FALLBACK, ENGINE_AUTH_MODES, KEY_ENGINES, MACHINE_SETTINGS_DEFAULT, MACHINE_SETTINGS_MAX, OTHER_ENGINES, VOICE_DEVICES, VOICE_MODELS,
-    type Engine, type KeyEngine, type MachineSettings,
+    gitHostOf, type Engine, type KeyEngine, type MachineSettings,
 } from '../../shared/protocol.ts';
 
 const FILE = 'machine-settings.json';
@@ -60,7 +60,7 @@ export function cleanMachineSettings(s: Partial<Record<keyof MachineSettings, un
         voiceDevice: oneOf(VOICE_DEVICES, s.voiceDevice) ? s.voiceDevice : d.voiceDevice,
         voicePreload: bool('voicePreload'),
         gitPushUser: typeof s.gitPushUser === 'string' ? s.gitPushUser.trim() : d.gitPushUser,
-        gitPushHost: typeof s.gitPushHost === 'string' && /^[a-z0-9.:-]*$/i.test(s.gitPushHost.trim()) ? s.gitPushHost.trim().toLowerCase() : d.gitPushHost,
+        gitPushHost: typeof s.gitPushHost === 'string' && /^[a-z0-9.:-]*$/i.test(gitHostOf(s.gitPushHost)) ? gitHostOf(s.gitPushHost) : d.gitPushHost,
         claudeAiConnectors: bool('claudeAiConnectors'),
     };
 }

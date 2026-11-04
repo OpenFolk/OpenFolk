@@ -1,5 +1,6 @@
 // Settings, section "About": the versions the app really knows. Its own protocol version, the desktop app's version (from
-// the user agent, only there) and, per connected backend, what its backend_status reports. Nothing is made up.
+// the user agent, only there) and, per connected backend, what its backend_status reports (since 0.2.1 also its
+// version). Nothing is made up.
 import { bot } from './harness.mjs';
 
 const about = (p) => p.evaluate(() => [...document.querySelectorAll('#about-list dt')].map((dt) => [dt.textContent, dt.nextElementSibling.textContent]));
@@ -13,15 +14,15 @@ export default async function ({ start, check }) {
     check('about: the section is there', await p.isVisible('#settings-about') && (await p.textContent('#settings-about h3')).includes('About'));
     check('about: browser: the web app\'s protocol version, no desktop line', rows.some(([l, v]) => l === 'Web app' && /^protocol version \d+$/.test(v)) && !rows.some(([l]) => l === 'Desktop app'), rows);
 
-    await web.push({ type: 'backend_status', machine: 'desk', since: new Date().toISOString(), changed: [], protocol: 2, minClientProtocol: 1 });
+    await web.push({ type: 'backend_status', machine: 'desk', since: new Date().toISOString(), changed: [], protocol: 2, minClientProtocol: 1, version: '0.2.1' });
     await web.push({ type: 'backend_status', machine: 'laptop', since: new Date().toISOString(), changed: [] });
     await web.wait(300);
     rows = await about(p);
     const desk = rows.find(([l]) => l === 'Backend DESK');
     const laptop = rows.find(([l]) => l === 'Backend LAPTOP');
-    check('about: an open page shows a backend as soon as it reports: its protocol version and start', desk && /^protocol version 2 · running since \d/.test(desk[1]), rows);
+    check('about: an open page shows a backend as soon as it reports: its version, protocol version and start', desk && /^0\.2\.1 · protocol version 2 · running since \d/.test(desk[1]), rows);
     check('about: a backend without a protocol version says so, instead of a number', laptop && laptop[1].startsWith('from before protocol versions'), rows);
-    check('about: no backend software version is invented', !rows.some(([l, v]) => l.startsWith('Backend') && /\b\d+\.\d+\.\d+\b/.test(v)), rows);
+    check('about: a backend that does not report its version gets none invented', laptop && !/\b\d+\.\d+\.\d+\b/.test(laptop[1]), rows);
     await web.close();
 
     const desktop = await start({

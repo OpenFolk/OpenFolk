@@ -24,6 +24,8 @@ export default async function ({ start, check }) {
     const sent = h.sent.length;
     await content.locator('span', { hasText: 'tap me' }).click();
     await h.wait(200);
-    check('tap on the text triggers nothing', h.sent.length === sent && await p.locator('[data-el=messages]').isVisible(), h.sent.slice(sent));
+    // The read state of the chat just opened may follow late; it is no reaction to the tap
+    const reactions = h.sent.slice(sent).filter((f) => f.type !== 'seen');
+    check('tap on the text triggers nothing', reactions.length === 0 && await p.locator('[data-el=messages]').isVisible(), reactions);
     await h.close();
 }

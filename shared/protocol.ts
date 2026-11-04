@@ -282,6 +282,14 @@ export interface MachineSettings {
     claudeAiConnectors: boolean;
 }
 
+/**
+ * The git host of the push credentials as typed: an address (https://user@git.example.com:8443/team/repo.git, also
+ * git@git.example.com:team/repo.git) gives its host and port, lower case; anything else is checked by the caller.
+ */
+export function gitHostOf(text: string): string {
+    return text.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^[^@/]*@/, '').replace(/[/?#].*$/, '').replace(/:(?!\d+$).*$/, '').toLowerCase();
+}
+
 export const MACHINE_SETTINGS_DEFAULT: MachineSettings = {
     claudeAuth: 'subscription', claudeFallback: 'limit', claudeKeyBudgetUsd: 0, engineAuth: {}, disabledEngines: [], shutdown: true, shutdownDelaySeconds: 60, afterWake: 'ifIdle', afterWakeSeconds: 300,
     afterWakeWaitMinutes: 60, idleMinutes: 15, handoverIde: true, handoverTerminal: true, voiceModel: '', voiceDevice: 'auto',
@@ -292,6 +300,15 @@ export const MACHINE_SETTINGS_DEFAULT: MachineSettings = {
  * Voice messages on a machine: `ready` (faster-whisper loads), `missing` (not set up), `installing` (detail: python,
  * packages), `failed` (detail: no_python or the last line of the error), `unavailable` (a container, no Python).
  */
+/**
+ * A folder outside the machine's allowed folders (ALLOWED_ROOTS): the refused folder and the allowed ones, next to the
+ * message, so the app need not read them out of the text. Missing from backends before 0.2.1.
+ */
+export interface FolderRefusal {
+    folder: string;
+    roots: string[];
+}
+
 export interface VoiceSetup {
     state: 'ready' | 'missing' | 'installing' | 'failed' | 'unavailable';
     detail?: string;
@@ -880,7 +897,9 @@ export type AgentFrame =
         /** PROTOCOL_VERSION and MIN_CLIENT_PROTOCOL of the backend; missing = backend from before (version 0). */
         protocol?: number; minClientProtocol?: number;
         /** Handover targets this machine offers the account; missing = backend from before, which knows only 'ide'. */
-        handover?: HandoverTarget[] }
+        handover?: HandoverTarget[];
+        /** Version of OpenFolk the backend runs (local/package.json); missing = backend before 0.2.1. */
+        version?: string }
     /**
      * History of a VS Code session: `from` is the index of the first entry; from there the browser replaces its
      * state (everything on open, afterwards only the changed end).
@@ -916,8 +935,8 @@ export type AgentFrame =
      * `asked`: the folder as sent; `folder`: as this machine stores it; `remote`: its repository's origin; `push`
      * false: git here has no credentials to push there
      */
-    | { type: 'folder_checked'; asked: string; ok: boolean; folder?: string; remote?: string; push?: false; message?: string }
-    | { type: 'folder_cloned'; url: string; ok: boolean; folder?: string; push?: false; message?: string }
+    | { type: 'folder_checked'; asked: string; ok: boolean; folder?: string; remote?: string; push?: false; message?: string; refused?: FolderRefusal }
+    | { type: 'folder_cloned'; url: string; ok: boolean; folder?: string; push?: false; message?: string; refused?: FolderRefusal }
     /** `folder`: where the repository goes; `existing`: a clone of it is there already, saving uses it as it is. */
     | { type: 'folder_proposed'; url: string; ok: boolean; folder?: string; existing?: boolean; message?: string }
     /**

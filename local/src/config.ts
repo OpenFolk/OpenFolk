@@ -10,6 +10,16 @@ import type { ClaudeAuth } from '../../shared/protocol.ts';
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const projectRoot = path.resolve(here, '..', '..');
 
+/** The version of OpenFolk this backend is (local/package.json, raised with every release); '' if unreadable. */
+export const BACKEND_VERSION: string = (() => {
+    try {
+        const v = (JSON.parse(fs.readFileSync(path.join(here, '..', 'package.json'), 'utf8')) as { version?: unknown }).version;
+        return typeof v === 'string' ? v : '';
+    } catch {
+        return '';
+    }
+})();
+
 // OPENFOLK_ENV_FILE: the desktop app keeps the settings of its backend in its profile, not in a checkout's .env
 const envFile = process.env.OPENFOLK_ENV_FILE || path.join(projectRoot, '.env');
 dotenv.config({ path: envFile, quiet: true });

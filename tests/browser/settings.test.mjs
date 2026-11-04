@@ -162,6 +162,28 @@ export default async function ({ start, check }) {
     }));
     check('without Python: says what is missing, offers to try again', after.voice.includes('Python 3.9') && after.voice.includes('Try again'), after);
     check('git token stored; with the subscription no field for an Anthropic key', after.token.join() === 'stored', after);
+    // The git host typed as an address: the field and the frame carry the host only (older backends refuse the rest)
+    const hostTyped = await p.evaluate(() => {
+        const label = [...document.querySelectorAll('#settings-machines label')].find((l) => l.querySelector('span')?.textContent === 'Git host');
+        const input = label?.querySelector('input');
+        if (!input) return null;
+        input.value = 'https://Git.Example.com/team/repo.git';
+        input.dispatchEvent(new Event('change'));
+        return input.value;
+    });
+    await h.wait(50);
+    const hostSaved = h.sent.findLast((f) => f.type === 'machine_settings_save' && f.settings && 'gitPushHost' in f.settings);
+    check('git host typed as an address: cut down to the host in the field and in the frame', hostTyped === 'git.example.com' && hostSaved?.settings.gitPushHost === 'git.example.com', [hostTyped, hostSaved]);
+
+    // The setup loads the speech model as a step of its own, with its size
+    await h.push({ type: 'machine_settings', machine: 'desk', anthropicKey: false, gitPushToken: true, shutdownMethod: 'script', voice: { state: 'installing', detail: 'model:large-v3-turbo' },
+        offers: { shutdown: true, ide: true, terminal: false, voice: true },
+        settings: { claudeAuth: 'subscription', shutdown: false, shutdownDelaySeconds: 60, afterWake: 'ifIdle', afterWakeSeconds: 300, afterWakeWaitMinutes: 60, idleMinutes: 15,
+            handoverIde: true, handoverTerminal: true, voiceModel: '', voiceDevice: 'auto', voicePreload: true, gitPushUser: 'bot', gitPushHost: 'git.example.com' } });
+    await h.wait(100);
+    const loading = await p.textContent('#settings-machines .settings-voice-setup');
+    check('voice setup: the speech model is loading, with its size, no button meanwhile', loading.includes('large-v3-turbo') && loading.includes('1.6 GB')
+        && !(await p.locator('#settings-machines .settings-voice-setup button').count()), loading);
 
     // machines joined by invitation (main account): the relay is asked when the page opens
     check('the relay is asked for the joined machines', h.sent.some((f) => f.type === 'machine_tokens'));

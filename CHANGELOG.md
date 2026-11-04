@@ -47,10 +47,37 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 - The bot editor marks its required fields: name, and a folder or a repository (by @SvenvanB).
 - The account name next to the title in the sidebar says in its tooltip that it is the active account and switches
   on a tap; the list of a device with several accounts was hard to read without it.
+- "Set up voice messages" loads the speech model as a step of its own, with its size, so the first voice message no
+  longer waits for a download of up to 1.6 GB; it installs the CUDA libraries also where `nvidia-smi` is not on the
+  path, and a Python of the machine that has faster-whisper already is used as it is.
+- A container's log names the code for a first device only until a device of the main account has connected, and an
+  engine that is merely not signed in (Copilot on a machine that does not use it) no longer logs a line at every start.
+- "About" in the settings names the version of OpenFolk each connected backend runs (`version` in `backend_status`,
+  optional; older backends show their protocol version as before).
+- A refused bot folder comes with the folder and the allowed ones as fields of the answer (`refused` in
+  `folder_checked` and `folder_cloned`), so the app no longer reads them out of an English or German message.
 
 ### Fixed
 - Desktop app: closing "Change setup" without a choice brought the setup page back on the next click on the tray
   or Dock icon instead of the chat (by @SvenvanB).
+- Desktop app: after the update to 0.2.0 the window showed the sign-in page instead of the chat, because the web app's
+  storage moved with its new address; "on this computer" now notices the missing sign-in and pairs the window again.
+  A relay before 0.2.0 refuses the app's new address altogether: with such a relay the window shows the web app the
+  relay serves, as before, signed in as before, until the relay is updated. "Sign this window in again" did nothing
+  while the window showed the app.
+- Claude Code signed in with `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) counts as signed in; the first
+  steps asked for a sign-in.
+- A voice message on a machine without voice messages set up says so at once instead of ending after three minutes
+  with "Whisper does not start"; a speech model still to be downloaded gets half an hour, and with the CUDA libraries
+  missing, "automatic" runs on the CPU instead of failing.
+- The git host under "Pushing with git" takes an address (`https://git.example.com/…`) and keeps its host name; it was
+  refused with "Invalid string". Changed git credentials reach the bots' running sessions on their next turn instead
+  of after a restart of the backend.
+- Saving a bot with a repository and a folder that exists but holds no clone of it (empty after a clone that failed)
+  clones into the folder or says why it cannot, instead of saving the bot without its repository.
+- A wrong `E2E_KEY` names the expected format and what it got; a byte order mark, quotes or invisible characters
+  around a copied key no longer count.
+- The log line about a missing Claude sign-in of another account names the account and its command.
 
 ## [0.2.0] - 2026-11-04
 

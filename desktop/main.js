@@ -8,7 +8,10 @@
 'use strict';
 
 const { app, BrowserWindow, Tray, Menu, shell, ipcMain, nativeImage, dialog, protocol, session } = require('electron');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
+const http = require('node:http');
+const https = require('node:https');
 const os = require('node:os');
 const path = require('node:path');
 const { Backend, dataDir, freePort, guardQuit, joinServer, profileRoots, remoteUrl, root, setProfileEnv } = require('./backend.js');
@@ -71,6 +74,59 @@ const appLink = (relay, hash = '') => `${APP}#relay=${encodeURIComponent(relay.r
 function appLinkFromPairing(link) {
     const u = new URL(link);
     return appLink(u.origin, u.hash.replace(/^#/, ''));
+}
+
+/** Origins of relays before 0.2.0 found by relayRefusesApp(): their pages may load in the window. */
+const oldRelays = new Set();
+/** Origins that took the app's page: asked no more in this run. */
+const newRelays = new Set();
+
+/**
+ * Relays before 0.2.0 refuse the app's own page as a foreign origin (relay/src/auth.ts, originAllowed) and close the
+ * web socket with 403. Asked once per relay with a handshake from that origin; false when the relay does not answer,
+ * so the app's page loads and reports the trouble itself.
+ */
+function relayRefusesApp(relay) {
+    let url;
+    try { url = new URL('/ws/client', relay); } catch { return Promise.resolve(false); }
+    if (oldRelays.has(url.origin)) return Promise.resolve(true);
+    if (newRelays.has(url.origin)) return Promise.resolve(false);
+    const client = url.protocol === 'https:' ? https : http;
+    return new Promise((resolve) => {
+        const done = (old) => {
+            if (old) oldRelays.add(url.origin);
+            resolve(old);
+        };
+        const fresh = () => {
+            newRelays.add(url.origin);
+            done(false);
+        };
+        const req = client.request(url, {
+            headers: {
+                Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13',
+                'Sec-WebSocket-Key': crypto.randomBytes(16).toString('base64'), Origin: 'openfolk://app',
+            },
+            timeout: 10_000,
+        });
+        req.on('upgrade', (res, socket) => { socket.destroy(); fresh(); });
+        req.on('response', (res) => { res.resume(); if (res.statusCode === 403) done(true); else fresh(); });
+        req.on('timeout', () => { req.destroy(); done(false); });
+        req.on('error', () => done(false));
+        req.end();
+    });
+}
+
+/**
+ * The page for a relay: the app's own, or, for a relay before 0.2.0 that refuses it, the web app that relay serves,
+ * as up to 0.1.2 (its storage still holds the sign-in from then). `link`: the relay's address or one of its pairing links.
+ */
+async function relayPage(link) {
+    const u = new URL(link);
+    if (await relayRefusesApp(u.origin)) {
+        console.log(`relay ${u.origin} is older than 0.2.0: showing its own web app until it is updated`);
+        return `${u.origin}/${u.hash}`;
+    }
+    return appLinkFromPairing(link);
 }
 
 /** Texts of the app itself (menus, tray, setup page); the web app from the relay translates itself. */
@@ -380,7 +436,7 @@ function loadWebApp() {
     // The web app tells "on this computer" (it has the menu "Allowed folders …") from a display-only window by this mark
     win.webContents.setUserAgent(config.mode === 'local' ? `${baseAgent} OpenFolkLocal` : baseAgent);
     if (config.mode === 'local') void startLocal();
-    else if (config.mode === 'relay' && config.url) win.loadURL(appLink(config.url));
+    else if (config.mode === 'relay' && config.url) void relayPage(config.url).then((page) => win.loadURL(page), () => win.loadURL(appLink(config.url)));
     else win.loadFile(SETUP);
 }
 
@@ -409,17 +465,50 @@ async function startLocal() {
     }
     // Signed in at this relay already; a relay claimed from the app or joined by invitation needs a new sign-in
     if (config.paired === backend.url) {
-        win.loadURL(appLink(backend.url));
+        try { await win.loadURL(await relayPage(backend.url)); } catch { /* the page reports it */ }
+        // The page may have lost its sign-in, though: up to 0.1.2 it ran at the relay's address, since 0.2.0 at
+        // openfolk://app with a storage of its own. Without a device key it would show the sign-in page; a fresh
+        // pairing link signs it in again, as on the first start.
+        if (!(await pageSignedIn(backend.url))) await pairAgain();
         return;
     }
     await pairAgain();
+}
+
+/**
+ * Whether the web app in the window holds a device key (or a password still to be exchanged) for this relay; see
+ * relayEntry and DEVICE_KEY in webapp/js/core.js. True when that cannot be told, so nothing pairs by mistake.
+ */
+async function pageSignedIn(relay) {
+    let origin;
+    try { origin = new URL(relay).origin; } catch { return true; }
+    try {
+        // The web app of an old relay keeps its keys without a relay's scope (webapp/js/core.js, relayScope)
+        if (!win.webContents.getURL().startsWith(APP)) {
+            return Boolean(await win.webContents.executeJavaScript("Boolean(localStorage.getItem('openfolk-device') || localStorage.getItem('openfolk-token'))"));
+        }
+        return Boolean(await win.webContents.executeJavaScript(`(() => {
+            try {
+                const list = JSON.parse(localStorage.getItem('openfolk-relays') || '[]');
+                const entry = Array.isArray(list) ? list.find((r) => r && r.url === ${JSON.stringify(origin)}) : null;
+                if (!entry) return false;
+                return Boolean(localStorage.getItem('openfolk-device' + entry.scope) || localStorage.getItem('openfolk-token' + entry.scope));
+            } catch { return true; }
+        })()`));
+    } catch {
+        return true;
+    }
 }
 
 /** Loads the web app with a fresh pairing link, which signs this window in and hands it the end-to-end key. */
 async function pairAgain() {
     if (!backend) return;
     try {
-        win.loadURL(appLinkFromPairing(await backend.pairingUrl()));
+        const link = await relayPage(await backend.pairingUrl());
+        // Already on that page, the link would only change what follows '#', and the web app reads the pairing link
+        // when it starts: through a blank page it loads anew
+        if (!win.webContents.getURL().startsWith('file:')) await win.loadURL('about:blank').catch(() => undefined);
+        win.loadURL(link);
         config.paired = backend.url;
         saveConfig();
     } catch (e) {
@@ -482,6 +571,8 @@ function createWindow() {
     });
     win.webContents.on('will-navigate', (e, url) => {
         if (url.startsWith('file://') || url.startsWith(APP)) return;
+        // The page of a relay before 0.2.0 reloads itself, e.g. after the sign-in
+        try { if (oldRelays.has(new URL(url).origin)) return; } catch { /* no address */ }
         e.preventDefault();
         shell.openExternal(url);
     });

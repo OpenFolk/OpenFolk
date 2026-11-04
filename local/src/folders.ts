@@ -4,7 +4,7 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkFolder, isUnder, underAllowedRoot } from './bots.ts';
+import { checkFolder, FolderNotAllowed, isUnder, underAllowedRoot } from './bots.ts';
 import { config } from './config.ts';
 import { pushAccess } from './git.ts';
 import { t } from './i18n.ts';
@@ -119,7 +119,7 @@ export function listFolder(folder: string): { folder: string; parent?: string; f
 export async function cloneRepository(url: string, folder?: string): Promise<string> {
     cloneName(url);
     const target = path.resolve(folder?.trim() || (await proposeFolder(url)).folder);
-    if (!underAllowedRoot(target)) throw new Error(t('bots.folderNotAllowed', { roots: config.allowedRoots.join(', '), folder: target }));
+    if (!underAllowedRoot(target)) throw new FolderNotAllowed(target);
     if (fs.existsSync(target) && !isEmptyDir(target)) {
         if (await holds(target, url)) return checkFolder(target);
         throw new Error(t('folders.exists', { folder: slashes(target) }));
