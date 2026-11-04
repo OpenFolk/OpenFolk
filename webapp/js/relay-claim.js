@@ -2,10 +2,21 @@
    it with the setup code from its log ("relay_claim"), answers with a pairing link there and moves over; this page
    then opens the link and is signed in at the new relay, with the end-to-end key. */
 import { t } from './i18n.js';
-import { node, state } from './core.js';
+import { node, startParams, state, toast } from './core.js';
 import { send, upper } from './e2e.js';
-import { bundled } from './platform.js';
+import { bundled, relayAddress } from './platform.js';
 import { goToRelay } from './relays.js';
+
+/**
+ * The page at the new relay is another origin and cannot read what this one stored, so the link it opens carries a
+ * "moved" mark behind the '#' (never sent to a server). The new page keeps it for the tab, because a first sign-in
+ * may reload it, and shows the message once it is signed in.
+ */
+const MOVED_KEY = 'openfolk-moved';
+if (startParams.get('moved') === '1') {
+    // The relay's host, not the page's: an app that brings the web app along has a page of its own (openfolk://app)
+    try { sessionStorage.setItem(MOVED_KEY, new URL(relayAddress()).host); } catch { /* no storage or address: no message */ }
+}
 
 /** What is typed: the forms render anew with every state that arrives and must not lose it. */
 const draft = { address: '', code: '', focus: '' };
@@ -80,7 +91,18 @@ export function relayClaimed(machine, url) {
     rerender();
     // A moment to read what happens; the backend moves over shortly after its answer. An app that brings the web app
     // along takes the new relay in and loads its page for it; the browser's page is the relay's and opens the link.
-    setTimeout(() => { if (!bundled || !goToRelay(url)) location.assign(url); }, 1200);
+    const moved = `${url}${url.includes('#') ? '&' : '#'}moved=1`;
+    setTimeout(() => { if (!bundled || !goToRelay(moved)) location.assign(moved); }, 1200);
+}
+
+/** Once, after the first sign-in at the new relay: "Moved to <host>". */
+export function announceMove() {
+    let host = '';
+    try {
+        host = sessionStorage.getItem(MOVED_KEY) || '';
+        sessionStorage.removeItem(MOVED_KEY);
+    } catch { /* no storage */ }
+    if (host) toast(t('relayClaim.moved', { host }), 10_000);
 }
 
 /**

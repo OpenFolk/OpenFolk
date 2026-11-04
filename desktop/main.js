@@ -75,24 +75,36 @@ const TEXTS = {
         open: 'Open OpenFolk',
         changeAddress: 'Change setup …',
         pairAgain: 'Sign this window in again',
-        setupRelay: 'I already have an OpenFolk server',
-        setupRelayHint: 'Your bots keep running on your machines. This window shows the same bots and chats as your phone and browser.',
-        setupLocalTitle: 'New to OpenFolk, without a server',
-        setupLocalHint: 'The app runs a backend of its own: the bots run here with your Claude Code sign-in and stop when you quit the app. If OpenFolk already runs on this computer, connect to its server instead.',
-        setupPhoneHint: 'For your phone, or the browser on another device, OpenFolk needs a server of its own:',
+        setupRelay: 'Display only: connect to an existing relay server',
+        setupRelayHint: 'For a computer that only shows your bots, like your phone or browser does: this window is just the interface to a relay server you already have.',
+        setupRelayWarn: 'This app then starts no backend on this computer, so bots that run here through the app are offline.',
+        setupRelayConfirmText: 'Connect to this relay server? The app starts no backend here, so no bots run on this computer.',
+        setupRelayConfirmYes: 'Yes, no bots run on this computer',
+        setupRelayConfirmNo: 'Back',
+        setupWhere: 'On the computer where your bots should work, usually A or B.',
+        setupTermsTitle: 'What do these words mean?',
+        setupTermBot: 'Bot',
+        setupTermBotText: 'Your AI colleague. A bot always works on one computer.',
+        setupTermBackend: 'Backend',
+        setupTermBackendText: 'The program on a computer that runs the bots.',
+        setupTermRelay: 'Relay server',
+        setupTermRelayText: 'The go-between on the internet, e.g. openfolk.example.com, through which your phone, browser and computers find each other.',
+        setupLocalTitle: 'Start on this computer',
+        setupLocalHint: 'The way if you are new to OpenFolk: backend and relay run on this computer, inside the app, with your Claude Code sign-in. The bots stop when you quit the app. Moving to a relay server of your own works later in the settings (“Move to a relay on a server”). If OpenFolk already runs on this computer, use C instead.',
+        setupPhoneHint: 'For your phone, or the browser on another device, OpenFolk needs a relay server of its own:',
         setupPhoneLink: 'how to set it up',
         setupLocal: 'Start on this computer',
-        setupJoinTitle: 'Connect this computer to my server',
-        setupJoinHint: 'Bots run on this computer too, and phone and browser reach them through your server. In the app on a device that is signed in: Settings, Machines, “Add machine”, then paste the link here.',
+        setupJoinTitle: 'Also connect this computer to my relay server',
+        setupJoinHint: 'Bots run on this computer, and phone and browser reach them through your relay server. Create the link in the app on a signed-in device: Settings, Machines, “Add machine”, then paste it here.',
         setupJoinLabel: 'Link from “Add machine”',
         setupJoin: 'Connect this computer',
         joinFailed: {
             not_a_link: 'That is not a link. Copy the whole link from “Add machine”.',
             no_invitation: 'The link has no invitation in it. Create a new one: Settings, Machines, “Add machine”.',
-            https: 'The server needs HTTPS.',
-            unreachable: 'The server does not answer: {message}',
+            https: 'The relay server needs HTTPS.',
+            unreachable: 'The relay server does not answer: {message}',
             expired: 'The invitation is used up or expired (15 minutes). Create a new one in the app.',
-            too_old: 'The server is too old for invitations: update it first.',
+            too_old: 'The relay server is too old for invitations: update it first.',
             too_many: 'Too many attempts from this address; wait an hour.',
         },
         setupStarting: 'OpenFolk is starting …',
@@ -138,9 +150,9 @@ const TEXTS = {
         invalidAddress: 'Please enter a server URL like https://openfolk.example.com.',
         setupTitle: 'Set up OpenFolk',
         setupQuestion: 'How do you use OpenFolk?',
-        setupLabel: 'Server URL',
+        setupLabel: 'Relay server URL',
         setupConnect: 'Connect',
-        setupNoAnswer: 'The server does not answer: {error}',
+        setupNoAnswer: 'The relay server does not answer: {error}',
         setupHint: 'OpenFolk {version} · You can change this later in the menu under “Change setup”.',
         checkUpdates: 'Check for updates …',
         checkUpdatesTitle: 'Updates',
@@ -159,24 +171,36 @@ const TEXTS = {
         open: 'OpenFolk öffnen',
         changeAddress: 'Einrichtung ändern …',
         pairAgain: 'Dieses Fenster neu anmelden',
-        setupRelay: 'Ich habe schon einen OpenFolk-Server',
-        setupRelayHint: 'Deine Bots laufen weiter auf deinen Rechnern. Dieses Fenster zeigt dieselben Bots und Chats wie Handy und Browser.',
-        setupLocalTitle: 'Neu bei OpenFolk, ohne Server',
-        setupLocalHint: 'Die App startet ein eigenes Backend: Die Bots laufen hier mit deiner Claude-Code-Anmeldung und stoppen, wenn du die App beendest. Läuft OpenFolk auf diesem Rechner schon, verbinde dich stattdessen mit seinem Server.',
-        setupPhoneHint: 'Für das Handy oder den Browser auf einem anderen Gerät braucht OpenFolk einen eigenen Server:',
+        setupRelay: 'Nur anzeigen: mit einem bestehenden Relay-Server verbinden',
+        setupRelayHint: 'Für einen Rechner, der deine Bots nur anzeigt, wie Handy oder Browser: Dieses Fenster ist nur die Oberfläche zu einem Relay-Server, den du schon hast.',
+        setupRelayWarn: 'Die App startet dann kein Backend auf diesem Rechner, Bots, die hier über die App liefen, sind offline.',
+        setupRelayConfirmText: 'Mit diesem Relay-Server verbinden? Die App startet hier kein Backend, auf diesem Rechner laufen dann keine Bots.',
+        setupRelayConfirmYes: 'Ja, auf diesem Rechner laufen keine Bots',
+        setupRelayConfirmNo: 'Zurück',
+        setupWhere: 'Auf dem Rechner, auf dem deine Bots arbeiten sollen, meist A oder B.',
+        setupTermsTitle: 'Was bedeuten die Begriffe?',
+        setupTermBot: 'Bot',
+        setupTermBotText: 'Dein KI-Kollege. Ein Bot arbeitet immer auf einem Rechner.',
+        setupTermBackend: 'Backend',
+        setupTermBackendText: 'Das Programm auf einem Rechner, das die Bots ausführt.',
+        setupTermRelay: 'Relay-Server',
+        setupTermRelayText: 'Die Vermittlung im Internet, z. B. openfolk.example.com, über die Handy, Browser und Rechner zusammenfinden.',
+        setupLocalTitle: 'Auf diesem Rechner starten',
+        setupLocalHint: 'Der Weg, wenn du neu bei OpenFolk bist: Backend und Relay laufen auf diesem Rechner in der App, mit deiner Claude-Code-Anmeldung. Die Bots stoppen, wenn du die App beendest. Der Umzug auf einen eigenen Relay-Server geht später in den Einstellungen („Auf ein Relay auf einem Server umziehen“). Läuft OpenFolk auf diesem Rechner schon, nimm stattdessen C.',
+        setupPhoneHint: 'Für das Handy oder den Browser auf einem anderen Gerät braucht OpenFolk einen eigenen Relay-Server:',
         setupPhoneLink: 'Anleitung zur Einrichtung',
         setupLocal: 'Auf diesem Rechner starten',
-        setupJoinTitle: 'Diesen Rechner an meinen Server anschließen',
-        setupJoinHint: 'Bots laufen auch auf diesem Rechner, Handy und Browser erreichen sie über deinen Server. In der App auf einem angemeldeten Gerät: Einstellungen, Rechner, „Rechner hinzufügen“, dann den Link hier einfügen.',
+        setupJoinTitle: 'Diesen Rechner zusätzlich an meinen Relay-Server anschließen',
+        setupJoinHint: 'Hier laufen Bots, und Handy und Browser erreichen sie über deinen Relay-Server. Den Link erzeugst du in der App auf einem angemeldeten Gerät: Einstellungen, Rechner, „Rechner hinzufügen“, dann fügst du ihn hier ein.',
         setupJoinLabel: 'Link aus „Rechner hinzufügen“',
         setupJoin: 'Rechner anschließen',
         joinFailed: {
             not_a_link: 'Das ist kein Link. Den ganzen Link aus „Rechner hinzufügen“ kopieren.',
             no_invitation: 'Im Link steckt keine Einladung. Eine neue erstellen: Einstellungen, Rechner, „Rechner hinzufügen“.',
-            https: 'Der Server braucht HTTPS.',
-            unreachable: 'Der Server antwortet nicht: {message}',
+            https: 'Der Relay-Server braucht HTTPS.',
+            unreachable: 'Der Relay-Server antwortet nicht: {message}',
             expired: 'Die Einladung ist verbraucht oder abgelaufen (15 Minuten). In der App eine neue erstellen.',
-            too_old: 'Der Server ist zu alt für Einladungen: erst aktualisieren.',
+            too_old: 'Der Relay-Server ist zu alt für Einladungen: erst aktualisieren.',
             too_many: 'Zu viele Versuche von dieser Adresse; eine Stunde warten.',
         },
         setupStarting: 'OpenFolk startet …',
@@ -222,9 +246,9 @@ const TEXTS = {
         invalidAddress: 'Bitte eine Server-URL wie https://openfolk.example.com eingeben.',
         setupTitle: 'OpenFolk einrichten',
         setupQuestion: 'Wie nutzt du OpenFolk?',
-        setupLabel: 'Server-URL',
+        setupLabel: 'Relay-Server-URL',
         setupConnect: 'Verbinden',
-        setupNoAnswer: 'Der Server antwortet nicht: {error}',
+        setupNoAnswer: 'Der Relay-Server antwortet nicht: {error}',
         setupHint: 'OpenFolk {version} · Das lässt sich später im Menü unter „Einrichtung ändern“ anpassen.',
         checkUpdates: 'Nach Updates suchen …',
         checkUpdatesTitle: 'Updates',
@@ -250,6 +274,8 @@ let config = {};
 /** The backend of "on this computer"; null in relay mode. */
 let backend = null;
 let win = null;
+/** The setup page is open on top of a working setup ("Change setup"): closing the window without a choice brings the app back. */
+let choosing = false;
 let tray = null;
 let quitting = false;
 
@@ -300,6 +326,7 @@ function normalizeAddress(input) {
 }
 
 function loadWebApp() {
+    choosing = false;
     if (config.mode === 'local') void startLocal();
     else if (config.mode === 'relay' && config.url) win.loadURL(appLink(config.url));
     else win.loadFile(SETUP);
@@ -384,6 +411,7 @@ function createWindow() {
         if (quitting) return;
         e.preventDefault();
         win.hide();
+        if (choosing) loadWebApp();
     });
     win.on('closed', () => { win = null; });
 
@@ -428,6 +456,7 @@ function show() {
 
 function changeAddress() {
     show();
+    choosing = Boolean(config.mode);
     win.loadFile(SETUP, { query: { url: config.url || '', choose: '1' } });
 }
 

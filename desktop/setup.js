@@ -9,9 +9,15 @@ const error = document.getElementById('error');
 const failed = document.getElementById('failed');
 input.value = params.get('url') || '';
 
+/** Texts and mode of the app, set once the main process has answered. */
+let texts = {};
+let currentMode = '';
+
 const fill = (text, values) => text.replace(/\{(\w+)\}/g, (m, k) => (k in values ? values[k] : m));
 
 window.openfolkDesktop.info().then((i) => {
+    texts = i.texts;
+    currentMode = i.mode;
     document.documentElement.lang = i.language;
     for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = i.texts[el.dataset.i18n] ?? el.textContent;
     document.getElementById('info').textContent = fill(i.texts.setupHint, { version: i.version });
@@ -41,9 +47,32 @@ document.getElementById('join-form').addEventListener('submit', async (e) => {
     if (r.error) joinError.textContent = r.error;
 });
 
-document.getElementById('form').addEventListener('submit', async (e) => {
+const form = document.getElementById('form');
+const confirmBox = document.getElementById('relay-confirm');
+
+/** While the question is open the address cannot change and the form's button is out of the way. */
+function asking(on) {
+    confirmBox.hidden = !on;
+    input.disabled = on;
+    form.querySelector('button').hidden = on;
+}
+
+async function saveAddress() {
+    const r = await window.openfolkDesktop.saveAddress(input.value);
+    if (r.error) {
+        asking(false);
+        error.textContent = r.error;
+    }
+}
+
+form.addEventListener('submit', (e) => {
     e.preventDefault();
     error.textContent = '';
-    const r = await window.openfolkDesktop.saveAddress(input.value);
-    if (r.error) error.textContent = r.error;
+    if (!input.value.trim()) { error.textContent = texts.invalidAddress || ''; return; }
+    // Already the way in use: nothing changes for the backend, no question
+    if (currentMode === 'relay') { void saveAddress(); return; }
+    // Connecting to a server means this app starts no backend here: said before it happens
+    asking(true);
 });
+document.getElementById('relay-confirm-yes').addEventListener('click', () => void saveAddress());
+document.getElementById('relay-confirm-no').addEventListener('click', () => asking(false));

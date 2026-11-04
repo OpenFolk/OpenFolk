@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+### Added
+- After moving to a relay on a server, the app says once "Moved to <relay>" when it is signed in there
+  (by @SvenvanB).
+
+### Changed
+- The desktop setup page letters its three ways A to C (start on this computer, also connect this computer to my
+  relay server, display only), explains bot, backend and relay server, and asks before "display only", because
+  the app then runs no bots on this computer (by @SvenvanB).
+- The desktop apps run on Electron 44.10.2 (from 44.7.0).
+
+### Fixed
+- Desktop app: closing "Change setup" without a choice brought the setup page back on the next click on the tray
+  or Dock icon instead of the chat (by @SvenvanB).
+
 ## [0.2.0] - 2026-11-04
 
 ### Added

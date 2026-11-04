@@ -114,6 +114,11 @@ function showLog(run) {
         await win.click(`${form} button`);
         const moved = await relayShown(win, server.origin, 30_000);
         check('claimed from the app: the window follows to the relay on the server', moved, win.url());
+        // The app's page is openfolk://app, the message names the relay's host, not the page's
+        const host = new URL(server.origin).host;
+        const said = moved && await win.waitForFunction((h) => /^(Moved to|Umgezogen auf) /.test(document.getElementById('toast')?.textContent || '')
+            && document.getElementById('toast').textContent.includes(` ${h}.`), host, { timeout: 30_000 }).then(() => true, () => false);
+        check('claimed: once signed in there it says "Moved to <relay>"', said, await win.textContent('#toast').catch(() => ''));
         check('there signed in again and the machine is connected', moved && await machineConnected(win));
         check('the backend connected to that relay', await until(() => / connected from /.test(server.log()), 20_000), server.log().slice(-800));
         check('RELAY_URL in the profile\'s .env', run.env().includes(`RELAY_URL=${server.origin.replace('http', 'ws')}/ws/agent`), run.env());

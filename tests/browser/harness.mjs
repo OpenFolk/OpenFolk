@@ -55,7 +55,8 @@ export async function start(browser, o = {}) {
         viewport: { width: 400, height: 860 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, colorScheme: o.dark ? 'dark' : 'light',
         locale: o.locale ?? 'en-US',
     });
-    await ctx.route(/^https?:\/\/test\.local\//, (r) => {
+    // second.local: another origin for tests that move to another relay
+    await ctx.route(/^https?:\/\/(?:test|second)\.local\//, (r) => {
         let p = new URL(r.request().url()).pathname;
         if (p === '/') p = '/index.html';
         // The relay's public state (o.health), as the login form asks for it

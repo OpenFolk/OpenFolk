@@ -52,5 +52,39 @@ export default async function ({ start, check }) {
     await h.wait(400);
     check('claimed: says it moves over', (await p.textContent(`${step4} .relay-claim`)).includes('Switching to it'));
     await h.wait(1200);
-    check('claimed: the page opens the link', new URL(p.url()).hash === '#claimed', p.url());
+    check('claimed: the page opens the link, marked as a move', new URL(p.url()).hash === '#claimed&moved=1', p.url());
+
+    // The new relay is another origin: nothing the old page stored is there, so the mark travels in the link
+    const g = await start({ bots: [], online: ['desk'], device: 'test' });
+    const q = g.page;
+    await g.push({ type: 'setup_status', machine: 'desk', relay: 'embedded', container: false, engines: { claude: 'ready' } });
+    await g.push(SETTINGS);
+    await g.wait(200);
+    await q.fill(`${step4} input[name="address"]`, 'second.local');
+    await q.fill(`${step4} input[name="code"]`, 'ABCDE-FGHJK');
+    await q.click(`${step4} .relay-claim button`);
+    await g.wait(300);
+    await g.push({ type: 'relay_claimed', machine: 'desk', url: 'http://second.local/#pair=one-time' });
+    await q.waitForURL((u) => u.host === 'second.local', { timeout: 5000 });
+    await q.waitForSelector('#toast:not([hidden])', { timeout: 5000 });
+    check('moved to another origin: once signed in there it says "Moved to <host>"', (await q.textContent('#toast')).startsWith('Moved to second.local.'), await q.textContent('#toast'));
+    check('moved: the mark of the link is gone from the address bar', !new URL(q.url()).hash, q.url());
+    await q.reload();
+    await g.wait(1200);
+    check('moved: a reload does not say it again', !(await q.isVisible('#toast')));
+    check('moved: no script errors', g.errors.length === 0, g.errors);
+    await g.close();
+
+    // Same, in German
+    const d = await start({ bots: [], online: ['desk'], device: 'test', language: 'de' });
+    await d.page.goto('http://second.local/#pair=x&moved=1');
+    await d.page.waitForSelector('#toast:not([hidden])', { timeout: 5000 });
+    check('moved: German', (await d.page.textContent('#toast')).startsWith('Umgezogen auf second.local.'), await d.page.textContent('#toast'));
+    await d.close();
+
+    // A page that was not moved to says nothing
+    const n = await start({ bots: [], online: ['desk'], device: 'test' });
+    await n.wait(1000);
+    check('no move: no message', !(await n.page.isVisible('#toast')));
+    await n.close();
 }

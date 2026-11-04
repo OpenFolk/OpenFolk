@@ -3,7 +3,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseDeviceCode, startDeviceLogin, type LoginReport } from './engine-login.ts';
+type LoginReport = import('./engine-login.ts').LoginReport;
+
+// The sign-in runs in the current account; the real local/data may hold several, so a data folder of its own
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-engine-login-'));
+const { parseDeviceCode, startDeviceLogin } = await import('./engine-login.ts');
 
 let failed = 0;
 const check = (name: string, ok: boolean, info?: unknown) => {

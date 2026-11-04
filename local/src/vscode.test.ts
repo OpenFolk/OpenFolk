@@ -5,6 +5,8 @@ import path from 'node:path';
 import { removeTree } from './remove-tree.ts';
 
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-vscode-'));
+// The Claude folder depends on the current account; the real local/data may hold several
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-vscode-data-'));
 const { Watcher, Transcript, workingFrom, clean, originFrom, projectDir, listVscodeSessions, transcriptStoreError, transcriptPath } = await import('./vscode.ts');
 type HistoryPart = import('./vscode.ts').HistoryPart;
 

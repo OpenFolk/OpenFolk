@@ -24,7 +24,7 @@ import {
 import { accountError, dropCurrentAccount, receiveAccountCreated, receiveInvite, rememberAccount, renderAccounts } from './accounts.js';
 import { connectOthers } from './others.js';
 import { signInTerminalAnswer } from './welcome.js';
-import { relayClaimed, relayClaimFailed } from './relay-claim.js';
+import { announceMove, relayClaimed, relayClaimFailed } from './relay-claim.js';
 import { approvalError, approvalLink, approvalWaiting, receivePairApproved, receivePairRequest, startApproval, startQrLogin, stopQrLogin } from './qr-login.js';
 import { answerDone, speechAudio } from './read-aloud.js';
 
@@ -257,6 +257,7 @@ function receive(f) {
                 el.loginToken.value = '';
                 el.loginTotp.value = '';
                 state.signedIn = true;
+                announceMove();
                 state.catchUp = true;
                 state.retryDelay = 1000;
                 el.login.hidden = true;
