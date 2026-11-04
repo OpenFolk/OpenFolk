@@ -92,6 +92,7 @@ export function chatMenuButtons(id, onPage = false) {
         const k = menuButton(icon, text, cls);
         k.dataset.action = action;
         k.disabled = Boolean(disabled);
+        if (action === 'conversation_new') k.title = t('conversation.explain');
         return k;
     });
 }

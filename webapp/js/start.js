@@ -23,10 +23,11 @@ import {
     repoChanged, repoTyped, requestSuggestion, routineCron, routineFields, submitEditor,
 } from './editors.js';
 import { checkPush, renderPushSettings, subscribePush } from './push.js';
-import { askMachineJoin, chooseAllAccounts, chooseLanguage, chooseShared, closeAiForm, openAiForm, openSettings, renderAiServices, renderSettings, saveAiKey, showE2eStatus } from './settings.js';
+import { askMachineJoin, chooseAllAccounts, chooseBubble, chooseLanguage, chooseShared, closeAiForm, openAiForm, openReleaseNotes, openSettings, renderAiServices, renderSettings, saveAiKey, showE2eStatus } from './settings.js';
 import { cancelAddAccount, createAccount, joinAny, openAccountMenu, openAccounts, redeemLink, saveOwnAccount, scanAny, showAccountField, showNewAccountForm, switchAccount } from './accounts.js';
 import { openRelay, switchRelay } from './relays.js';
 import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, startQrLogin, stopQrLogin } from './qr-login.js';
+import { VERSION } from './release.js';
 
 // The first pane exists from the start; on phones and laptops it stays the only one
 createPane();
@@ -169,7 +170,7 @@ el.btnNew.addEventListener('click', (ev) => {
 /** "New conversation": the "+" menu shows the bots; sleeping ones (no responsible machine awake) are disabled. */
 function chooseNewConversation() {
     const info = node('div', 'menu-info');
-    info.append(node('strong', '', t('conversation.new')), node('span', '', t('newMenu.whichBot')));
+    info.append(node('strong', '', t('conversation.new')), node('span', '', t('newMenu.explain')), node('span', '', t('newMenu.whichBot')));
     const buttons = state.bots.map((b) => {
         const awake = Boolean(responsibleMachine(b));
         const k = menuButton('bot', awake ? b.name : `${b.name} · ${t('machine.asleep')}`);
@@ -570,6 +571,11 @@ el.gForm.addEventListener('submit', (ev) => {
 // Info panel
 el.infoKnowledgeNew.addEventListener('click', () => openKnowledgeEditor(knowledgeSection(), null));
 el.infoRoutineNew.addEventListener('click', () => openRoutineEditor(null));
+el.infoEditTop.addEventListener('click', () => infoAction('edit'));
+
+// The version next to the name in the sidebar: what is new in it
+el.brandVersion.textContent = VERSION;
+el.brandVersion.addEventListener('click', openReleaseNotes);
 
 // Routine editor
 el.rKind.addEventListener('change', routineFields);
@@ -625,6 +631,7 @@ el.settingsTheme.addEventListener('change', () => {
     applyTheme(el.settingsTheme.value);
     toast(t('settings.saved'));
 });
+el.settingsBubble.addEventListener('click', (ev) => { const k = closest(ev, '.swatch'); if (k) chooseBubble(k.dataset.bubble); });
 el.settingsLanguage.addEventListener('change', () => chooseLanguage(el.settingsLanguage.value));
 el.settingsAvatarModel.addEventListener('change', () => {
     chooseShared('avatarModel', el.settingsAvatarModel.value);

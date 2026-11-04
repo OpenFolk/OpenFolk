@@ -9,7 +9,7 @@ import { BACKEND_GONE_MS, refreshMachinesPage, renderMachines, scheduleWakePoll 
 import { historyUnchanged, markSeen, noteIncoming, receiveSeen, renderEntry, renderHistory, renderPinned, scroll, setRead } from './chat-features.js';
 import { approvalsToBottom, attachmentBar, dropStaleLive, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
 import { imageRequested, playback, removeVoicePending, startPlayback } from './voice.js';
-import { bundled, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
+import { bundled, connectionVia, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
 import { closeDialog, gitError, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
 import { receiveVscodeHistory, receiveVscodeSessions, renderVscodeAdoptButton, showVscodeList, vs, vscodeError, vscodeShown } from './vscode.js';
 import {
@@ -18,7 +18,7 @@ import {
 } from './editors.js';
 import { checkPush, renderPushSettings } from './push.js';
 import {
-    autologonReported, machineJoinError, settingsSaveFailed, settingsSaved, receiveMachineTokens, receiveSettings, renderDevices, renderMachineJoin, renderPairLink, renderSettings, renderTotp,
+    autologonReported, machineJoinError, settingsSaveFailed, settingsSaved, receiveMachineTokens, receiveSettings, renderDevices, renderMachineJoin, renderAbout, renderPairLink, renderSettings, renderTotp,
     renderTotpSetup, totpError,
 } from './settings.js';
 import { accountError, dropCurrentAccount, receiveAccountCreated, receiveInvite, rememberAccount, renderAccounts } from './accounts.js';
@@ -233,7 +233,7 @@ async function handleIncoming(f) {
 export function setAgentStatus(online, text) {
     state.agentOnline = online;
     el.agentStatus.className = 'status ' + (online ? 'online' : 'offline');
-    el.agentStatus.querySelector('span').textContent = text || (online ? t('status.connected', { machines: state.online.map(upper).join(', ') }) : t('status.allOff'));
+    el.agentStatus.querySelector('span').textContent = text || (online ? t('status.connected', { machines: state.online.map(upper).join(', ') }) + connectionVia() : t('status.allOff'));
     updateSendAllowed();
 }
 
@@ -547,6 +547,7 @@ function receive(f) {
             break;
         case 'backend_status':
             state.backendPerMachine[f.machine || '?'] = f;
+            if (!el.settings.hidden) renderAbout();
             renderGitTotal();
             refreshMachinesPage();
             break;

@@ -1,3 +1,14 @@
+/* Color of the own messages, chosen per device (settings, data-bubble on <html>, theme.js); the swatches of the settings
+   use the same values. The default is the green; the two oranges carry white text (--bubble-me-fg-*, and --bubble-me-sub
+   for time, ticks and links), the same in light and dark, the other colors keep the text colors of the theme. */
+:root, :root[data-bubble="green"], .swatch[data-bubble="green"] { --bubble-me-l: #d9fdd3; --bubble-me-d: #005c4b; }
+:root[data-bubble="logo"], .swatch[data-bubble="logo"] { --bubble-me-l: #d97757; --bubble-me-d: #d97757; --bubble-me-fg-l: #ffffff; --bubble-me-fg-d: #ffffff; --bubble-me-sub: #ffffff; }
+:root[data-bubble="orangedark"], .swatch[data-bubble="orangedark"] { --bubble-me-l: #b85a3a; --bubble-me-d: #b85a3a; --bubble-me-fg-l: #ffffff; --bubble-me-fg-d: #ffffff; --bubble-me-sub: #ffffff; }
+:root[data-bubble="peach"], .swatch[data-bubble="peach"] { --bubble-me-l: #f8d3bf; --bubble-me-d: #7a412a; }
+:root[data-bubble="blue"], .swatch[data-bubble="blue"] { --bubble-me-l: #cfe1f8; --bubble-me-d: #21507f; }
+:root[data-bubble="lilac"], .swatch[data-bubble="lilac"] { --bubble-me-l: #ddd1f7; --bubble-me-d: #50407f; }
+:root[data-bubble="teal"], .swatch[data-bubble="teal"] { --bubble-me-l: #c9e9e6; --bubble-me-d: #1b5654; }
+:root[data-bubble="gray"], .swatch[data-bubble="gray"] { --bubble-me-l: #d9dee2; --bubble-me-d: #3f4a54; }
 :root {
     --bg: #eef1f4;
     --surface: #ffffff;
@@ -8,7 +19,8 @@
     --line: #e1e5e9;
     --accent: #d97757;
     --accent-text: #ffffff;
-    --bubble-me: #d9fdd3;
+    --bubble-me: var(--bubble-me-l);
+    --bubble-me-fg: var(--bubble-me-fg-l, var(--text));
     --bubble-routine: #fdf3d0;
     --bubble-bot: #ffffff;
     --bubble-job: #eef2ff;
@@ -35,7 +47,8 @@
         --text: #e9edef;
         --muted: #8696a0;
         --line: #2a3942;
-        --bubble-me: #005c4b;
+        --bubble-me: var(--bubble-me-d);
+        --bubble-me-fg: var(--bubble-me-fg-d, var(--text));
         --bubble-routine: #4a3b10;
         --bubble-bot: #202c33;
         --bubble-job: #1e2747;
@@ -56,7 +69,8 @@
     --text: #e9edef;
     --muted: #8696a0;
     --line: #2a3942;
-    --bubble-me: #005c4b;
+    --bubble-me: var(--bubble-me-d);
+    --bubble-me-fg: var(--bubble-me-fg-d, var(--text));
     --bubble-routine: #4a3b10;
     --bubble-bot: #202c33;
     --bubble-job: #1e2747;
@@ -169,12 +183,14 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .bar .title strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bar .title strong small { font-weight: 400; color: var(--muted); font-size: 12px; }
 .bar .title span { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* The app's name with its logo: a tap opens the settings */
+/* The app's name with its logo and, next to the name, the version that opens its release notes */
 .bar .title.brand { flex-direction: row; align-items: center; gap: 10px; color: inherit; font: inherit; }
 .brand .logo { width: 34px; height: 34px; flex: 0 0 auto; border-radius: 9px; }
 .brand-text { display: flex; flex-direction: column; min-width: 0; }
 /* not a sub line: the name keeps the size and colour of a title */
 .bar .title .brand-text { font-size: inherit; color: inherit; }
+.brand-version { padding: 0 2px; border: 0; background: none; font: inherit; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; vertical-align: 1px; }
+.brand-version:hover, .brand-version:focus-visible { color: var(--accent); text-decoration: underline; }
 .status { display: inline-flex; align-items: center; gap: 6px; }
 .status i { width: 8px; height: 8px; border-radius: 50%; background: #9aa5ad; }
 .status.online i { background: #25d366; }
@@ -430,6 +446,9 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .menu-info { display: flex; flex-direction: column; gap: 3px; padding: 8px 12px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
 .menu-info strong { color: var(--text); font-weight: 600; }
 .menu-info.large strong { color: var(--warning); }
+/* the hint of an empty conversation: gone once a message or an answer is in the list */
+.conversation-hint { align-self: center; max-width: 420px; margin: auto; padding: 12px 16px; text-align: center; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.messages > .conversation-hint:not(:only-child) { display: none; }
 /* Model switch at the top of the chat menu: chips side by side, the active one filled */
 .model-switch { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
 .menu .model-switch button.chip { width: auto; display: inline-block; padding: 5px 11px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font-size: 13px; }
@@ -535,7 +554,11 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
     box-shadow: var(--shadow); position: relative; overflow-wrap: anywhere;
 }
 .answer .bubble { max-width: 100%; }
-.bubble.me { align-self: flex-end; background: var(--bubble-me); border-bottom-right-radius: 4px; }
+.bubble.me { align-self: flex-end; background: var(--bubble-me); color: var(--bubble-me-fg); border-bottom-right-radius: 4px; }
+/* Time, ticks and the menu dots follow the text color of the bubble when the color brings its own (white on orange) */
+.bubble.me .time, .bubble.me .more { color: var(--bubble-me-sub, var(--muted)); }
+.bubble.me .read-ticks.read { color: var(--bubble-me-sub, #53bdeb); }
+.bubble.me .content a { color: var(--bubble-me-sub, var(--link)); }
 .bubble.me .text { white-space: pre-wrap; }
 .bubble.routine { background: var(--bubble-routine); }
 .bubble.bot { align-self: flex-start; background: var(--bubble-bot); border-bottom-left-radius: 4px; }
@@ -756,6 +779,9 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 /* Notifications, devices and accounts: blocks of the settings, laid out like the dialog around them */
 .settings-block { display: flex; flex-direction: column; gap: 12px; }
 .settings-block[hidden] { display: none; }
+.about-list { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 13.5px; }
+.about-list dt { color: var(--muted); }
+.about-list dd { margin: 0; overflow-wrap: anywhere; }
 .settings-block h4 { margin: 4px 0 0; font-size: 13.5px; }
 .settings-block > p:not(.hint):not(.error) { margin: 0; font-size: 13.5px; }
 .settings-machine { margin-top: 6px; }
@@ -815,7 +841,10 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .page-back { display: none; }
 @keyframes page-in { from { transform: translateX(100%); } }
 .dialog.panel { max-width: 440px; height: 100dvh; max-height: 100dvh; border-radius: 0; padding-top: calc(18px + env(safe-area-inset-top)); }
-.panel-head { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; }
+.panel-head { display: grid; grid-template-columns: auto 1fr; grid-auto-flow: column; grid-auto-columns: auto; gap: 14px; align-items: center; }
+/* The bot's page: head with the back arrow stays at the top, the rest scrolls. The padding sits in the head, so it can stick to the edge. */
+#info-panel { padding-top: 0; }
+.panel-top { position: sticky; top: 0; z-index: 2; background: var(--surface); display: flex; flex-direction: column; padding: calc(18px + env(safe-area-inset-top)) 0 12px; border-bottom: 1px solid var(--line); }
 .panel-head h2 { margin: 0; }
 .panel-head p { margin: 2px 0 0; }
 #info-area { color: var(--accent); font-weight: 600; }
@@ -824,6 +853,17 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .dialog h3 small { font-weight: 400; color: var(--muted); }
 .dialog p { margin: 0; color: var(--muted); }
 .dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.error-roots { display: block; margin-top: 6px; white-space: pre-line; }
+.error-hint { display: block; margin-top: 8px; white-space: pre-line; color: var(--muted); font-size: 12.5px; }
+/* Required fields: a star after the label; folder and repository both carry it because one of the two is needed */
+.dialog label.required > span[data-i18n]::after { content: " *"; color: var(--accent); font-weight: 600; }
+.dialog .swatch-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; padding: 0; cursor: pointer; border: 2px solid var(--line); background: var(--bubble-me-l); }
+.swatch[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.swatch:hover { border-color: var(--accent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .swatch { background: var(--bubble-me-d); } }
+:root[data-theme="dark"] .swatch { background: var(--bubble-me-d); }
 .dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
 .dialog input:not([type=checkbox]), .dialog select, .dialog textarea {
     font: inherit; color: var(--text); background: var(--bar-bg); border: 1px solid var(--line);
@@ -995,6 +1035,7 @@ details summary { cursor: pointer; }
         animation: page-in .2s ease-out;
     }
     .overlay.page .page-back { display: inline-flex; flex: 0 0 auto; align-self: flex-start; margin: 0 0 -6px -10px; }
+    .overlay.page .panel-top { padding-top: calc(8px + env(safe-area-inset-top)); }
     .overlay.page .panel-head > [data-close], .overlay.page .vs-head > [data-close], .overlay.page #vs-back { display: none; }
     /* The long-press menu of the list is a page of its own, over the whole screen with a head (list.js) */
     #row-menu.menu-page {
@@ -1036,3 +1077,14 @@ details summary { cursor: pointer; }
 /* Restart of the backend in the row of its repo, right next to "Commit & push" */
 .git-repo button.git-button + button.git-button { margin-left: 0; }
 .git-repo button.git-button.git-restart { border-color: var(--warning); color: var(--warning); }
+
+/* "About": the version opens the release notes (settings dialog) */
+.about-version { font-size: inherit; font-weight: 600; }
+.release-notes { max-width: 640px; }
+.release-notes h3 { font-size: 15px; margin: 16px 0 6px; }
+.release-notes h4 { font-size: 14px; margin: 18px 0 6px; color: var(--muted); }
+.release-notes ul { margin: 0 0 8px; padding-left: 20px; }
+.release-notes li { margin: 3px 0; line-height: 1.45; }
+.release-notes code { font-size: 12.5px; }
+.release-notes-older { margin: 4px 0; }
+.release-notes-older summary { cursor: pointer; font-weight: 600; padding: 4px 0; }

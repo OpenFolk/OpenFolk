@@ -6,14 +6,47 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 ## [Unreleased]
 
 ### Added
+- Desktop app: "Allowed folders …" in the tray and app menu chooses the folders bots may work in (`ALLOWED_ROOTS` in
+  the profile's `.env`), also on the setup page for "start on this computer"; saving restarts the backend once no bot
+  is working. A new installation without a choice gets a folder of its own (`<user folder>/OpenFolk`) instead of the
+  whole user folder; an installation that ran before keeps the user folder, written down, and the window warns that
+  it is wide (by @SvenvanB).
+- A bot whose folder is refused names the folder and the allowed ones apart and says how to allow more, in the
+  desktop app with its menu (by @SvenvanB).
+- "About" at the end of the settings names the version of OpenFolk in every app (browser, desktop, phone); a click
+  shows what is new in it, the earlier versions folded below. Below it the desktop app's version, the web app's
+  protocol version and, per connected backend, its protocol version and start (by @SvenvanB).
+- The version stands next to the name at the top of the sidebar; a click shows what is new in it.
 - After moving to a relay on a server, the app says once "Moved to <relay>" when it is signed in there
   (by @SvenvanB).
+- `docs/running.md` explains which steps the desktop app does without the `npm run …` commands of a checkout, the
+  allowed folders of a machine (`ALLOWED_ROOTS`) and how git pushes without anyone to answer a prompt (a token in the
+  machine settings, SSH keys from an agent or the macOS keychain); the German README has a five-step guide for a relay
+  of your own. Both READMEs say in what order to invite a person into a new account, that the account name in the
+  sidebar is the active account, and that OpenFolk is a companion to the IDE, not a replacement.
+- Desktop app: "Check for updates automatically" right below "Check for updates" switches the automatic checks and
+  downloads off and on, without a restart; a check from the menu works either way (by @SvenvanB).
+- The color of your own messages can be chosen under "Appearance" among eight, per device; green stays the default
+  (by @SvenvanB).
+- On an iPhone or iPad in a Safari tab the settings say that only the home screen app gets notifications and that
+  the device has to be paired there again (by @SvenvanB).
+- The status lines say whether the connection is local or via which relay (by @SvenvanB).
+- A pencil in the head of a bot's page opens its editor (by @SvenvanB).
 
 ### Changed
+- A second backend sign-in under a connected name from the same address is a restart (a container being redeployed,
+  the backend started twice): still rejected, but no longer pushed as a security notice; the notice for another
+  address names the address as the reason.
 - The desktop setup page letters its three ways A to C (start on this computer, also connect this computer to my
   relay server, display only), explains bot, backend and relay server, and asks before "display only", because
   the app then runs no bots on this computer (by @SvenvanB).
 - The desktop apps run on Electron 44.10.2 (from 44.7.0).
+- The head of a bot's page stays in view while the page scrolls (by @SvenvanB).
+- "New conversation" says what it is for: a fresh session of the same bot without the history of the other chats, in
+  the "+" menu, its tooltip and in the empty conversation (by @SvenvanB).
+- The bot editor marks its required fields: name, and a folder or a repository (by @SvenvanB).
+- The account name next to the title in the sidebar says in its tooltip that it is the active account and switches
+  on a tap; the list of a device with several accounts was hard to read without it.
 
 ### Fixed
 - Desktop app: closing "Change setup" without a choice brought the setup page back on the next click on the tray

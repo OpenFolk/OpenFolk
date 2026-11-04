@@ -14,17 +14,23 @@ const check = (name: string, ok: boolean, detail?: unknown) => {
 /** A backend's socket as the bridge sees it. */
 function fakeAgent() {
     const handlers: Record<string, ((...args: unknown[]) => void)[]> = {};
+    const onceHandlers: Record<string, ((...args: unknown[]) => void)[]> = {};
     const received: AgentInbound[] = [];
     const ws = {
         OPEN: 1, readyState: 1,
         on: (event: string, fn: (...args: unknown[]) => void) => { (handlers[event] = handlers[event] ?? []).push(fn); },
-        once: (event: string, fn: (...args: unknown[]) => void) => { (handlers[event] = handlers[event] ?? []).push(fn); },
+        once: (event: string, fn: (...args: unknown[]) => void) => { (onceHandlers[event] = onceHandlers[event] ?? []).push(fn); },
+        off: (event: string, fn: (...args: unknown[]) => void) => { onceHandlers[event] = (onceHandlers[event] ?? []).filter((f) => f !== fn); },
         send: (raw: string) => { received.push(JSON.parse(raw) as AgentInbound); },
         close: () => undefined, terminate: () => undefined, ping: () => undefined,
     };
-    const emit = (event: string, ...args: unknown[]) => (handlers[event] ?? []).forEach((fn) => fn(...args));
+    const emit = (event: string, ...args: unknown[]) => {
+        const once = onceHandlers[event] ?? [];
+        onceHandlers[event] = [];
+        [...(handlers[event] ?? []), ...once].forEach((fn) => fn(...args));
+    };
     const sendToRelay = (data: unknown) => emit('message', Buffer.from(JSON.stringify(data)));
-    return { ws, received, sendToRelay };
+    return { ws, received, sendToRelay, emit };
 }
 
 const delivered: { subscriptions: NativePushSubscription[]; message: NativePushMessage }[] = [];
@@ -71,6 +77,20 @@ const plain = fakeAgent();
 await bridge.connectAgent(plain.ws as never, '203.0.113.10', 'workstation');
 const hello2 = plain.received.find((x) => 'type' in x && x.type === 'relay_hello');
 check('relay without credentials reports no channels', !!hello2 && 'pushChannels' in hello2 && hello2.pushChannels.length === 0);
+
+// ---- a second sign-in under a connected name: from elsewhere it warns the machine, from the same address it is a restart
+const warnings = () => backend.received.filter((x) => 'type' in x && x.type === 'warning');
+const impostor = fakeAgent();
+let closed = 0;
+impostor.ws.close = () => { closed++; };
+// the connected backend answers the relay's ping
+backend.ws.ping = () => { setTimeout(() => backend.emit('pong'), 0); };
+await bridge.connectAgent(impostor.ws as never, '198.51.100.7', 'desk');
+check('second sign-in from elsewhere: rejected, the machine is warned', closed === 1 && warnings().length === 1 && 'code' in warnings()[0] && warnings()[0].code === 'duplicate_agent', warnings());
+const restart = fakeAgent();
+restart.ws.close = () => { closed++; };
+await bridge.connectAgent(restart.ws as never, '203.0.113.9', 'desk');
+check('second sign-in from the same address: rejected as well, but no warning (a restart)', closed === 2 && warnings().length === 1);
 
 if (failed) process.exit(1);
 console.log('all bridge push tests passed');

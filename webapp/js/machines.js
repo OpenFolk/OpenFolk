@@ -4,6 +4,7 @@ import { el, node, state } from './core.js';
 import { clockTime, colorOf, group, responsibleMachine, send, upper } from './e2e.js';
 import { renderHeaders } from './chat.js';
 import { textHeight } from './queue.js';
+import { connectionVia } from './platform.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 import { renderSettings } from './settings.js';
@@ -84,7 +85,7 @@ export function renderMachines() {
         const text = node('span', 'machine-text');
         text.append(node('strong', '', upper(h)), node('span', '',
             off ? ' ' + t(state.restarting[h] ? 'machine.restartsAt' : 'machine.shutsDownAt', { time: clockTime(off) })
-                : connected ? ' ' + t('machine.connected') : waking ? ' ' + t('machine.waking') : info.error ? ` ${info.error}` : info.active ? runsWithoutBackend(h) : ' ' + t('machine.off')));
+                : connected ? ' ' + t('machine.connected') + connectionVia() : waking ? ' ' + t('machine.waking') : info.error ? ` ${info.error}` : info.active ? runsWithoutBackend(h) : ' ' + t('machine.off')));
         row.append(dot, text);
         const button = (label, action) => {
             const k = node('button', 'link', label);

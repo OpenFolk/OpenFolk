@@ -41,6 +41,14 @@ and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; ev
 - **Profile folder:** `%APPDATA%\OpenFolk` (Windows), `~/.config/OpenFolk` (Linux),
   `~/Library/Application Support/OpenFolk` (macOS). The choice and the address are stored in its `config.json`;
   change them via the tray menu, "File → Change setup" or, on the Mac, "OpenFolk → Change setup".
+- **Allowed folders:** bots only work in the folders of `ALLOWED_ROOTS`. The app never leaves it empty (the backend's
+  own default would be the whole user folder): without a choice it creates `OpenFolk` in the user folder and writes
+  only that. Choosing the user folder or a drive root is allowed, with a warning. "Allowed
+  folders …" (tray menu, "File"; on the Mac under "OpenFolk") opens a small window to add and remove them; saving
+  writes `ALLOWED_ROOTS` into the profile's `.env` and restarts the backend as soon as no bot is working. The setup
+  page offers the same list for "start on this computer". An environment variable `ALLOWED_ROOTS` on the computer
+  takes precedence over the `.env` (the backend inherits the app's environment and `dotenv` does not override); the
+  window says so when it is set.
 - **Closing** only hides the window, the chat stays connected. It comes back through the tray icon, the Dock icon
   or a second start; quit via the tray menu, Ctrl+Q or Cmd+Q.
 - **Start at login:** checkbox in the tray menu ("Start with Windows") or, on the Mac, in the "OpenFolk" menu. On
@@ -94,8 +102,10 @@ minute after start and every six hours, the download in the background, then a q
 "Later" installs on the next quit. Either way the app quits as it always does, so a working bot finishes first; only
 then the new version is installed and, after "Restart now", started. "Check for updates …" sits in the tray menu, in
 "Help" and, on the Mac, in the "OpenFolk" menu; a check from there says what it found, the automatic ones stay quiet.
+"Check for updates automatically" right below it switches the automatic checks and downloads off and on at once,
+without a restart, stored as `autoUpdate` in `config.json`; a check from the menu works either way.
 Not updated: a build started from source, the portable EXE, a Mac app without a Developer ID signature (Squirrel.Mac
-installs only signed apps), and the smoke test (`OPENFOLK_NO_UPDATE=1`).
+installs only signed apps), and the smoke test (`OPENFOLK_NO_UPDATE=1`); there the entry is shown off and disabled.
 
 **Update feed and counting:** the app asks `https://openfolk.app/update` for the feed (`update.php` of the landing page,
 repo `openfolk.app`); it hands out the feed files of the latest release and redirects every package to GitHub. When

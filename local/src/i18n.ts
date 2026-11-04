@@ -208,7 +208,7 @@ const en = {
     // ---- security warnings from the relay
     'warning.title': 'OpenFolk: security notice',
     'warning.newDevice': 'New device signed in: {name} ({ip}). If that was not you, log the device out in the settings and change the password.',
-    'warning.duplicateAgent': 'Rejected: a second backend tried to connect as {machine} (from {ip}). Is it running twice, or is someone using AGENT_TOKEN?',
+    'warning.duplicateAgent': 'Rejected: a second backend tried to connect as {machine} from another address ({ip}). Is it running on two machines, or is someone using AGENT_TOKEN?',
     // ---- chat events (written into the history)
     'events.transferred': 'Moved from {machine}, the context came along.',
     'events.newSession': 'New session started',
@@ -509,7 +509,7 @@ const de: Record<Key, string> = {
     // ---- security warnings from the relay
     'warning.title': 'OpenFolk: Sicherheitshinweis',
     'warning.newDevice': 'Neues Gerät angemeldet: {name} ({ip}). Warst du das nicht, das Gerät in den Einstellungen abmelden und das Passwort ändern.',
-    'warning.duplicateAgent': 'Abgewiesen: Ein zweites Backend wollte sich als {machine} verbinden (von {ip}). Läuft es doppelt, oder nutzt jemand AGENT_TOKEN?',
+    'warning.duplicateAgent': 'Abgewiesen: Ein zweites Backend wollte sich von einer anderen Adresse ({ip}) als {machine} verbinden. Läuft es auf zwei Rechnern, oder nutzt jemand AGENT_TOKEN?',
     // ---- chat events (written into the history)
     'events.transferred': 'Von {machine} umgezogen, der Kontext ist mitgekommen.',
     'events.newSession': 'Neue Session gestartet',

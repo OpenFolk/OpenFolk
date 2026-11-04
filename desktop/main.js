@@ -9,15 +9,19 @@
 
 const { app, BrowserWindow, Tray, Menu, shell, ipcMain, nativeImage, dialog, protocol, session } = require('electron');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const { Backend, freePort, guardQuit, joinServer, remoteUrl, root } = require('./backend.js');
+const { Backend, dataDir, freePort, guardQuit, joinServer, profileRoots, remoteUrl, root, setProfileEnv } = require('./backend.js');
 const task = require('./task.js');
 const { watchHandovers } = require('./handover.js');
 const { startUpdates, updateMenuItems } = require('./updater.js');
 
 const CONFIG = () => path.join(app.getPath('userData'), 'config.json');
 const SETUP = path.join(__dirname, 'setup.html');
+const FOLDERS = path.join(__dirname, 'folders.html');
 const MAC = process.platform === 'darwin';
+/** Where bots work when no folder is chosen: the backend's own default would be the whole user folder, with documents and downloads. */
+const DEFAULT_ROOT = () => path.join(os.homedir(), 'OpenFolk');
 
 /**
  * The web app's own address in the app. A scheme of its own, registered as standard and secure, so the page has an
@@ -74,6 +78,25 @@ const TEXTS = {
     en: {
         open: 'Open OpenFolk',
         changeAddress: 'Change setup …',
+        foldersMenu: 'Allowed folders …',
+        foldersTitle: 'Allowed folders',
+        foldersIntro: 'Bots only work in these folders and below them. A bot with a folder outside is refused when it is saved.',
+        foldersDefault: 'No folder chosen: bots work in their own folder {default}, not in your whole user folder.',
+        foldersDefaultTag: 'default',
+        foldersLastRemoved: 'The last folder cannot be removed: without a choice the own folder {default} applies.',
+        foldersWide: '{folder} is very wide: bots could work on all documents, downloads and other files in it. Better choose the folders they need.',
+        foldersAdd: 'Add folder …',
+        foldersRemove: 'Remove',
+        foldersSave: 'Save',
+        foldersClose: 'Close',
+        foldersPickTitle: 'Choose a folder for bots',
+        foldersEnvWarn: 'The environment variable ALLOWED_ROOTS is set on this computer ({value}) and takes precedence over this list. Remove the variable (Windows: system settings, environment variables) and restart the app for the list to apply.',
+        foldersSaved: 'Saved. The backend restarts now.',
+        foldersWaiting: 'Saved. A bot is still working: the backend restarts as soon as no bot is working, until then the old folders apply.',
+        foldersNotFolder: '{folder} is not a folder that exists.',
+        foldersBadChars: '{folder} cannot be used: a folder name must not contain “;”.',
+        foldersSetupSummary: 'Folders the bots may work in (optional)',
+        foldersSetupHint: 'Without a choice the bots get their own folder {default}, not your whole user folder. You can change this later in the menu under “Allowed folders …”.',
         pairAgain: 'Sign this window in again',
         setupRelay: 'Display only: connect to an existing relay server',
         setupRelayHint: 'For a computer that only shows your bots, like your phone or browser does: this window is just the interface to a relay server you already have.',
@@ -146,6 +169,7 @@ const TEXTS = {
         zoom: 'Zoom',
         help: 'Help',
         about: 'About OpenFolk',
+        aboutProfile: 'Profile folder',
         notSetUp: 'not set up',
         invalidAddress: 'Please enter a server URL like https://openfolk.example.com.',
         setupTitle: 'Set up OpenFolk',
@@ -155,6 +179,8 @@ const TEXTS = {
         setupNoAnswer: 'The relay server does not answer: {error}',
         setupHint: 'OpenFolk {version} · You can change this later in the menu under “Change setup”.',
         checkUpdates: 'Check for updates …',
+        autoUpdate: 'Check for updates automatically',
+        autoUpdateEnv: 'Check for updates automatically (off: OPENFOLK_NO_UPDATE is set)',
         checkUpdatesTitle: 'Updates',
         updateReadyMenu: 'Restart to update to {version}',
         updateReadyTitle: 'Update ready',
@@ -170,6 +196,25 @@ const TEXTS = {
     de: {
         open: 'OpenFolk öffnen',
         changeAddress: 'Einrichtung ändern …',
+        foldersMenu: 'Freigegebene Ordner …',
+        foldersTitle: 'Freigegebene Ordner',
+        foldersIntro: 'Bots arbeiten nur in diesen Ordnern und darunter. Ein Bot mit einem Ordner außerhalb wird beim Speichern abgelehnt.',
+        foldersDefault: 'Kein Ordner gewählt: Bots arbeiten in ihrem eigenen Ordner {default}, nicht in deinem ganzen Benutzerordner.',
+        foldersDefaultTag: 'Standard',
+        foldersLastRemoved: 'Der letzte Ordner lässt sich nicht entfernen: Ohne Auswahl gilt der eigene Ordner {default}.',
+        foldersWide: '{folder} ist sehr weit gefasst: Bots könnten dort an allen Dokumenten, Downloads und anderen Dateien arbeiten. Besser nur die Ordner wählen, die sie brauchen.',
+        foldersAdd: 'Ordner hinzufügen …',
+        foldersRemove: 'Entfernen',
+        foldersSave: 'Speichern',
+        foldersClose: 'Schließen',
+        foldersPickTitle: 'Ordner für Bots wählen',
+        foldersEnvWarn: 'Auf diesem Rechner ist die Umgebungsvariable ALLOWED_ROOTS gesetzt ({value}) und geht dieser Liste vor. Entferne die Variable (Windows: Systemeinstellungen, Umgebungsvariablen) und starte die App neu, damit die Liste gilt.',
+        foldersSaved: 'Gespeichert. Das Backend startet jetzt neu.',
+        foldersWaiting: 'Gespeichert. Ein Bot arbeitet noch: Das Backend startet neu, sobald kein Bot mehr arbeitet, bis dahin gelten die alten Ordner.',
+        foldersNotFolder: '{folder} ist kein vorhandener Ordner.',
+        foldersBadChars: '{folder} geht nicht: Ein Ordnername darf kein „;“ enthalten.',
+        foldersSetupSummary: 'Ordner, in denen Bots arbeiten dürfen (optional)',
+        foldersSetupHint: 'Ohne Auswahl bekommen die Bots einen eigenen Ordner {default}, nicht deinen ganzen Benutzerordner. Das lässt sich später im Menü unter „Freigegebene Ordner …“ ändern.',
         pairAgain: 'Dieses Fenster neu anmelden',
         setupRelay: 'Nur anzeigen: mit einem bestehenden Relay-Server verbinden',
         setupRelayHint: 'Für einen Rechner, der deine Bots nur anzeigt, wie Handy oder Browser: Dieses Fenster ist nur die Oberfläche zu einem Relay-Server, den du schon hast.',
@@ -242,6 +287,7 @@ const TEXTS = {
         zoom: 'Zoomen',
         help: 'Hilfe',
         about: 'Über OpenFolk',
+        aboutProfile: 'Profilordner',
         notSetUp: 'nicht eingerichtet',
         invalidAddress: 'Bitte eine Server-URL wie https://openfolk.example.com eingeben.',
         setupTitle: 'OpenFolk einrichten',
@@ -251,6 +297,8 @@ const TEXTS = {
         setupNoAnswer: 'Der Relay-Server antwortet nicht: {error}',
         setupHint: 'OpenFolk {version} · Das lässt sich später im Menü unter „Einrichtung ändern“ anpassen.',
         checkUpdates: 'Nach Updates suchen …',
+        autoUpdate: 'Automatisch nach Updates suchen',
+        autoUpdateEnv: 'Automatisch nach Updates suchen (aus: OPENFOLK_NO_UPDATE ist gesetzt)',
         checkUpdatesTitle: 'Updates',
         updateReadyMenu: 'Neu starten für Version {version}',
         updateReadyTitle: 'Update bereit',
@@ -269,13 +317,15 @@ const TEXTS = {
 const language = () => (app.getLocale().toLowerCase().startsWith('de') ? 'de' : 'en');
 const t = (key) => TEXTS[language()][key] ?? TEXTS.en[key];
 
-/** { mode: 'local' | 'relay', url, localPort, paired (the address this window is signed in at), window: { x, y, width, height } } */
+/** { autoUpdate (false = no automatic checks; absent = on), mode: 'local' | 'relay', url, localPort, paired (the address this window is signed in at), window: { x, y, width, height } } */
 let config = {};
 /** The backend of "on this computer"; null in relay mode. */
 let backend = null;
 let win = null;
 /** The setup page is open on top of a working setup ("Change setup"): closing the window without a choice brings the app back. */
 let choosing = false;
+/** The window's user agent as Electron made it, without our mark. */
+let baseAgent = '';
 let tray = null;
 let quitting = false;
 
@@ -327,6 +377,8 @@ function normalizeAddress(input) {
 
 function loadWebApp() {
     choosing = false;
+    // The web app tells "on this computer" (it has the menu "Allowed folders …") from a display-only window by this mark
+    win.webContents.setUserAgent(config.mode === 'local' ? `${baseAgent} OpenFolkLocal` : baseAgent);
     if (config.mode === 'local') void startLocal();
     else if (config.mode === 'relay' && config.url) win.loadURL(appLink(config.url));
     else win.loadFile(SETUP);
@@ -340,6 +392,13 @@ async function startLocal() {
         saveConfig();
     }
     if (!backend) {
+        if (!profileRoots().length) {
+            // A profile that ran before the folder list let its bots work in the whole user folder (the backend's default
+            // without ALLOWED_ROOTS): written down as it was, so no bot is refused after the update; the folders window
+            // warns that it is wide. A new profile, or a setup page that sent nothing, gets the own folder.
+            if (usedBefore()) setProfileEnv('ALLOWED_ROOTS', os.homedir());
+            else writeRoots([]);
+        }
         backend = new Backend(config.localPort);
         backend.useTask = Boolean(config.task);
         backend.start();
@@ -403,6 +462,7 @@ function createWindow() {
         },
     });
 
+    baseAgent = win.webContents.userAgent;
     win.once('ready-to-show', () => win.show());
     win.on('resize', rememberBounds);
     win.on('move', rememberBounds);
@@ -454,6 +514,61 @@ function show() {
     win.focus();
 }
 
+/** The small window for the folders bots may work in; the main window stays where it is. */
+let foldersWin = null;
+function openFolders() {
+    if (foldersWin) {
+        foldersWin.show();
+        foldersWin.focus();
+        return;
+    }
+    foldersWin = new BrowserWindow({
+        width: 620, height: 560, minWidth: 420, minHeight: 420, parent: win || undefined,
+        title: t('foldersTitle'), icon: path.join(__dirname, 'build', 'icon.png'), backgroundColor: '#111b21', autoHideMenuBar: true,
+        webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    foldersWin.removeMenu();
+    foldersWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    foldersWin.loadFile(FOLDERS);
+    foldersWin.on('closed', () => { foldersWin = null; });
+}
+
+/** Only the backend of "on this computer" has folders to choose; with a server in the browser's place they belong to its machines. */
+const foldersItem = () => (config.mode === 'local' ? [{ label: t('foldersMenu'), click: openFolders }] : []);
+
+/**
+ * The folders for ALLOWED_ROOTS: existing folders, no ";" (it separates them), no duplicates.
+ * @returns {{ roots: string[] } | { error: string }}
+ */
+function checkRoots(list) {
+    const roots = [];
+    for (const raw of Array.isArray(list) ? list : []) {
+        const folder = String(raw || '').trim();
+        if (!folder) continue;
+        if (folder.includes(';')) return { error: t('foldersBadChars').replace('{folder}', folder) };
+        let isDir = false;
+        try { isDir = path.isAbsolute(folder) && fs.statSync(folder).isDirectory(); } catch { /* not there */ }
+        if (!isDir) return { error: t('foldersNotFolder').replace('{folder}', folder) };
+        if (!roots.includes(folder)) roots.push(folder);
+    }
+    return { roots };
+}
+
+/**
+ * The folders for ALLOWED_ROOTS, never none: bots without a choice work in their own folder (created here), where the
+ * backend's own default would be the whole user folder.
+ */
+/** The profile's backend has run before: its data folder holds something. */
+function usedBefore() {
+    try { return fs.readdirSync(dataDir()).length > 0; } catch { return false; }
+}
+
+function writeRoots(roots) {
+    const list = roots.length ? roots : [DEFAULT_ROOT()];
+    if (!roots.length) fs.mkdirSync(list[0], { recursive: true });
+    setProfileEnv('ALLOWED_ROOTS', list.join(';'));
+}
+
 function changeAddress() {
     show();
     choosing = Boolean(config.mode);
@@ -503,6 +618,7 @@ async function switchTask(on) {
 const trayMenu = () => Menu.buildFromTemplate([
     { label: t('open'), click: show },
     { label: t('changeAddress'), click: changeAddress },
+    ...foldersItem(),
     ...(config.mode === 'local' ? [{ label: t('pairAgain'), click: () => { show(); void pairAgain(); } }] : []),
     { type: 'separator' },
     { label: t(process.platform === 'win32' ? 'startWithWindows' : 'startAtLogin'), type: 'checkbox', checked: startsAtLogin(), click: (m) => setStartAtLogin(m.checked) },
@@ -520,7 +636,7 @@ function createTray() {
     tray.on('right-click', () => tray.setContextMenu(trayMenu()));
 }
 
-const about = () => dialog.showMessageBox(win, { title: 'OpenFolk', message: `OpenFolk ${app.getVersion()}`, detail: `Server: ${config.mode === 'local' ? t('thisComputer') : config.url || t('notSetUp')}\nElectron ${process.versions.electron}` });
+const about = () => dialog.showMessageBox(win, { title: 'OpenFolk', message: `OpenFolk ${app.getVersion()}`, detail: `Server: ${config.mode === 'local' ? t('thisComputer') : config.url || t('notSetUp')}\n${t('aboutProfile')}: ${app.getPath('userData')}\nElectron ${process.versions.electron}` });
 
 const viewMenu = (label) => ({
     label,
@@ -547,6 +663,7 @@ function createMacMenu() {
                 ...updateMenuItems(),
                 { type: 'separator' },
                 { label: t('changeAddress'), click: changeAddress },
+                ...foldersItem(),
                 { type: 'separator' },
                 { label: t('startAtLogin'), type: 'checkbox', checked: startsAtLogin(), click: (m) => setStartAtLogin(m.checked) },
                 { type: 'separator' },
@@ -591,6 +708,7 @@ function createMenu() {
             label: t('file'),
             submenu: [
                 { label: t('changeAddress'), click: changeAddress },
+                ...foldersItem(),
                 ...(taskOffered() ? [{ type: 'separator' }, ...taskItem()] : []),
                 { type: 'separator' },
                 { label: t('quit'), accelerator: 'Ctrl+Q', click: quit },
@@ -629,6 +747,11 @@ if (!app.requestSingleInstanceLock()) {
             t,
             quit,
             window: () => win,
+            auto: () => config.autoUpdate !== false,
+            setAuto: (on) => {
+                config.autoUpdate = on;
+                saveConfig();
+            },
             onChange: () => {
                 createMenu();
                 if (tray) tray.setContextMenu(trayMenu());
@@ -656,8 +779,16 @@ if (!app.requestSingleInstanceLock()) {
         loadWebApp();
         return { url };
     });
-    ipcMain.handle('choose-local', (e) => {
+    ipcMain.handle('choose-local', (e, folders) => {
         if (!fromSetup(e)) return { error: 'not allowed' };
+        // The folders chosen on the setup page go into the profile's .env before the backend starts
+        if (Array.isArray(folders)) {
+            const checked = checkRoots(folders);
+            if (checked.error) return { error: checked.error };
+            writeRoots(checked.roots);
+            // "Change setup" with the backend running already: it reads the folders by a restart
+            if (backend) void backend.restartWhenIdle();
+        }
         config.mode = 'local';
         saveConfig();
         createMenu();
@@ -683,7 +814,22 @@ if (!app.requestSingleInstanceLock()) {
         loadWebApp();
         return { machine: r.machine };
     });
-    ipcMain.handle('info', (e) => (!fromSetup(e) ? {} : { mode: config.mode || '', url: config.url || '', version: app.getVersion(), platform: process.platform, language: language(), texts: TEXTS[language()] }));
+    ipcMain.handle('folders-info', (e) => (!fromSetup(e) ? {} : { roots: profileRoots(), home: os.homedir(), defaultRoot: DEFAULT_ROOT(), env: process.env.ALLOWED_ROOTS || '', language: language(), texts: TEXTS[language()] }));
+    ipcMain.handle('folders-pick', async (e) => {
+        if (!fromSetup(e)) return '';
+        const owner = BrowserWindow.fromWebContents(e.sender) || undefined;
+        const r = await dialog.showOpenDialog(owner, { title: t('foldersPickTitle'), properties: ['openDirectory'] });
+        return r.canceled ? '' : r.filePaths[0] || '';
+    });
+    // Saves into the profile's .env; the running backend picks it up by a restart, which waits for the bots
+    ipcMain.handle('folders-save', async (e, list) => {
+        if (!fromSetup(e)) return { error: 'not allowed' };
+        const checked = checkRoots(list);
+        if (checked.error) return { error: checked.error };
+        writeRoots(checked.roots);
+        return { state: config.mode === 'local' && backend ? await backend.restartWhenIdle() : 'saved' };
+    });
+    ipcMain.handle('info', (e) => (!fromSetup(e) ? {} : { mode: config.mode || '', url: config.url || '', roots: profileRoots(), home: os.homedir(), defaultRoot: DEFAULT_ROOT(), envRoots: process.env.ALLOWED_ROOTS || '', version: app.getVersion(), platform: process.platform, language: language(), texts: TEXTS[language()] }));
 
     // A click on the Dock icon brings the hidden window back (macOS only)
     app.on('activate', show);

@@ -4,7 +4,17 @@
 on a server, backends that start with their machine, a backend in a container that never sleeps, several machines,
 and the settings for waking and shutting them down. The overview of all setups is in `../README.md` under "Which
 setup fits"; every variable is described with comments in `../.env.sample` (backend) and `../relay/.env.sample`
-(relay).
+(relay). A German five-step guide for a relay of your own is in `README.de.md` ("Dauerbetrieb").
+
+**Desktop app or checkout?** Every `npm run …` command on this page (`claim`, `pair`, `join`, `restart`, `env`) belongs
+to a checkout of the source and runs in the `openfolk` folder after `npm install`; in a shell without a checkout it
+fails. The desktop app has no checkout and does each of those steps in its interface: claiming a relay in the first
+steps or under Settings → "Devices and security" → "Move to a relay on a server", pairing a device under "Pair another
+device", joining a further computer with the link from "Add machine" on the app's setup page ("Connect this computer to
+my server"), restart and "Run without signing in" in the tray menu. Its `.env` lives in the app's profile folder
+(Windows `%APPDATA%\OpenFolk`, macOS `~/Library/Application Support/OpenFolk`, Linux `~/.config/OpenFolk`), never in a
+checkout. Do not pick "Display only: connect to an existing relay server" on the setup page to use a relay of your own
+with the bots on this computer: that way the app starts no backend here and the bots go offline.
 
 ## Relay and backends
 
@@ -188,6 +198,38 @@ By hand instead: the same `.env` values on every machine. On the first machine `
 generated (`E2E_KEY`, `AGENT_TOKEN`, the VAPID pair) into its `.env`; copy that `.env` before the next machine
 starts, otherwise it generates keys of its own and cannot read the others' sync. Either way several machines need a
 relay they all reach: the relay embedded in a backend serves its own computer only.
+
+## Allowed folders
+
+`ALLOWED_ROOTS` in a machine's `.env` lists the folders bots may be created in, separated by `;`; without it, the home
+folder of the user the backend runs as. A bot's folder outside of them is refused, in every account, with the reason
+(`Folder is not under …`), and the app hands out files from these folders only. Where the variable lives: a checkout
+in its `.env`, the desktop app in the `.env` of its profile folder (above), a container in the `.env` next to the
+compose file; there `/work` is the allowed folder and `WORK_DIR` the host folder behind it. The backend names the
+folders in its log on start; restart it after a change. The bot editor's folder field takes a folder that exists
+there or a repository address, which the backend clones into the first allowed folder; there is no folder browser yet.
+
+## Git access
+
+The backend runs without a terminal, often as a task before anyone signs in or in a container, so it can never answer a
+password prompt; its own git and SSH calls are started so that they fail instead of asking (`GIT_TERMINAL_PROMPT=0`,
+no askpass), and a bot's shell has no terminal either. For bots to clone and push, credentials have to be there
+without a prompt:
+
+- **HTTPS remotes** on your own PC: push once in a terminal so the credential manager of Windows or macOS knows the
+  sign-in; that is enough while the backend runs in your signed-in session. As a task without a sign-in, in a
+  container and on a Linux server set a git token (GitHub, GitLab, Forgejo, Gitea) in the settings of the machine under
+  "Pushing with git" instead: host (the host name only, e.g. `git.example.com`), user, token. The token travels to the
+  machine end-to-end encrypted only and sits in the environment of the bots' sessions there, never in `.git/config`.
+  "Open changes" warns while the host of a bot's repository has no access.
+- **SSH remotes** need a key that asks for no passphrase: an SSH agent in the backend's session. On a Mac the desktop
+  app ("Start on this computer") inherits the agent launchd provides, and a key in the keychain
+  (`ssh-add --apple-use-keychain ~/.ssh/id_ed25519`) loads without a prompt. On Windows the service "OpenSSH
+  Authentication Agent" keeps the keys loaded with `ssh-add` for your user. Without a signed-in session (task,
+  container, server) there usually is no agent: switch the remote to HTTPS and set a token, or put a key without a
+  passphrase into `~/.ssh` of the user the backend runs as.
+- The backend checks on start, hourly and after a change whether it can push to the hosts of its bots (HTTPS only;
+  SSH it cannot judge) and says so in "Open changes" and its log.
 
 ## Machine settings
 

@@ -1,17 +1,18 @@
 /* OpenFolk web app: settings (appearance, language, autologin per machine, entry to notifications and devices). */
 import { BACKEND_LANGUAGE_KEY, LANGUAGE_KEY, i18n, isLanguage, locale, readSetting, resolveLanguage, setLanguage, t, writeSetting } from './i18n.js';
-import { THEME_KEY, el, node, state, storage, toast } from './core.js';
+import { BUBBLE_DEFAULT, BUBBLE_KEY, PROTOCOL_VERSION, THEME_KEY, el, md, node, state, storage, toast } from './core.js';
 import { clockTime, e2e, send, upper } from './e2e.js';
 import { askAutologon, machineCan } from './machines.js';
 import { setShowAllAccounts } from './others.js';
 import { qrSvg } from './qr-login.js';
 import { layoutPanes } from './panes.js';
-import { relayAddress } from './platform.js';
+import { desktopVersion, iosBrowserTab, relayAddress } from './platform.js';
 import { loadPushSettings } from './push.js';
 import { loadAccounts } from './accounts.js';
 import { relayClaimForm } from './relay-claim.js';
 import { closeSettingsDialog, openSettingsDialog } from './menus.js';
 import { autoReadOn } from './read-aloud.js';
+import { RELEASES, VERSION } from './release.js';
 
 // ================================================================ Settings
 
@@ -31,7 +32,29 @@ export function settingsSaveFailed() {
     savePending.clear();
 }
 
+/** The swatch of the color in use is marked. */
+function renderBubbleChoice() {
+    const current = document.documentElement.dataset.bubble || BUBBLE_DEFAULT;
+    for (const k of el.settingsBubble.querySelectorAll('.swatch')) k.setAttribute('aria-checked', String(/** @type {HTMLElement} */ (k).dataset.bubble === current));
+}
+
+/** Color of the own messages: per device, in the browser's storage only. */
+export function chooseBubble(name) {
+    if (!name || name === BUBBLE_DEFAULT) {
+        delete document.documentElement.dataset.bubble;
+        storage.remove(BUBBLE_KEY);
+    } else {
+        document.documentElement.dataset.bubble = name;
+        storage.set(BUBBLE_KEY, name);
+    }
+    renderBubbleChoice();
+    toast(t('settings.saved'));
+}
+
 export function openSettings() {
+    // Only an iPhone or iPad in a Safari tab needs the notes on the home screen app
+    for (const note of el.settings.querySelectorAll('.ios-hint')) /** @type {HTMLElement} */ (note).hidden = !iosBrowserTab();
+    renderBubbleChoice();
     el.settingsTheme.value = storage.get(THEME_KEY) || 'auto';
     el.settingsAutoRead.checked = autoReadOn();
     el.settingsLanguage.value = readSetting(LANGUAGE_KEY);
@@ -120,6 +143,79 @@ export function renderSettings() {
     }
     renderSharedSettings();
     renderRelayClaim();
+    renderAbout();
+}
+
+/**
+ * "About": the versions the app really knows. The backends send their protocol version in backend_status (software
+ * versions of backend and relay do not reach the app); the desktop app is named in its user agent.
+ */
+export function renderAbout() {
+    const rows = [];
+    // The version in every app; a click shows what is new in it
+    const version = node('button', 'link about-version', t('about.versionLink', { version: VERSION }));
+    version.type = 'button';
+    version.addEventListener('click', openReleaseNotes);
+    rows.push([t('about.openfolk'), version]);
+    if (desktopVersion) rows.push([t('about.desktop'), desktopVersion]);
+    rows.push([t('about.webapp'), t('about.protocol', { n: PROTOCOL_VERSION })]);
+    const machines = Object.keys(state.backendPerMachine).filter((m) => state.online.includes(m)).sort();
+    for (const machine of machines) {
+        const st = state.backendPerMachine[machine];
+        const protocol = st.protocol ? t('about.protocol', { n: st.protocol }) : t('about.protocolOld');
+        rows.push([t('about.backend', { machine: upper(machine) }), `${protocol} · ${t('about.since', { time: clockTime(st.since) })}`]);
+    }
+    if (!machines.length) rows.push([t('about.backendNone'), '']);
+    el.aboutList.replaceChildren(...rows.flatMap(([label, value]) => {
+        const dd = node('dd', '');
+        dd.append(value);
+        return [node('dt', '', label), dd];
+    }));
+}
+
+const RELEASES_URL = 'https://github.com/OpenFolk/OpenFolk/releases';
+
+/** The notes of this version from the CHANGELOG (English only), the older ones folded below it. */
+export function openReleaseNotes() {
+    const box = el.releaseNotes;
+    const current = RELEASES.find((r) => r.version === VERSION);
+    const older = RELEASES.filter((r) => r !== current);
+    /** @param {string} date */
+    const day = (date) => new Date(`${date}T12:00:00Z`).toLocaleDateString(locale());
+    /** @param {{ version: string, date: string, notes: string }} r @param {HTMLElement} into */
+    const notes = (r, into) => {
+        const text = node('div', 'release-notes-text');
+        text.innerHTML = md(r.notes);
+        into.append(text);
+    };
+    const parts = [];
+    if (t('about.notesLanguage')) parts.push(node('p', 'hint', t('about.notesLanguage')));
+    if (current) {
+        if (current.date) parts.push(node('p', 'hint', t('about.released', { date: day(current.date) })));
+        const now = node('div', 'release-notes-current');
+        notes(current, now);
+        parts.push(now);
+    } else {
+        parts.push(node('p', 'hint', t('about.noNotes')));
+    }
+    if (older.length) {
+        parts.push(node('h4', '', t('about.older')));
+        for (const r of older) {
+            const fold = node('details', 'release-notes-older');
+            fold.append(node('summary', '', r.date ? `${r.version} · ${day(r.date)}` : r.version));
+            notes(r, fold);
+            parts.push(fold);
+        }
+    }
+    const all = node('a', 'release-notes-all', t('about.allReleases'));
+    all.href = RELEASES_URL;
+    all.target = '_blank';
+    all.rel = 'noopener noreferrer';
+    const footer = node('p', '');
+    footer.append(all);
+    parts.push(footer);
+    box.replaceChildren(...parts);
+    openSettingsDialog(t('about.notesTitle', { version: VERSION }), box);
 }
 
 // ---------------------------------------------------------------- Machines joined by invitation

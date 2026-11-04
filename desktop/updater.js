@@ -1,9 +1,9 @@
 // Updates of the desktop app from the GitHub releases (electron-updater, the latest*.yml files CI attaches): a check
-// shortly after start and every six hours, the download in the background, the install on the next quit. "Restart
-// now" installs at once, but only after guardQuit (backend.js) has let the backend end, so no working bot is cut off.
-// The feed comes through openfolk.app (update.php there), straight from GitHub when that does not answer. The first
-// check of a UTC day says "X-OpenFolk-Active: <version>", which openfolk.app adds to a daily total per system; the
-// menu switches that off (update-count.json in the profile).
+// shortly after start and every six hours (unless switched off in the menu), the download in the background, the
+// install on the next quit. "Restart now" installs at once, but only after guardQuit (backend.js) has let the backend
+// end, so no working bot is cut off. The feed comes through openfolk.app (update.php there), straight from GitHub when
+// that does not answer. The first check of a UTC day says "X-OpenFolk-Active: <version>", which openfolk.app adds to a
+// daily total per system; the menu switches that off (update-count.json in the profile).
 'use strict';
 
 const { app, dialog } = require('electron');
@@ -15,13 +15,17 @@ const FIRST_CHECK = 30_000;
 const EVERY = 6 * 60 * 60_000;
 const FEED = { provider: 'generic', url: 'https://openfolk.app/update' };
 const GITHUB = { provider: 'github', owner: 'OpenFolk', repo: 'OpenFolk' };
+/** Switched on in the menu: the first check follows after a moment. */
+const AFTER_SWITCH = 3_000;
 
 /** electron-updater's autoUpdater, or null where this build does not update itself. */
 let updater = null;
 /** Version downloaded and waiting for the install; '' while there is none. */
 let ready = '';
 let restartAfterQuit = false;
-let opts = { t: (k) => k, onChange: () => undefined, quit: () => app.quit(), window: () => null };
+let opts = { t: (k) => k, onChange: () => undefined, quit: () => app.quit(), window: () => null, auto: () => true, setAuto: () => undefined };
+/** The timers of the automatic checks; empty while they are off. */
+let timers = [];
 
 /**
  * Squirrel.Mac installs only an app signed with a Developer ID; an unsigned or ad-hoc signed build would download
@@ -109,7 +113,11 @@ function restart() {
     opts.quit();
 }
 
-/** @param {{ t: (key: string) => string, onChange: () => void, quit: () => void, window: () => Electron.BrowserWindow | null }} o */
+/**
+ * @param {{ t: (key: string) => string, onChange: () => void, quit: () => void, window: () => Electron.BrowserWindow | null,
+ *   auto: () => boolean, setAuto: (on: boolean) => void }} o
+ *   auto: whether the automatic checks are switched on; setAuto: stores the choice of the menu entry
+ */
 function startUpdates(o) {
     opts = { ...opts, ...o };
     if (!supported()) return;
@@ -124,13 +132,31 @@ function startUpdates(o) {
         opts.onChange();
         void askRestart();
     });
-    const quietCheck = () => check().catch(() => undefined);
-    setTimeout(quietCheck, FIRST_CHECK).unref();
-    setInterval(quietCheck, EVERY).unref();
+    schedule(FIRST_CHECK);
     // will-quit comes after guardQuit let the quit through, i.e. after the backend has ended
     app.on('will-quit', () => {
         if (restartAfterQuit && ready) updater.quitAndInstall(true, true);
     });
+}
+
+/** Starts or stops the automatic checks as the setting says; a check from the menu does not depend on them. */
+function schedule(first) {
+    for (const timer of timers) {
+        clearTimeout(timer);
+        clearInterval(timer);
+    }
+    timers = [];
+    if (!updater || !opts.auto()) return;
+    const quietCheck = () => check().catch(() => undefined);
+    timers = [setTimeout(quietCheck, first), setInterval(quietCheck, EVERY)];
+    for (const timer of timers) timer.unref();
+}
+
+/** The menu entry "Check for updates automatically" was switched: effective at once, no restart. */
+function switchAuto(on) {
+    opts.setAuto(on);
+    schedule(AFTER_SWITCH);
+    opts.onChange();
 }
 
 /** "Check for updates" in the menus: says what it found, unlike the automatic checks. */
@@ -147,11 +173,18 @@ async function checkNow() {
     }
 }
 
-/** Menu entries: "Restart to update" once a version waits, always "Check for updates", the switch for counting. */
+/** The automatic checks as a menu entry: switched off by OPENFOLK_NO_UPDATE it is shown unchecked and disabled, saying so. */
+function autoItem() {
+    const forced = Boolean(process.env.OPENFOLK_NO_UPDATE);
+    return { label: text(forced ? 'autoUpdateEnv' : 'autoUpdate'), type: 'checkbox', checked: Boolean(updater) && opts.auto(), enabled: Boolean(updater), click: (m) => switchAuto(m.checked) };
+}
+
+/** Menu entries: "Restart to update" once a version waits, always "Check for updates", its automatic checks and the switch for counting. */
 function updateMenuItems() {
     return [
         ...(ready ? [{ label: text('updateReadyMenu', ready), click: restart }] : []),
         { label: text('checkUpdates'), click: () => void checkNow() },
+        autoItem(),
         ...(updater ? [{ label: text('countActive'), type: 'checkbox', checked: !countState().off, click: (m) => setCounting(m.checked) }] : []),
     ];
 }

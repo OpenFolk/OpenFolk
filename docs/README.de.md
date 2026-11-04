@@ -5,6 +5,10 @@ Rechnern laufen. Jeder **Bot** ist ein Kollege mit eigenem Bild, Namen, Rolle, T
 einem Ordner, zum Beispiel ein Bot je Repository. Bots arbeiten weiter, wenn die App zu ist, und melden sich per
 Push, wenn sie fertig sind oder eine Freigabe brauchen.
 
+OpenFolk ersetzt keine IDE und baut auf keiner auf: Am Schreibtisch arbeitest du weiter in VS Code, Cursor oder im
+Terminal. OpenFolk ist eine eigene Web-App, mit der du dieselben Agenten weiterführst, wenn du nicht am Rechner sitzt,
+und die dir einen Chat auf Wunsch wieder an die IDE übergibt.
+
 Standardmäßig laufen die Bots über das **Claude Agent SDK** (Claude Code). Ein Bot oder eine einzelne
 Unterhaltung kann auch **OpenAI Codex** nutzen oder über das Agent Client Protocol (ACP) **Cursor**,
 **GitHub Copilot**, **Google Antigravity** oder **OpenCode**. Die Oberfläche gibt es auf **Englisch und Deutsch**; deutsche
@@ -43,7 +47,11 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
 - **Bots und Vorlagen.** Bot über „+“ anlegen, wahlweise aus einer Vorlage. Je Bot: Ordner, Modell, Freigabe-Stufe,
   Ton und die Stimme, die seine Antworten vorliest (ohne Wahl passend zum Namen). „Vorschlag“ schlägt Namen (Vorname mit Aufgabenfeld in einem eigenen Feld), Rolle
   oder ein Profilbild vor; mit einem Gemini- oder OpenAI-Schlüssel in den Einstellungen
-  ist der Avatar ein generiertes Foto, sonst ein vom Modell gezeichnetes SVG.
+  ist der Avatar ein generiertes Foto, sonst ein vom Modell gezeichnetes SVG. Das Feld „Ordner oder Repository“ ist
+  ein Textfeld: Der Ordner muss auf dem Rechner des Bots schon existieren und unter dessen freigegebenen Ordnern
+  liegen (siehe „Freigegebene Ordner“ unter Dauerbetrieb), sonst lehnt das Backend ihn mit dem Grund ab. Statt eines
+  Ordners nimmt das Feld die Adresse eines Git-Repositorys; dann klont das Backend es beim Speichern in den ersten
+  freigegebenen Ordner. Einen Ordner-Browser gibt es noch nicht.
 - **Freigaben im Chat.** Je Bot *riskant* (Standard: fragt bei Löschen, Push, Deploy, SSH, Dienst-Neustarts,
   Schreiben außerhalb des Ordners oder in Secrets, Secrets lesen per Shell, Pakete installieren, Code aus dem Internet
   ausführen, erhöhten Rechten, jedem Aufruf eines externen MCP-Dienstes, auch lesenden; jeder Teil eines
@@ -81,7 +89,8 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
 - **Tabs** schwebend unten an der Liste: Bots, Repos (offene Änderungen aller Bots, mit Zähler), Status (die Rechner
   mit ihren Bots, Engines und Backend, Wecken und Herunterfahren, Kontingent der Abos mit 5-Stunden- und Wochenfenster, Fable getrennt, und wann jedes
   zurückgesetzt wird) und Einstellungen.
-- **Offene Änderungen** der Git-Repos im Ordner eines Bots, mit Committen und Pushen oder Holen je Repo.
+- **Offene Änderungen** der Git-Repos im Ordner eines Bots, mit Committen und Pushen oder Holen je Repo. Pushen
+  braucht Zugangsdaten, die das Backend ohne Terminal erreicht (siehe „Git-Zugang“ unter Dauerbetrieb).
 - **Repos bleiben aktuell:** Beim Start, nach dem Aufwachen, alle 15 Minuten und nach einem Push aus der App auf
   einem anderen Rechner holt das Backend die Repos seiner Bots und spult saubere vor (nie Merge, Rebase oder Reset,
   nicht während ein Bot darin arbeitet). Was nicht geht, steht mit Grund unter „Offene Änderungen“. Ein Schalter in den
@@ -183,19 +192,48 @@ kommen verschlüsselt von den anderen Rechnern. Von Hand: `npm run env` schreibt
 `E2E_KEY=off` schaltet die Verschlüsselung ab; dann kann der Relay-Host jeden Chat lesen. Codex und Copilot sind
 optionale npm-Abhängigkeiten (etwa 600 MB); wer nur Claude nutzt, installiert mit `npm install --omit=optional`.
 
-## Rechner-Einstellungen
+## Dauerbetrieb
 
-Wecken, Herunterfahren und automatische Anmeldung stellt man über Umgebungsvariablen ein (alle mit Kommentar in
-`.env.sample` bzw. für das Wecken in `relay/.env.sample`, Übersicht in `docs/running.md` unter „Machine settings“, englisch):
+**Desktop-App oder Quellcode?** Alle `npm`-Befehle in dieser Anleitung (`npm run claim`, `npm run pair`, `npm run join`,
+`npm run restart`, `npm run env`) gelten für einen Checkout des Quellcodes und laufen im Ordner `openfolk` nach
+`npm install`; in einer PowerShell ohne Checkout scheitern sie. Die Desktop-App hat keinen Checkout, bei ihr geht jeder
+dieser Schritte über die Oberfläche: das Relay übernehmen in den ersten Schritten oder unter Einstellungen → „Geräte und
+Sicherheit“ → „Auf ein Relay auf einem Server umziehen“; ein Gerät koppeln unter „Weiteres Gerät koppeln“; einen weiteren
+Rechner mit dem Link aus „Rechner hinzufügen“, den die Setup-Seite der App nimmt („Diesen Rechner an meinen Server
+anschließen“); Neustart und „Auch ohne Anmeldung laufen“ im Tray-Menü. Ihre `.env` liegt im Profilordner der App
+(Windows `%APPDATA%\OpenFolk`, macOS `~/Library/Application Support/OpenFolk`, Linux `~/.config/OpenFolk`), nie in
+einem Checkout.
 
-- **Wecken (Relay):** `WAKE_METHOD` = `wol` (Wake-on-LAN direkt vom Relay, Rechner in `WAKE_MACHINES` als
-  `name=MAC`), `command` (eigener Befehl `WAKE_COMMAND` mit `{machine}` und `{mac}`), `service` (externer
-  Weck-Dienst, `WAKEUP_URL` und `WAKEUP_API_TOKEN`) oder `none`. Vorlauf für Routinen: `WAKE_LEAD_SECONDS`.
-- **Herunterfahren und Neustarten (je Rechner):** Wie, steht in der `.env`: ein Begleitskript (`SHUTDOWN_SCRIPT`),
-  eigene Befehle (`SHUTDOWN_COMMAND`, `SHUTDOWN_CANCEL_COMMAND`, für „neu starten“ `SHUTDOWN_RESTART_COMMAND`) oder sonst
-  der Befehl des Betriebssystems. Ob die App das darf, der Countdown und was nach Weck-Routinen passiert (herunterfahren,
-  wenn niemand den Rechner nutzt, immer oder nie), stellt man in den Einstellungen des Rechners ein.
-- **Automatische Anmeldung (Windows):** `AUTOLOGON_METHOD` = `script` (mit `AUTOLOGON_SCRIPT`) oder `none`.
+### Eigenes Relay in fünf Schritten
+
+Für das Handy von überall, Push, mehrere Rechner und Bots, die einen schlafenden PC wecken. Das Relay ist ein Container
+mit einem Volume; es speichert keine Nachrichten und sieht keine Zugangsdaten.
+
+1. **Container starten** auf einem Docker-Host (VPS, Coolify, Unraid, Heimserver):
+
+   ```sh
+   docker run -d --name openfolk-relay --restart unless-stopped -p 8787:8787 \
+     -v openfolk-relay:/data ghcr.io/openfolk/openfolk:latest
+   docker logs openfolk-relay      # der Einrichtungscode
+   ```
+
+   In Coolify stattdessen eine Ressource *Docker Image* `ghcr.io/openfolk/openfolk:latest` mit Port `8787`, Domain
+   und einem Persistent Storage unter `/data`; der Code steht im Log der Anwendung.
+2. **HTTPS davor:** ein Reverse-Proxy (Coolify, Traefik, Caddy, nginx) mit Zertifikat, der WebSockets durchlässt.
+   `https://relay.example.com/health` muss antworten. Der Setup-Code gilt, bis das Relay einen Besitzer hat.
+3. **Relay übernehmen** von dem Rechner, auf dem dein Backend schon läuft. Desktop-App: Einstellungen → „Geräte und
+   Sicherheit“ → „Auf ein Relay auf einem Server umziehen“, Adresse und Code eingeben; das Backend zieht ohne Neustart
+   um, die Seite folgt und ist dort angemeldet. Quellcode: `npm run claim -- https://relay.example.com <Code>` und dann
+   `npm run restart`. Nicht „Nur anzeigen: mit einem bestehenden Relay-Server verbinden“ auf der Setup-Seite der
+   Desktop-App wählen: Das startet auf diesem Rechner kein Backend mehr, die Bots gehen offline.
+4. **Handy koppeln:** Einstellungen → „Geräte und Sicherheit“ → „Weiteres Gerät koppeln“, den QR-Code mit dem Handy
+   scannen (Link einmalig, 15 Minuten). Im Browser die Adresse des Relays öffnen und als App zum Home-Bildschirm
+   hinzufügen, dann kommt Push an (iPhone: nur aus der installierten PWA).
+5. **Optional:** weitere Rechner (Einstellungen → Rechner → „Rechner hinzufügen“), das Backend ohne Anmeldung starten
+   (Windows, Tray-Menü), Wecken am Relay (`WAKE_METHOD`, siehe „Rechner-Einstellungen“), Bots rund um die Uhr in einem
+   Backend-Container neben dem Relay (unten).
+
+Alle Einzelheiten, auch Docker Compose, Unraid, eigene Tokens und Reverse-Proxy-Regeln: `docs/running.md` (englisch).
 
 **Relay als Container:** fertiges Image `ghcr.io/openfolk/openfolk:latest` (amd64 und arm64) mit einem Volume unter
 `/data` und HTTPS davor. Ohne Tokens gestartet wartet es auf seinen Besitzer und schreibt einen Einrichtungscode
@@ -236,6 +274,32 @@ Arbeitsordner der Bots; im Bot-Editor den Container als Rechner wählen und die 
 Ordner der Bots auch per SSH oder VS Code Remote erreicht.
 Einzelheiten im englischen README.
 
+**Freigegebene Ordner (`ALLOWED_ROOTS`):** Jeder Rechner nennt in seiner `.env` die Ordner, in denen Bots angelegt werden
+dürfen, mit `;` getrennt; ohne die Variable ist es der Benutzerordner des Backends. Ein Bot-Ordner außerhalb wird
+abgelehnt, auch in anderen Konten, und die App gibt Dateien nur aus diesen Ordnern heraus. Wo die Variable steht:
+Quellcode in der `.env` des Checkouts, Desktop-App in der `.env` ihres Profilordners (oben), Container in der `.env`
+neben der Compose-Datei; dort ist `/work` der freigegebene Ordner und `WORK_DIR` der Ordner des Servers dahinter. Das
+Backend nennt die Ordner beim Start in seinem Log. Nach einer Änderung das Backend neu starten.
+
+**Git-Zugang:** Das Backend läuft ohne Terminal, oft als Aufgabe ohne Anmeldung oder im Container, und kann deshalb nie
+nach einem Passwort fragen; git und SSH werden so gestartet, dass sie statt einer Nachfrage scheitern. Damit Bots
+klonen und pushen können, braucht es Zugangsdaten, die ohne Nachfrage da sind:
+
+- **HTTPS-Remotes** auf dem eigenen PC: einmal in einem Terminal pushen, damit der Credential Manager von Windows
+  oder macOS die Anmeldung kennt; das reicht, solange das Backend in deiner angemeldeten Sitzung läuft. Als Aufgabe
+  ohne Anmeldung, im Container und auf dem Linux-Server stattdessen ein Git-Token (GitHub, GitLab, Forgejo, Gitea) in
+  den Einstellungen des Rechners unter „Pushen mit git“: Host (nur der Hostname, etwa `git.example.com`), Benutzer, Token. Das
+  Token geht nur Ende-zu-Ende-verschlüsselt an den Rechner und steht dort nur in der Umgebung der Bot-Sessions, nie in
+  `.git/config`. „Offene Änderungen“ warnt, solange der Host eines Bot-Repos keinen Zugang hat.
+- **SSH-Remotes** brauchen einen Schlüssel ohne Passphrase-Abfrage: einen SSH-Agenten, der in der Sitzung des Backends
+  läuft. Auf dem Mac nimmt die Desktop-App („Auf diesem Rechner starten“) den Agenten von launchd mit; ein Schlüssel
+  im Schlüsselbund (`ssh-add --apple-use-keychain ~/.ssh/id_ed25519`) lädt ohne Nachfrage. Unter Windows hält der Dienst
+  „OpenSSH Authentication Agent“ die mit `ssh-add` geladenen Schlüssel für deinen Benutzer bereit. Ohne angemeldete
+  Sitzung (Aufgabe, Container, Server) ist meist kein Agent da: dort das Remote auf HTTPS umstellen und ein Token hinterlegen, oder
+  einen Schlüssel ohne Passphrase in `~/.ssh` des Backend-Benutzers legen.
+- Auf dem PC mit Desktop prüft das Backend beim Start und stündlich, ob es zu den Hosts seiner Bots pushen kann
+  (nur HTTPS; SSH kann es nicht beurteilen).
+
 Ohne Pairing-Link die Adresse des Relays öffnen und mit dem Passwort anmelden
 (`node local/tools/e2e.mjs password`); die App fragt dann nach dem Schlüssel. Weitere Geräte koppelt man ohne Passwort über
 einen Pairing-Link: auf einem angemeldeten Gerät in den Einstellungen unter „Geräte und Sicherheit“ „Weiteres Gerät koppeln“ wählen, den Link oder
@@ -244,6 +308,20 @@ Browser und in der Desktop-App; die App nimmt den Link auch im Adressfeld). Der 
 auch: Die Anmeldeseite eines neuen Geräts zeigt selbst einen QR-Code; ein angemeldetes Gerät scannt ihn (Kamera oder
 unter Geräte → „QR-Code scannen“), fragt mit Name und Adresse des neuen Geräts nach und meldet es dann an. Dauerbetrieb und mehrere Rechner beschreibt `docs/running.md` (englisch)
 ausführlich.
+
+## Rechner-Einstellungen
+
+Wecken, Herunterfahren und automatische Anmeldung stellt man über Umgebungsvariablen ein (alle mit Kommentar in
+`.env.sample` bzw. für das Wecken in `relay/.env.sample`, Übersicht in `docs/running.md` unter „Machine settings“, englisch):
+
+- **Wecken (Relay):** `WAKE_METHOD` = `wol` (Wake-on-LAN direkt vom Relay, Rechner in `WAKE_MACHINES` als
+  `name=MAC`), `command` (eigener Befehl `WAKE_COMMAND` mit `{machine}` und `{mac}`), `service` (externer
+  Weck-Dienst, `WAKEUP_URL` und `WAKEUP_API_TOKEN`) oder `none`. Vorlauf für Routinen: `WAKE_LEAD_SECONDS`.
+- **Herunterfahren und Neustarten (je Rechner):** Wie, steht in der `.env`: ein Begleitskript (`SHUTDOWN_SCRIPT`),
+  eigene Befehle (`SHUTDOWN_COMMAND`, `SHUTDOWN_CANCEL_COMMAND`, für „neu starten“ `SHUTDOWN_RESTART_COMMAND`) oder sonst
+  der Befehl des Betriebssystems. Ob die App das darf, der Countdown und was nach Weck-Routinen passiert (herunterfahren,
+  wenn niemand den Rechner nutzt, immer oder nie), stellt man in den Einstellungen des Rechners ein.
+- **Automatische Anmeldung (Windows):** `AUTOLOGON_METHOD` = `script` (mit `AUTOLOGON_SCRIPT`) oder `none`.
 
 ## Konten
 
@@ -260,11 +338,18 @@ eingerichtet hat, besitzt das Hauptkonto; solange es kein zweites gibt, ändert 
   anlegen und Einladungslink erstellen“). Die Einladung ist ein Kopplungslink mit QR-Code, 15 Minuten gültig; wer ihn
   öffnet, ist im neuen Konto angemeldet und kann sich danach ein eigenes Passwort setzen. Was angemeldet ist, bleibt;
   Abmelden steht unter „Geräte und Sicherheit“. Das Hauptkonto ist immer Admin.
-- **Wechseln:** Der Name neben dem Titel in der Seitenleiste wechselt zwischen den Konten und Relays dieses Geräts;
-  ein Einladungslink auf einem schon angemeldeten Gerät fügt sein Konto ebenfalls hinzu.
+- **Reihenfolge beim Einladen:** Die Einladung meldet das Gerät der Person sofort im neuen Konto an, und dort wartet
+  die Einrichtungs-Checkliste mit der Claude-Anmeldung für dieses Konto (ein Befehl für ein Terminal auf dem Rechner,
+  siehe unten), auf einem Handy nicht zu erledigen. Deshalb zuerst das Konto anlegen und die Einladung auf dem eigenen
+  PC öffnen (ein schon angemeldetes Gerät kommt so ins neue Konto dazu), dort die Anmeldung für jeden Rechner machen,
+  dessen Bots die Person nutzen soll, und erst dann in der Liste der Konten eine neue Einladung für die Person erstellen.
+  Sie öffnet den Link oder scannt den Code auf ihrem Gerät und sieht ein fertiges Konto. Link und QR-Code sind dieselbe
+  Einladung und gelten einmal: entweder den Link öffnen oder den Code scannen, nicht beides.
+- **Wechseln:** Der Name neben dem Titel in der Seitenleiste zeigt das aktive Konto und wechselt zwischen den Konten
+  und Relays dieses Geräts; ein Einladungslink auf einem schon angemeldeten Gerät fügt sein Konto ebenfalls hinzu.
 - **Eine Liste:** Die Chatliste zeigt die Bots aller Konten, in denen das Gerät angemeldet ist, die der anderen Konten
-  mit dem Kontonamen als Abzeichen, mit dem, was sie gerade tun, ihrer letzten Nachricht und was neu ist. Ein Tipp
-  öffnet den Chat in seinem Konto; Benachrichtigungen aller Konten kommen an. „Alle Konten in einer Liste zeigen“
+  mit dem Kontonamen als Abzeichen (die des aktiven Kontos ohne), mit dem, was sie gerade tun, ihrer letzten Nachricht
+  und was neu ist. Ein Tipp öffnet den Chat in seinem Konto; Benachrichtigungen aller Konten kommen an. „Alle Konten in einer Liste zeigen“
   unter Konten schaltet das für dieses Gerät ab, dann zeigt die Liste nur das aktive Konto.
 - **Mehrere Relays (die Apps):** „Hinzufügen“ mit einem Kopplungslink eines anderen Relays meldet die App dort an,
   zum Beispiel bei einem Relay je Kunde. Jedes Relay behält seine Rechner, Konten, Geräte und seinen Schlüssel. Die

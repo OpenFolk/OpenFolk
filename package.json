@@ -26,6 +26,7 @@
     "lint": "oxlint webapp/js webapp/i18n local/src relay/src shared tests/browser mobile/scripts",
     "test": "npm run test -w local && npm run test -w relay && npm run test:browser",
     "test:browser": "node tests/browser/run.mjs",
+    "release-notes": "node scripts/release-notes.mjs",
     "desktop": "npm --prefix desktop start",
     "mobile": "npm --prefix mobile run sync"
   },

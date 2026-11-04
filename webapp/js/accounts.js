@@ -248,8 +248,9 @@ export function renderAccountSwitch() {
     const accounts = !!current && (deviceAccounts().length > 1 || current.id !== 'main');
     el.accountSwitch.hidden = !accounts && !relay;
     if (el.accountSwitch.hidden) return;
-    el.accountSwitch.querySelector('span').textContent = [relay, accounts ? current.name : ''].filter(Boolean).join(' · ');
-    el.accountSwitch.title = t(relay ? 'relays.switchTitle' : 'accounts.switchTitle');
+    const name = [relay, accounts ? current.name : ''].filter(Boolean).join(' · ');
+    el.accountSwitch.querySelector('span').textContent = name;
+    el.accountSwitch.title = t(relay ? 'relays.switchTitle' : 'accounts.switchTitle', { name });
 }
 
 /** The same rows as the list in the settings, and "Accounts …" to get there. */

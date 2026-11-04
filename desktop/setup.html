@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'">
 <title data-i18n="setupTitle">Set up OpenFolk</title>
+<link rel="stylesheet" href="folders-ui.css">
 <style>
     :root { color-scheme: light dark; --bg: #111b21; --card: #202c33; --text: #e9edef; --muted: #8696a0; --border: #3b4a54; --accent: #00a884; --error: #f15c6d; }
     @media (prefers-color-scheme: light) { :root { --bg: #f0f2f5; --card: #fff; --text: #111b21; --muted: #667781; --border: #d1d7db; } }
@@ -39,6 +40,8 @@
     .where { color: var(--text); font-weight: 600; margin-bottom: 14px; }
     .warn { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--error); background: rgba(241, 92, 109, .12); color: var(--text); font-size: 13px; text-align: left; }
     #relay-confirm button { margin-top: 8px; }
+    details.folders-setup { margin: 0 0 12px; font-size: 13px; }
+    details.folders-setup summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
     [hidden] { display: none !important; }
 </style>
 </head>
@@ -65,6 +68,11 @@
                 <p class="hint" data-i18n="setupLocalHint">The app runs a backend of its own.</p>
                 <p class="hint"><span data-i18n="setupPhoneHint">For your phone, OpenFolk needs a relay server of its own:</span>
                     <a href="https://github.com/OpenFolk/OpenFolk/blob/main/docs/running.md" target="_blank" rel="noopener" data-i18n="setupPhoneLink">how to set it up</a></p>
+                <details class="folders-setup">
+                    <summary data-i18n="foldersSetupSummary">Folders the bots may work in (optional)</summary>
+                    <p class="hint" data-i18n="foldersSetupHint">Without a choice the bots may work in your user folder.</p>
+                    <div id="setup-folders"></div>
+                </details>
                 <button type="button" id="local" data-i18n="setupLocal">Start on this computer</button>
             </section>
             <section class="option">
@@ -98,6 +106,7 @@
     </div>
     <small id="info"></small>
 </main>
+<script src="folders-ui.js"></script>
 <script src="setup.js"></script>
 </body>
 </html>

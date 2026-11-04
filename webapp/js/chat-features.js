@@ -2,7 +2,7 @@
 import { t } from './i18n.js';
 import { SEEN_KEY, el, mdCached, node, state, storage, closest } from './core.js';
 import { paneFor, paneOf, visibleChats } from './panes.js';
-import { bot, botIdOf, clockTime, colorOf, fillAvatar, group, isGroup, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
+import { bot, botIdOf, clockTime, colorOf, fillAvatar, group, isConversation, isGroup, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList } from './list.js';
 import { openChat } from './chat.js';
 import { attachmentBar, displayTime, getLive, isQueued, liveWrap, renderApprovals, renderLiveText, renderQueue, renderTools, speaker, textHeight, titleFrom, toolRow } from './queue.js';
@@ -125,6 +125,8 @@ export function renderHistory(p, live) {
         .sort((a, b) => a.ts.localeCompare(b.ts) || a.i - b.i).map((x) => x.e);
     p.el.messages.innerHTML = '';
     for (const e of entries) if (!isQueued(e, id) && !e.deletedAt) renderEntry(p, e);
+    // A conversation without a message yet says what it is for; the style hides it as soon as anything else is in the list
+    if (isConversation(id) && state.history[id] && !entries.length) p.el.messages.append(node('p', 'conversation-hint', t('conversation.emptyHint', { name: (bot(botIdOf(id)) || {}).name || '' })));
     // running answers (also those that started before opening)
     for (const lt of live || []) {
         const l = getLive(id, lt.botId);

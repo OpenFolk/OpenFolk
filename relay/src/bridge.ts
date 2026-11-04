@@ -48,6 +48,8 @@ interface Agent {
     ws: WebSocket;
     /** Signed in with X-Accounts: 1, so it keeps accounts apart. */
     accounts: boolean;
+    /** Where it connected from: a second sign-in from the same address is a restart, not an intruder. */
+    ip: string;
 }
 
 /** Bytes waiting for a client before the relay gives up on it: a few file downloads (20 MB each, base64). */
@@ -227,15 +229,18 @@ export class Bridge {
     /**
      * A machine name may be connected only once. If the existing connection is still alive, the new one is
      * rejected and the real machine is warned – otherwise anyone with AGENT_TOKEN could pose as that machine and
-     * intercept its messages. A dead connection (network loss) is replaced.
+     * intercept its messages. A dead connection (network loss) is replaced. A second sign-in from the address the
+     * machine is already connected from is a restart overlapping its predecessor (a container being redeployed, the
+     * backend started twice): rejected the same way, but only logged, as it would warn about itself.
      */
     async connectAgent(ws: WebSocket, ip: string, machine: string, accounts = false): Promise<void> {
         const old = this.agents.get(machine);
         if (old) {
             if (await this.isAlive(old.ws)) {
-                this.log(`Agent ${machine}: second sign-in from ${ip} rejected, the connected machine answers`);
+                const same = old.ip === ip;
+                this.log(`Agent ${machine}: second sign-in from ${ip} rejected, the connected machine answers${same ? ' (same address: a restart, no warning)' : ''}`);
                 ws.close(4009, 'Machine name is already connected');
-                this.warn('duplicate_agent', { machine, ip }, machine, `duplicate:${machine}`);
+                if (!same) this.warn('duplicate_agent', { machine, ip }, machine, `duplicate:${machine}`);
                 return;
             }
             this.log(`Agent ${machine}: old connection no longer answers, replacing it`);
@@ -243,7 +248,7 @@ export class Bridge {
             old.ws.terminate();
         }
         if (ws.readyState !== ws.OPEN) return;
-        const agent: Agent = { ws, accounts };
+        const agent: Agent = { ws, accounts, ip };
         this.agents.set(machine, agent);
         this.seen?.record([machine]);
         this.log(`Agent ${machine} connected from ${ip}${accounts ? '' : ' (without accounts, serves main only)'} (${this.online().join(', ')})`);

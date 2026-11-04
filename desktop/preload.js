@@ -7,7 +7,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 if (location.protocol === 'file:') {
     contextBridge.exposeInMainWorld('openfolkDesktop', {
         saveAddress: (url) => ipcRenderer.invoke('save-address', url),
-        chooseLocal: () => ipcRenderer.invoke('choose-local'),
+        chooseLocal: (folders) => ipcRenderer.invoke('choose-local', folders),
+        foldersInfo: () => ipcRenderer.invoke('folders-info'),
+        pickFolder: () => ipcRenderer.invoke('folders-pick'),
+        saveFolders: (list) => ipcRenderer.invoke('folders-save', list),
         joinServer: (link) => ipcRenderer.invoke('join-server', link),
         info: () => ipcRenderer.invoke('info'),
     });

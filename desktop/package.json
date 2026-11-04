@@ -28,7 +28,7 @@
     "appId": "io.openfolk.app",
     "productName": "OpenFolk",
     "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "backend.js", "handover.js", "task.js", "updater.js", "preload.js", "setup.html", "setup.js", "build/icon.png", "build/tray.png"],
+    "files": ["main.js", "backend.js", "handover.js", "task.js", "updater.js", "preload.js", "setup.html", "setup.js", "folders.html", "folders.js", "folders-ui.js", "folders-ui.css", "build/icon.png", "build/tray.png"],
     "extraResources": [{ "from": "build/openfolk", "to": "openfolk" }, { "from": "build/openfolk/node_modules", "to": "openfolk/node_modules" }, { "from": "task.ps1", "to": "task.ps1" }],
     "publish": [{ "provider": "github", "owner": "OpenFolk", "repo": "OpenFolk" }],
     "win": { "target": ["nsis"], "icon": "build/icon.png", "extraFiles": [{ "from": "../LICENSE", "to": "LICENSE.txt" }] },

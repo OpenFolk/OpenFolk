@@ -80,7 +80,8 @@
             <div class="title brand">
                 <img class="logo" src="icons/icon.svg" alt="" width="34" height="34">
                 <span class="brand-text">
-                    <strong>OpenFolk</strong>
+                    <!-- The version next to the name; a click shows what is new in it (settings.js openReleaseNotes) -->
+                    <strong>OpenFolk <button type="button" class="brand-version" id="brand-version" data-i18n-title="about.whatsNew"></button></strong>
                     <span class="status" id="agent-status"><i></i><span></span></span>
                 </span>
             </div>
@@ -236,6 +237,8 @@
     <!-- Bot info: an overlay, on wide screens a column of its own (.app.info-docked) -->
     <div id="info" class="overlay side page" hidden>
         <section class="dialog panel" id="info-panel">
+            <!-- Back, avatar, name and the buttons stay in view while the page scrolls -->
+            <div class="panel-top">
             <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
             <header class="panel-head">
                 <div class="avatar large" id="info-avatar"></div>
@@ -244,8 +247,10 @@
                     <p id="info-area" hidden></p>
                     <p id="info-role"></p>
                 </div>
+                <button class="round" id="info-edit-top" data-i18n-aria-label="menu.editBot" data-i18n-title="menu.editBot"><svg viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
                 <button class="round" data-close data-i18n-aria-label="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </header>
+            </div>
             <!-- What the ⋮ menu of the chat held (renderInfoChat in menus.js): switches, open changes, actions, archive -->
             <div class="menu menu-inline" id="info-switches"></div>
             <h3 data-i18n="git.openChanges"></h3>
@@ -290,6 +295,19 @@
                     <option value="dark" data-i18n="theme.dark"></option>
                 </select>
             </label>
+            <div class="swatch-field" role="radiogroup" aria-labelledby="settings-bubble-label" id="settings-bubble">
+                <span id="settings-bubble-label" data-i18n="settings.bubbleColor"></span>
+                <span class="swatches">
+                    <button type="button" class="swatch" role="radio" aria-checked="false" data-bubble="green" data-i18n-aria-label="bubble.green" data-i18n-title="bubble.green"></button>
+                    <button type="button" class="swatch" role="radio" aria-checked="false" data-bubble="logo" data-i18n-aria-label="bubble.logo" data-i18n-title="bubble.logo"></button>
+                    <button type="button" class="swatch" role="radio" aria-checked="false" data-bubble="orangedark" data-i18n-aria-label="bubble.orangedark" data-i18n-title="bubble.orangedark"></button>
+                    <button type="button" class="swatch" role="radio" aria-checked="false" data-bubble="peach" data-i18n-aria-label="bubble.peach" data-i18n-title="bubble.peach"></button>
+                    <button type="button" class="swatch" role="radio" aria-checked="false" data-bubble="blue" data-i18n-aria-label="bubble.blue" data-i18n-title="bubble.blue"></button>
+                    <button type="button" class="swatch" role="radio" aria-checked="false" data-bubble="lilac" data-i18n-aria-label="bubble.lilac" data-i18n-title="bubble.lilac"></button>
+                    <button type="button" class="swatch" role="radio" aria-checked="false" data-bubble="teal" data-i18n-aria-label="bubble.teal" data-i18n-title="bubble.teal"></button>
+                    <button type="button" class="swatch" role="radio" aria-checked="false" data-bubble="gray" data-i18n-aria-label="bubble.gray" data-i18n-title="bubble.gray"></button>
+                </span>
+            </div>
             <label><span data-i18n="settings.language"></span>
                 <select id="settings-language">
                     <option value="" data-i18n="settings.languageAuto"></option>
@@ -375,6 +393,7 @@
             <div id="settings-push" class="settings-block">
                 <h3 data-i18n="push.title"></h3>
                 <p id="push-status"></p>
+                <p class="hint ios-hint" data-i18n="ios.pushHint" hidden></p>
                 <div class="actions left">
                     <button type="button" class="btn" id="push-enable" data-i18n="push.enable" hidden></button>
                 </div>
@@ -387,6 +406,7 @@
             <div id="settings-devices" class="settings-block">
                 <h3 data-i18n="devices.title"></h3>
                 <p data-i18n="devices.intro"></p>
+                <p class="hint ios-hint" data-i18n="ios.devicesHint" hidden></p>
                 <ul class="device-list" id="device-list"></ul>
                 <div class="actions left">
                     <button type="button" class="btn" id="pair-create" data-i18n="pair.create"></button>
@@ -453,6 +473,13 @@
                 </div>
                 <p class="error" id="accounts-error" hidden></p>
             </div>
+            <!-- Versions as far as the app learns them: its own, the desktop app's and what each connected backend reports -->
+            <div id="settings-about" class="settings-block">
+                <h3>ℹ️ <span data-i18n="about.title"></span></h3>
+                <dl class="about-list" id="about-list"></dl>
+                <!-- What is new in this version: shown in the settings dialog (openReleaseNotes) -->
+                <div class="release-notes" id="release-notes" hidden></div>
+            </div>
         </section>
     </div>
     <!-- While a message is read aloud: below everything, like a music player; a tap on the text goes to the message -->
@@ -516,7 +543,7 @@
             <button type="button" class="btn" id="editor-image-remove" data-i18n="editor.removeImage"></button>
             <button type="button" class="btn" id="editor-avatar-ai" data-i18n="editor.aiAvatar" data-i18n-title="editor.aiAvatarTitle"></button>
         </div>
-        <label><span data-i18n="editor.name"></span>
+        <label class="required"><span data-i18n="editor.name"></span>
             <span class="with-button"><input id="editor-name" required maxlength="40" data-i18n-placeholder="editor.namePlaceholder"><button type="button" class="btn small" id="editor-name-suggest" data-i18n="editor.suggest" data-i18n-title="editor.suggestNameTitle"></button></span>
         </label>
         <div class="suggestions" id="editor-name-suggestions" hidden></div>
@@ -530,11 +557,12 @@
             <select id="editor-machine"></select>
         </label>
         <!-- Folder and repository: each fills the other where it can (the folder's origin, the folder a clone goes to) -->
-        <label class="on-move"><span data-i18n="editor.folder"></span>
-            <span class="with-button"><input id="editor-folder" data-i18n-placeholder="editor.folderPlaceholder" spellcheck="false" autocapitalize="off"><button type="button" class="btn small" id="editor-folder-browse" data-i18n="editor.browse" data-i18n-title="editor.browseTitle"></button></span>
+        <p class="hint on-move" data-i18n="editor.requiredNote"></p>
+        <label class="on-move required"><span data-i18n="editor.folder"></span>
+            <span class="with-button"><input id="editor-folder" aria-required="true" data-i18n-placeholder="editor.folderPlaceholder" spellcheck="false" autocapitalize="off"><button type="button" class="btn small" id="editor-folder-browse" data-i18n="editor.browse" data-i18n-title="editor.browseTitle"></button></span>
         </label>
-        <label class="on-move"><span data-i18n="editor.repo"></span>
-            <input id="editor-repo" data-i18n-placeholder="editor.repoPlaceholder" spellcheck="false" autocapitalize="off">
+        <label class="on-move required"><span data-i18n="editor.repo"></span>
+            <input id="editor-repo" aria-required="true" data-i18n-placeholder="editor.repoPlaceholder" spellcheck="false" autocapitalize="off">
         </label>
         <p class="hint on-move" id="editor-folder-hint"></p>
         <div class="two-columns">

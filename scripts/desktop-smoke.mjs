@@ -53,6 +53,8 @@ async function startRelay(env) {
 async function launch(config) {
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-desktop-'));
     fs.writeFileSync(path.join(profile, 'config.json'), JSON.stringify(config));
+    // Bots of the test work in the profile; without a choice the app would create its folder in the real user folder
+    fs.writeFileSync(path.join(profile, '.env'), `ALLOWED_ROOTS=${profile}\n`);
     // Started from an editor the variable may be set, and Electron would run as plain Node. A tested build never
     // downloads a real update (desktop/updater.js).
     const env = { ...process.env, OPENFOLK_USER_DATA: profile, OPENFOLK_NO_UPDATE: '1' };

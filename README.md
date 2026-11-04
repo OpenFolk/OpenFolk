@@ -8,6 +8,10 @@ Every **bot** is a colleague with its own picture, name, role, tone and model, a
 for example one bot per repository. Bots keep working when the app is closed and notify you by push when they
 are done or need an approval.
 
+OpenFolk is not an IDE and is not built on one: at your desk you keep working in VS Code, Cursor or the terminal.
+OpenFolk is a web app of its own that carries the same agents on when you are away from the machine, and hands a chat
+back to the IDE when you ask.
+
 Bots run on the **Claude Agent SDK** (Claude Code) by default. A bot or a single conversation can also use
 **OpenAI Codex** or, through the Agent Client Protocol (ACP), **Cursor**, **GitHub Copilot**,
 **Google Antigravity** or **OpenCode**. The UI is available in **English and German**.
@@ -47,7 +51,11 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   voice that reads its answers aloud (guessed from the name unless chosen).
   "Suggest" proposes names (a first name with a field of work, kept in a field of its own), a role or a profile
   picture from the folder's README/CLAUDE.md; with
-  a Gemini or OpenAI key in the settings the avatar is a generated photo, otherwise an SVG drawn by the model.
+  a Gemini or OpenAI key in the settings the avatar is a generated photo, otherwise an SVG drawn by the model. The field
+  "Folder or repository" is a text field: the folder has to exist on the bot's machine and lie under that machine's
+  allowed folders (`docs/running.md`, "Allowed folders"), otherwise the backend refuses it with the reason. A git
+  repository's address instead of a folder makes the backend clone it into the first allowed folder on save. There is
+  no folder browser yet.
 - **Approvals in the chat.** Per bot: *risky* (default) asks before deleting, pushing, deploying, SSH, service
   restarts, writing outside the folder or into secrets, reading secrets through the shell, installing packages,
   running code from the internet (`curl … | sh`), elevated rights and every call of an external MCP service, reading
@@ -96,6 +104,7 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   each resets) and Settings.
 - **Open changes.** Uncommitted files and unpushed or unpulled commits of the git repos in a bot's folder, with
   commit-and-push or pull per repo. The backend also reports when it runs outdated code and offers a gentle restart.
+  Pushing needs credentials the backend reaches without a terminal (`docs/running.md`, "Git access").
 - **Repos stay current.** On start, after waking, every quarter hour and when another machine pushes from the app,
   the backend fetches the repos of its bots and fast-forwards those without local changes or commits of their own.
   It never merges, rebases or resets, and leaves a repo alone while a bot works in it; what it cannot take over shows
@@ -121,7 +130,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   shutting down with its countdown and
   what happens after wake routines, automatic sign-in, "Open in the IDE / in a terminal", the speech model. A browser
   only learns whether a key is stored; keys travel to the other machines only end-to-end encrypted. What runs
-  commands or draws a security line (scripts, commands, allowed folders) stays in the `.env`.
+  commands or draws a security line (scripts, commands, allowed folders) stays in the `.env`. "About" at the end lists
+  the desktop app's version, the web app's protocol version and, per connected backend, its protocol version and start;
+  software versions of backend and relay do not reach the app.
 
 ## Layout
 
@@ -249,7 +260,12 @@ scheduled task on Windows) or run as a container that never sleeps (`ghcr.io/ope
 first device signs in with the code the backend prints to its log. Waking (Wake-on-LAN, your own command, a wake service) is set on the relay, shutting down
 and restarting on each backend.
 
-All of it, step by step: [docs/running.md](docs/running.md).
+All of it, step by step: [docs/running.md](docs/running.md), in German with a five-step guide for a relay of your
+own in [docs/README.de.md](docs/README.de.md) ("Dauerbetrieb"). The `npm run …` commands there belong to a checkout
+of the source; the desktop app does each of those steps in its own interface (the relay from the settings, devices
+and machines from the settings, restart and "Run without signing in" from the tray) and keeps its `.env` in the app's
+profile folder. Which folders bots may use (`ALLOWED_ROOTS`) and how git pushes without anyone to answer a prompt
+(tokens, SSH keys) are explained there too.
 
 ## Accounts
 
@@ -265,10 +281,17 @@ main account; nothing changes until a second one exists.
   admin also creates a new person there ("Create account and invitation link"). The invitation is a pairing link with
   a QR code, valid for 15 minutes; whoever opens it is signed in to the new account and may set a password of their own
   afterwards. What is signed in stays; signing out is under "Devices and security". The main account always is an admin.
-- **Switching:** the name next to the title in the sidebar switches between the accounts and relays of this device;
-  an invitation link opened on a signed-in device adds its account too.
+- **Order when inviting:** the invitation signs the person's device in to the new account at once, and there the
+  setup checklist waits with the Claude sign-in for that account (a command for a terminal on the machine, see below),
+  which cannot be done on a phone. So create the account first and open the invitation on your own PC (a signed-in
+  device joins the new account that way), do the sign-in there for every machine whose bots the person should use,
+  and only then create a new invitation for the person in the list of accounts. They open the link or scan the code
+  on their device and find a finished account. Link and QR code are the same invitation and work once: open the link
+  or scan the code, not both.
+- **Switching:** the name next to the title in the sidebar names the active account and switches between the
+  accounts and relays of this device; an invitation link opened on a signed-in device adds its account too.
 - **One list:** the chat list shows the bots of every account the device is signed in to, those of the other
-  accounts with the account's name as a badge, with what they do, their last message and what is new. A tap opens
+  accounts with the account's name as a badge (the active account's without), with what they do, their last message and what is new. A tap opens
   the chat in its account; notifications of every account arrive. "Show all accounts in one list" under Accounts
   turns it off for this device, then the list shows the active account only.
 - **Several relays (the apps):** "Add" with a pairing link from another relay signs the app in there, for example
@@ -312,7 +335,8 @@ What the host of the relay can and cannot do, with end-to-end encryption on (the
   device's name and address for confirmation and then hands it a pairing link sealed for a key that only travels in
   the QR code. Handy for laptops and desktops without a usable camera.
 - **Backends:** `AGENT_TOKEN` plus machine name; a second connection under a name that is connected and responding
-  is rejected and reported.
+  is rejected, and reported when it comes from another address (from the same one it is a restart overlapping its
+  predecessor, such as a container being redeployed).
 - **End-to-end encryption:** all frames between browser and backend and the sync between backends are encrypted
   with AES-256-GCM. Without `E2E_KEY` the backend generates the key on its first start (`local/data/e2e-key`);
   every further machine needs the same value as `E2E_KEY` ("Add machine" in the settings hands it over with the

@@ -14,7 +14,7 @@ export const MIN_BACKEND_PROTOCOL = 0;
 export const el = {
     app: $('app'), login: $('login'), loginForm: /** @type {HTMLFormElement} */ ($('login-form')), loginToken: /** @type {HTMLInputElement} */ ($('login-token')), loginRelay: /** @type {HTMLInputElement} */ ($('login-relay')), loginError: $('login-error'),
     loginTotp: /** @type {HTMLInputElement} */ ($('login-totp')), loginTotpField: $('login-totp-field'), loginName: /** @type {HTMLInputElement} */ ($('login-name')), loginIntro: $('login-intro'),
-    settingsDevices: $('settings-devices'), deviceList: $('device-list'), e2eStatus: $('e2e-status'), relayClaimBox: $('relay-claim-box'),
+    aboutList: $('about-list'), releaseNotes: $('release-notes'), brandVersion: $('brand-version'), settingsDevices: $('settings-devices'), deviceList: $('device-list'), e2eStatus: $('e2e-status'), relayClaimBox: $('relay-claim-box'),
     loginAccount: /** @type {HTMLInputElement} */ ($('login-account')), loginOtherAccount: $('login-other-account'), loginCancel: /** @type {HTMLButtonElement} */ ($('login-cancel')),
     accountSwitch: /** @type {HTMLButtonElement} */ ($('account-switch')), accountMenu: $('account-menu'),
     settingsAccounts: $('settings-accounts'), accountsOwnName: /** @type {HTMLInputElement} */ ($('accounts-own-name')), accountsPassword: /** @type {HTMLInputElement} */ ($('accounts-password')),
@@ -32,7 +32,7 @@ export const el = {
     devicesScan: /** @type {HTMLButtonElement} */ ($('devices-scan')), devicesScanHint: $('devices-scan-hint'),
     settingsPush: $('settings-push'), pushStatus: $('push-status'), pushEnable: /** @type {HTMLButtonElement} */ ($('push-enable')),
     pushKinds: $('push-kinds'),
-    settings: $('settings'), settingsTheme: /** @type {HTMLSelectElement} */ ($('settings-theme')), settingsAutoRead: /** @type {HTMLInputElement} */ ($('settings-auto-read')), settingsLanguage: /** @type {HTMLSelectElement} */ ($('settings-language')),
+    settings: $('settings'), settingsTheme: /** @type {HTMLSelectElement} */ ($('settings-theme')), settingsBubble: $('settings-bubble'), settingsAutoRead: /** @type {HTMLInputElement} */ ($('settings-auto-read')), settingsLanguage: /** @type {HTMLSelectElement} */ ($('settings-language')),
     settingsMachines: $('settings-machines'), machineAddRow: $('machine-add-row'), machineAdd: /** @type {HTMLButtonElement} */ ($('machine-add')),
     machineJoin: $('machine-join'), settingsBots: $('settings-bots'), settingsBotsAsleep: $('settings-bots-asleep'),
     settingsAiAsleep: $('settings-ai-asleep'), aiList: $('settings-ai-list'), aiAddRow: $('settings-ai-add-row'), aiAdd: /** @type {HTMLButtonElement} */ ($('settings-ai-add')),
@@ -66,7 +66,7 @@ export const el = {
     infoKnowledgeHint: $('info-knowledge-hint'), infoKnowledge: $('info-knowledge'), infoKnowledgeNew: /** @type {HTMLButtonElement} */ ($('info-knowledge-new')),
     infoSwitches: $('info-switches'), infoGit: $('info-git'), infoActions: $('info-actions'), infoArchiveHead: $('info-archive-head'), infoArchive: $('info-archive'),
     gActions: $('group-actions'),
-    infoSkills: $('info-skills'), infoClaude: $('info-claude'),
+    infoSkills: $('info-skills'), infoClaude: $('info-claude'), infoEditTop: $('info-edit-top'),
     rEditor: $('routine-editor'), rForm: /** @type {HTMLFormElement} */ ($('routine-form')), rTitle: $('routine-title'), rName: /** @type {HTMLInputElement} */ ($('routine-name')), rKind: /** @type {HTMLSelectElement} */ ($('routine-kind')),
     rTimeField: $('routine-time-field'), rTime: /** @type {HTMLInputElement} */ ($('routine-time')), rDayField: $('routine-day-field'), rDay: /** @type {HTMLSelectElement} */ ($('routine-day')),
     rCronField: $('routine-cron-field'), rCron: /** @type {HTMLInputElement} */ ($('routine-cron')), rPrompt: /** @type {HTMLTextAreaElement} */ ($('routine-prompt')), rEnabled: /** @type {HTMLInputElement} */ ($('routine-enabled')), rWake: /** @type {HTMLInputElement} */ ($('routine-wake')),
@@ -256,6 +256,9 @@ export const TOKEN_KEY = 'openfolk-token' + relayScope;
 export const DEVICE_KEY = 'openfolk-device' + relayScope;
 export const THEME_KEY = 'openfolk-theme';
 export const SIDEBAR_WIDTH_KEY = 'openfolk-sidebar-width';
+/** Color of the own messages (a name of the palette in chat.css); missing = the default. */
+export const BUBBLE_KEY = 'openfolk-bubble';
+export const BUBBLE_DEFAULT = 'green';
 /**
  * The accounts this device is signed in to on the current relay, [{ id, name, admin, device }] with each one's device
  * key. The current one is the account of DEVICE_KEY; switching sets that key and loads the page again.

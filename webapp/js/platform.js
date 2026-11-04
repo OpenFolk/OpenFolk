@@ -9,6 +9,13 @@ const cap = /** @type {any} */ (window).Capacitor;
 export const isNative = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
 /** 'web' | 'desktop' | 'ios' | 'android' */
 export const platformKind = isNative ? cap.getPlatform() : /\bElectron\//.test(navigator.userAgent) ? 'desktop' : 'web';
+/** The desktop app's version: Electron puts "OpenFolk/<version>" into its user agent. '' in the browser and the mobile apps. */
+export const desktopVersion = platformKind === 'desktop' ? /\bOpenFolk\/([\w.+-]+)/.exec(navigator.userAgent)?.[1] ?? '' : '';
+/**
+ * true in the desktop app when it runs the backend itself ("on this computer"); the app marks its user agent then. Only
+ * this app has the menu "Allowed folders …"; a browser or a display-only window has none.
+ */
+export const desktopLocal = platformKind === 'desktop' && /OpenFolkLocal/.test(navigator.userAgent);
 // For CSS, e.g. the desktop apps fill the whole window instead of capping the layout width
 document.documentElement.dataset.platform = platformKind;
 /**
@@ -34,6 +41,18 @@ const RELAY_KEY = 'openfolk-relay';
  */
 export function relayAddress() {
     return bundled ? readSetting(RELAY_KEY) : location.origin;
+}
+
+/**
+ * Where this device is connected, for the status lines: ' · local' for the relay on this computer (the desktop app's own,
+ * 127.0.0.1), ' · via <host>' for a relay elsewhere; '' while there is no address.
+ */
+export function connectionVia() {
+    let host = '';
+    try { host = new URL(relayAddress()).hostname; } catch { return ''; }
+    if (!host) return '';
+    const local = host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '[::1]';
+    return ' · ' + (local ? t('status.viaLocal') : t('status.viaRelay', { host }));
 }
 
 /** The app has no relay address yet; the login form asks for it. */
@@ -184,6 +203,16 @@ export function socketUrl(path, base = relayAddress()) {
     const url = new URL(path, base);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     return url.href;
+}
+
+/**
+ * An iPhone or iPad in a Safari tab: not the app of the home screen (it has storage of its own, so the device has to be
+ * paired there again, and only it can receive Web Push) and not the native app. iPadOS reports a Mac with a touch screen.
+ */
+export function iosBrowserTab() {
+    if (isNative) return false;
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    return ios && !(/** @type {any} */ (navigator).standalone === true || matchMedia('(display-mode: standalone)').matches);
 }
 
 // ================================================================ Push notifications
