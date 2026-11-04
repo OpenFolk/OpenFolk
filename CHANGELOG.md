@@ -5,6 +5,8 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-04
+
 ### Added
 - Desktop app: "Allowed folders …" in the tray and app menu chooses the folders bots may work in (`ALLOWED_ROOTS` in
   the profile's `.env`), also on the setup page for "start on this computer"; saving restarts the backend once no bot
@@ -238,7 +240,8 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.0...v0.1.1
