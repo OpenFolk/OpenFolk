@@ -877,11 +877,12 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 /* ---------------------------------------------------------------- Start page (sign-in) */
 .start {
     position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow-y: auto;
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
     padding: calc(24px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
 }
+/* Centered by auto margins, not by align-items: a card taller than the window would otherwise stick out above the top, where no scrolling reaches */
 .start-card {
-    width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; align-items: stretch;
+    margin: auto; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; align-items: stretch;
     background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 28px 24px;
 }
 .start-card img { align-self: center; }
@@ -906,8 +907,7 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .start-card .login-or { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
 .start-card .login-qr .pair-qr { width: min(200px, 60vw); }
 @media (max-width: 760px) {
-    .start { align-items: flex-start; }
-    .start-card { background: none; border: 0; padding: 12px 4px; }
+    .start-card { margin: 0 auto; background: none; border: 0; padding: 12px 4px; }
 }
 
 /* ---------------------------------------------------------------- First steps (empty chat list) */
