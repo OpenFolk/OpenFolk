@@ -553,7 +553,8 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
     max-width: min(78%, 720px); padding: 7px 11px 6px; border-radius: var(--radius);
     box-shadow: var(--shadow); position: relative; overflow-wrap: anywhere;
 }
-.answer .bubble { max-width: 100%; }
+/* Answers fill their column, however little they say; only your own messages are as wide as their content */
+.answer .bubble { width: 100%; max-width: 100%; }
 .bubble.me { align-self: flex-end; background: var(--bubble-me); color: var(--bubble-me-fg); border-bottom-right-radius: 4px; }
 /* Time, ticks and the menu dots follow the text color of the bubble when the color brings its own (white on orange) */
 .bubble.me .time, .bubble.me .more { color: var(--bubble-me-sub, var(--muted)); }
