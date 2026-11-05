@@ -1,7 +1,7 @@
 // Hand a chat over to its machine ("VS Code" on the bot's page, buttons above the session list): question, request to the bot's machine, message in the chat;
 // which buttons show follows the targets the machine reports. Plus sessions from subfolders in the VS Code list: folder in the row, and when opening it goes
 // to the backend along.
-import { bot } from './harness.mjs';
+import { bot, onDialog } from './harness.mjs';
 
 const SESSIONS = [
     { id: 's9', title: 'Rework the API', firstPrompt: 'Rework the API', lastModified: '2026-10-10T09:00:00Z', size: 20_000, origin: 'terminal', open: false, working: false, folder: 'C:/www/skool/backend' },
@@ -18,7 +18,7 @@ export default async function ({ start, check }) {
     const p = h.page;
     let accept = false;
     let dialog = null;
-    p.on('dialog', (d) => { dialog = d.message(); return accept ? d.accept() : d.dismiss(); });
+    await onDialog(p, (d) => { dialog = d.message(); return accept ? d.accept() : d.dismiss(); });
     const events = () => p.locator('[data-el=messages] .event').allTextContents();
 
     await h.openChat('Skool Sven');

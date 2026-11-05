@@ -8,6 +8,7 @@ import { connectionVia } from './platform.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 import { renderSettings } from './settings.js';
+import { confirmDialog } from './dialogs.js';
 
 // ---------------------------------------------------------------- Machines and waking
 
@@ -108,18 +109,18 @@ export function renderMachines() {
     if (!el.settings.hidden) renderSettings();
 }
 
-function askShutdown(host, restart = false) {
+async function askShutdown(host, restart = false) {
     const busy = Object.entries(state.perMachine[host] ? state.perMachine[host].states : {}).filter(([, s]) => s === 'thinking' || s === 'waiting');
     const hint = busy.length ? '\n\n' + tn('machine.shutdownBusy', busy.length, { machine: upper(host) }) : '';
     const c = state.capabilities[host];
     const seconds = c && Number.isFinite(c.shutdownSeconds) ? c.shutdownSeconds : 60;
-    if (!confirm(t(restart ? 'machine.restartConfirm' : 'machine.shutdownConfirm', { machine: upper(host), seconds }) + hint)) return;
+    if (!(await confirmDialog(t(restart ? 'machine.restartConfirm' : 'machine.shutdownConfirm', { machine: upper(host), seconds }) + hint))) return;
     send(restart ? { type: 'machine_shutdown', restart: true } : { type: 'machine_shutdown' }, host);
 }
 
 /** Question and request to exactly this machine; true if it is being switched. */
-export function askAutologon(host, on) {
-    if (!confirm(t(on ? 'machine.autologonOnConfirm' : 'machine.autologonOffConfirm', { machine: upper(host) }))) return false;
+export async function askAutologon(host, on) {
+    if (!(await confirmDialog(t(on ? 'machine.autologonOnConfirm' : 'machine.autologonOffConfirm', { machine: upper(host) })))) return false;
     send({ type: 'machine_autologon', on }, host);
     return true;
 }

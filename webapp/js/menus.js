@@ -9,6 +9,7 @@ import { closeChat, openChat, paneActivated, renderChatHeader, renderHeaders } f
 import { refreshMachinesPage, renderMachines, wake } from './machines.js';
 import { closeVscodeSession, openVscode } from './vscode.js';
 import { openEditor, openGroupEditor, openInfo } from './editors.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
 
 // ================================================================ Menus
 
@@ -214,14 +215,14 @@ function machineSwitch(b, picked) {
     return row;
 }
 
-function chooseMachine(b, host) {
+async function chooseMachine(b, host) {
     if (host === (b.machine || responsibleMachine(b))) return;
     // The sessions move along; a running job would be cut off
     const working = Object.entries(state.states).some(([cid, s]) => bot(cid) === b && (s === 'thinking' || s === 'waiting'));
-    if (working) { alert(t('machine.moveBusy', { name: b.name })); return; }
+    if (working) { void alertDialog(t('machine.moveBusy', { name: b.name })); return; }
     // Only an awake machine can check or clone the folder there; waking it is asked first
     if (!state.online.includes(host) && !state.waking[host]) {
-        if (!confirm(t('machine.moveWakeConfirm', { name: b.name, machine: upper(host) }))) return;
+        if (!(await confirmDialog(t('machine.moveWakeConfirm', { name: b.name, machine: upper(host) })))) return;
         wake(host);
     }
     openEditor(b, host);
@@ -230,8 +231,9 @@ function chooseMachine(b, host) {
 /**
  * An entry of a chat's menu; the chat need not be open (long press in the list, the bot's page). The caller closes its
  * menu first; `show` puts follow-up content (archive, git changes) into it. False if a question was answered with no.
+ * @returns {Promise<boolean>}
  */
-export function chatMenuAction(id, action, menu, show = (...k) => { menu.replaceChildren(...k); menu.hidden = false; }) {
+export async function chatMenuAction(id, action, menu, show = (...k) => { menu.replaceChildren(...k); menu.hidden = false; }) {
     const p = paneFor(id);
     const b = bot(id);
     const g = group(id);
@@ -240,11 +242,11 @@ export function chatMenuAction(id, action, menu, show = (...k) => { menu.replace
     if (action === 'info' && b) openInfo(id);
     if (action === 'edit' && b) openEditor(b);
     if (action === 'restart' && b) {
-        if (!confirm(t('menu.newSessionConfirm', { name: isConversation(id) ? conversationTitle(id) : b.name }))) return false;
+        if (!(await confirmDialog(t('menu.newSessionConfirm', { name: isConversation(id) ? conversationTitle(id) : b.name })))) return false;
         send({ type: 'restart', botId: b.id, chatId: id });
     }
     if (action === 'delete' && b) {
-        if (!confirm(t('menu.deleteBotConfirm', { name: b.name }))) return false;
+        if (!(await confirmDialog(t('menu.deleteBotConfirm', { name: b.name })))) return false;
         send({ type: 'bot_delete', botId: b.id });
         if (p) closeChat(p);
     }
@@ -268,10 +270,10 @@ export function chatMenuAction(id, action, menu, show = (...k) => { menu.replace
         if (window.innerWidth <= 760) openGitPage(b, Boolean(p));
         else showGitChanges(b, menu, show);
     }
-    if (action === 'conversation_delete' && b) return deleteConversation(id);
+    if (action === 'conversation_delete' && b) return await deleteConversation(id);
     if (action === 'group' && g) openGroupEditor(g);
     if (action === 'group_delete' && g) {
-        if (!confirm(t('menu.deleteGroupConfirm', { name: g.name }))) return false;
+        if (!(await confirmDialog(t('menu.deleteGroupConfirm', { name: g.name })))) return false;
         send({ type: 'group_delete', groupId: g.id });
         if (p) closeChat(p);
     }
@@ -316,7 +318,7 @@ function leaveInfo() {
 }
 
 /** An entry on the bot's page. */
-export function infoAction(action) {
+export async function infoAction(action) {
     const id = state.infoChat;
     // the editor takes the place of the page, as a page of its own
     if (action === 'edit') {
@@ -324,7 +326,7 @@ export function infoAction(action) {
         if (closeDialog(el.info) && b) openEditor(b);
         return;
     }
-    if (!chatMenuAction(id, action, el.infoActions) || ['favorite', 'mute', 'rename', 'restart'].includes(action)) {
+    if (!(await chatMenuAction(id, action, el.infoActions)) || ['favorite', 'mute', 'rename', 'restart'].includes(action)) {
         renderInfoChat(true);
         return;
     }
@@ -534,7 +536,9 @@ function gitButton(b, r) {
     k.addEventListener('click', () => {
         if (r.files.length) {
             askText({ title: r.name, hint: tn('git.commitPrompt', r.files.length + r.more, { repo: r.name }), value: gitSuggestion(r), submit: t('git.commitPush'), done: run });
-        } else if (confirm(t('git.pushConfirm', { commits: tn('git.commits', r.ahead), repo: r.name }))) run('');
+        } else {
+            void confirmDialog(t('git.pushConfirm', { commits: tn('git.commits', r.ahead), repo: r.name })).then((yes) => { if (yes) run(''); });
+        }
     });
     return k;
 }
@@ -570,10 +574,10 @@ function gitAllButton(doable) {
     const k = node('button', 'git-button git-all', a ? t('git.allRunning', { n: a.done.length + 1, total: a.total }) : t('git.commitPushAll', { n: doable.length }));
     k.type = 'button';
     k.disabled = !!a || gitView.busy !== null || doable.some(({ b }) => !responsibleMachine(b));
-    k.addEventListener('click', (ev) => {
+    k.addEventListener('click', async (ev) => {
         ev.stopPropagation();
         const files = doable.reduce((n, { r }) => n + r.files.length + r.more, 0);
-        if (!confirm(t(files ? 'git.allConfirmFiles' : 'git.allConfirm', { repos: repoCount(doable.length), files: tn('git.files', files) }))) return;
+        if (!(await confirmDialog(t(files ? 'git.allConfirmFiles' : 'git.allConfirm', { repos: repoCount(doable.length), files: tn('git.files', files) })))) return;
         gitView.all = {
             total: doable.length, done: [],
             rest: doable.map(({ b, r }) => ({ botId: b.id, path: r.path, name: r.name, message: r.files.length ? gitSuggestion(r) : '' })),
@@ -599,7 +603,7 @@ function gitAllNext() {
         gitView.busy = null;
         gitView.message = { ok: !errors.length, text: t('git.pushedOf', { n: a.done.length - errors.length, repos: repoCount(a.total) }) + (errors.length ? ' ' + errors.map((e) => e.message).join(' · ') : '') };
         if (gitViewOpen(gitView.botId)) renderGitList();
-        else if (errors.length) alert(gitView.message.text);
+        else if (errors.length) void alertDialog(gitView.message.text);
         return;
     }
     a.current = n;
@@ -620,7 +624,7 @@ export function receiveGitCommit(f) {
     gitView.message = { ok: f.ok, text: f.message };
     // menu already closed: still show an error; the new list follows right after
     if (gitViewOpen(gitView.botId)) renderGitList();
-    else if (!f.ok) alert(f.message);
+    else if (!f.ok) void alertDialog(f.message);
 }
 
 const repoCount = (n) => tn('git.repos', n);
@@ -706,9 +710,9 @@ function restartButton(machine) {
     const names = st.changed.map((d) => d.split('/').pop());
     k.title = st.requested ? t('backend.requested', { time: clockTime(st.requested.since) })
         : t('backend.runningSince', { time: clockTime(st.since), files: names.slice(0, 4).join(', ') + (names.length > 4 ? ' ' + t('common.andMore', { n: names.length - 4 }) : '') });
-    k.addEventListener('click', (ev) => {
+    k.addEventListener('click', async (ev) => {
         ev.stopPropagation();
-        if (!confirm(t('backend.restartConfirm', { machine: upper(machine) }))) return;
+        if (!(await confirmDialog(t('backend.restartConfirm', { machine: upper(machine) })))) return;
         send({ type: 'backend_restart' }, machine);
     });
     return k;
@@ -818,9 +822,9 @@ export function gitError(message) {
 }
 
 /** Delete permanently after asking (chat menu); if it was open, go to the main chat. */
-function deleteConversation(chatId) {
+async function deleteConversation(chatId) {
     const b = bot(chatId);
-    if (!b || !confirm(t('menu.deleteConversationConfirm', { title: conversationTitle(chatId) }))) return false;
+    if (!b || !(await confirmDialog(t('menu.deleteConversationConfirm', { title: conversationTitle(chatId) })))) return false;
     send({ type: 'conversation_delete', chatId }, responsibleMachine(b) || undefined);
     const p = paneFor(chatId);
     if (p) toMainChat(p, b);

@@ -27,6 +27,7 @@ import { signInTerminalAnswer } from './welcome.js';
 import { announceMove, relayClaimed, relayClaimFailed } from './relay-claim.js';
 import { approvalError, approvalLink, approvalWaiting, receivePairApproved, receivePairRequest, startApproval, startQrLogin, stopQrLogin } from './qr-login.js';
 import { answerDone, speechAudio } from './read-aloud.js';
+import { alertDialog } from './dialogs.js';
 
 // ================================================================ Connection
 
@@ -223,7 +224,7 @@ async function handleIncoming(f) {
         // Once per page load: that machine's bots stay invisible until it has the key; more would let a relay nag
         if (f.machine && !plainWarned) {
             plainWarned = true;
-            alert(t('e2e.plainDropped', { machine: String(f.machine).toUpperCase() }));
+            void alertDialog(t('e2e.plainDropped', { machine: String(f.machine).toUpperCase() }));
         }
         return;
     }
@@ -276,7 +277,7 @@ function receive(f) {
                 // A link that no longer works on a device already signed in: say so and stay in the account
                 if (paired && storage.get(DEVICE_KEY)) {
                     state.rejected = false;
-                    alert(messageText(f) || t('login.failed'));
+                    void alertDialog(messageText(f) || t('login.failed'));
                     connect();
                     break;
                 }
@@ -381,7 +382,7 @@ function receive(f) {
             break;
         case 'machine_shutdown_result': {
             const r = f.machine || '?';
-            if (!f.ok) alert(t(f.cancel ? 'machine.cancelFailed' : f.restart ? 'machine.restartFailed' : 'machine.shutdownFailed', { machine: upper(r), error: f.message || t('error.unknown') }));
+            if (!f.ok) void alertDialog(t(f.cancel ? 'machine.cancelFailed' : f.restart ? 'machine.restartFailed' : 'machine.shutdownFailed', { machine: upper(r), error: f.message || t('error.unknown') }));
             else if (f.cancel) { delete state.shuttingDown[r]; delete state.restarting[r]; }
             else {
                 state.shuttingDown[r] = Date.parse(f.at) || Date.now() + 60000;
@@ -410,7 +411,7 @@ function receive(f) {
         }
         case 'machine_autologon_status': {
             const r = f.machine || '?';
-            if (!f.ok) alert(t('machine.autologonFailed', { machine: upper(r), error: f.message || t('error.unknown') }));
+            if (!f.ok) void alertDialog(t('machine.autologonFailed', { machine: upper(r), error: f.message || t('error.unknown') }));
             else state.autologon[r] = { on: f.on, password: f.password };
             autologonReported(r, f.ok);
             renderMachines();
@@ -418,7 +419,7 @@ function receive(f) {
         }
         case 'wake_result':
             if (f.ok) state.waking[f.host] = Date.now();
-            else alert(t('machine.wakeFailed', { machine: upper(f.host), error: messageText(f) || t('error.unknown') }));
+            else void alertDialog(t('machine.wakeFailed', { machine: upper(f.host), error: messageText(f) || t('error.unknown') }));
             renderMachines();
             renderHeaders();
             scheduleWakePoll();
@@ -731,7 +732,7 @@ function receive(f) {
                 break;
             }
             if (f.request === 'backend_restart') {
-                alert(message);
+                void alertDialog(message);
                 break;
             }
             // git_pull: a backend from before the button does not know it

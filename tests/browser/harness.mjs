@@ -34,6 +34,58 @@ async function exposeModules(page) {
     }).catch(() => undefined);
 }
 
+/**
+ * Answers the app's own question and notice dialogs (webapp/js/dialogs.js) the way `page.on('dialog', …)` answered the
+ * browser's: `handler` gets an object with type() ('confirm' or 'alert'), message(), accept() and dismiss(). A dialog
+ * the handler does not answer is dismissed. Awaited before the click that opens the dialog; survives reloads. Calling it
+ * again replaces the handler; `once`: only for the next dialog.
+ */
+export async function onDialog(page, handler, once = false) {
+    const first = !page.__dialogHandler;
+    page.__dialogHandler = { handler, once };
+    if (!first) return;
+    await page.exposeFunction('__answerDialog', async (info) => {
+        const current = page.__dialogHandler;
+        if (current.once) page.__dialogHandler = { handler: () => undefined, once: false };
+        let answer = false;
+        await current.handler({ type: () => info.type, message: () => info.message, accept: () => { answer = true; }, dismiss: () => { answer = false; } });
+        return answer;
+    });
+    const watch = () => {
+        const handle = async (overlay) => {
+            if (overlay.dataset.answered) return;
+            overlay.dataset.answered = '1';
+            const cancel = overlay.querySelector('button[type=button]');
+            const answer = await window.__answerDialog({ type: cancel ? 'confirm' : 'alert', message: (overlay.querySelector('.ask-text') || overlay).textContent });
+            (answer ? overlay.querySelector('button[type=submit]') : cancel || overlay.querySelector('button[type=submit]')).click();
+        };
+        const scan = () => document.querySelectorAll('.overlay.ask').forEach((o) => void handle(o));
+        new MutationObserver(scan).observe(document, { childList: true, subtree: true });
+        scan();
+    };
+    await page.addInitScript(watch);
+    await page.evaluate(watch);
+}
+
+/** Like `page.once('dialog', …)`: answers only the next dialog, later ones are dismissed. */
+export const onceDialog = (page, handler) => onDialog(page, handler, true);
+
+/**
+ * The option `recordDialogs` of start(): records the text of every dialog of the app in `window.__dialogs` and confirms it, or
+ * declines a question while `window.__dialogAnswer` is false.
+ */
+export function recordDialogs() {
+    const handle = (overlay) => {
+        if (overlay.dataset.seen) return;
+        overlay.dataset.seen = '1';
+        (window.__dialogs ||= []).push(overlay.querySelector('.ask-text').textContent);
+        const cancel = overlay.querySelector('button[type=button]');
+        setTimeout(() => (window.__dialogAnswer === false && cancel ? cancel : overlay.querySelector('button[type=submit]')).click());
+    };
+    const scan = () => document.querySelectorAll('.overlay.ask').forEach(handle);
+    new MutationObserver(scan).observe(document, { childList: true, subtree: true });
+}
+
 export function bot(id, name = id, extra = {}) {
     return { id, name, role: 'Test', avatar: '', folder: `C:/www/${id}`, model: 'default', approval: 'risky', tone: '', machine: '', ...extra };
 }
@@ -42,7 +94,7 @@ export function bot(id, name = id, extra = {}) {
  * @param {import('playwright').Browser} browser
  * @param {object} o
  *   bots, groups, history ({ chatId: entries }), online, states/activity/activeChats, pinned,
- *   dark, before (script before loading, in the browser), onSend(frame, push, state) for own answers,
+ *   dark, before (script before loading, in the browser), recordDialogs (see there), onSend(frame, push, state) for own answers,
  *   ownHistory (history requests are answered by onSend), agentsLater (the test sends the machine list), path,
  *   language ('en' by default; null = do not pin, the app decides), locale (browser locale, default en-US),
  *   device (stored device key, default 'test'; null = none), secure (https, e.g. for crypto.subtle),
@@ -121,6 +173,7 @@ export async function start(browser, o = {}) {
         window.WebSocket = FakeWS;
     }, [o.language === undefined ? 'en' : o.language, o.device === undefined ? 'test' : o.device]);
     if (o.before) await ctx.addInitScript(o.before);
+    if (o.recordDialogs) await ctx.addInitScript(recordDialogs);
     page.on('load', () => exposeModules(page));
     await page.goto(`${o.secure ? 'https' : 'http'}://test.local/${o.path ?? ''}`);
     await exposeModules(page);

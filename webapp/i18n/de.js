@@ -479,6 +479,7 @@ registerDictionary('de', {
     'queue.deleteTitle': 'Nachricht aus der Warteschlange löschen',
     'common.delete': 'Löschen',
     'common.cancel': 'Abbrechen',
+    'common.ok': 'OK',
     'common.save': 'Speichern',
     'common.close': 'Schließen',
     'common.loading': 'lädt …',

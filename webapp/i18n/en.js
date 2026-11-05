@@ -479,6 +479,7 @@ registerDictionary('en', {
     'queue.deleteTitle': 'Delete message from the queue',
     'common.delete': 'Delete',
     'common.cancel': 'Cancel',
+    'common.ok': 'OK',
     'common.save': 'Save',
     'common.close': 'Close',
     'common.loading': 'loading …',

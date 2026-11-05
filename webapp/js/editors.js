@@ -6,6 +6,7 @@ import { layoutPanes } from './panes.js';
 import { bot, clockTime, fillAvatar, group, isConversation, responsibleMachine, send, upper } from './e2e.js';
 import { shrinkImage } from './voice.js';
 import { chatMenuButtons, closeDialog, gitOpenOf, menuButton, renderInfoChat, showGitChanges } from './menus.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
 
 // ================================================================ Bot editor
 
@@ -336,7 +337,7 @@ function saveBot(folder, to) {
  * a folder: into a new one named after the repository). A bot whose machine sleeps can still be renamed and the like,
  * as long as machine and folder stay.
  */
-export function submitEditor() {
+export async function submitEditor() {
     const b = state.editorBot;
     const machine = el.editorMachine.value;
     const asked = el.editorFolder.value.trim();
@@ -349,7 +350,7 @@ export function submitEditor() {
     if (b && b.machine && b.machine !== machine) {
         const unpushed = gitOpenOf(b).filter((r) => r.files.length || r.more || r.ahead);
         if (unpushed.length) {
-            if (!confirm(t('editor.takeWork', { name: b.name, from: upper(b.machine), to: upper(machine), repos: unpushed.map((r) => r.name).join(', ') }))) return;
+            if (!(await confirmDialog(t('editor.takeWork', { name: b.name, from: upper(b.machine), to: upper(machine), repos: unpushed.map((r) => r.name).join(', ') })))) return;
             takeWork = { botId: b.id, from: b.machine, folder: b.folder };
         }
     }
@@ -703,7 +704,7 @@ export function openKnowledgeEditor(section, f) {
 }
 
 export function knowledgeError(text) {
-    if (el.kEditor.hidden) { alert(text); return; }
+    if (el.kEditor.hidden) { void alertDialog(text); return; }
     el.kError.textContent = text;
     el.kError.hidden = false;
 }

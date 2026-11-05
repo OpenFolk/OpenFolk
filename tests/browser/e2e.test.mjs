@@ -28,8 +28,8 @@ export default async function ({ start, check }) {
     const h = await start({
         secure: true,
         path: `#e2e=${KEY.toString('base64url')}`,
+        recordDialogs: true,
         before: () => {
-            window.alert = (m) => { window.__alerts = (window.__alerts || []).concat(String(m)); };
             const warn = console.warn;
             console.warn = (...a) => { window.__warned = (window.__warned || []).concat(a.join(' ')); warn(...a); };
         },
@@ -40,10 +40,10 @@ export default async function ({ start, check }) {
 
     // The scaffold answers the sign-in with an unencrypted bot list, as a relay injecting frames would
     check('unencrypted bot list ignored', !(await listed('PDF-Reader')));
-    const alerts = await p.evaluate(() => window.__alerts || []);
+    const alerts = await p.evaluate(() => window.__dialogs || []);
     check('says once which machine sends unencrypted', alerts.length === 1 && alerts[0].includes('DESK'), alerts);
     await h.sendBots();
-    check('no second warning', (await p.evaluate(() => (window.__alerts || []).length)) === 1);
+    check('no second warning', (await p.evaluate(() => (window.__dialogs || []).length)) === 1);
 
     const sender = crypto.randomBytes(8).toString('hex');
     await h.push(encrypt({ ...botsFrame(bot('alpha', 'Alpha')), _r: { t: Date.now(), s: sender, n: 5 } }));

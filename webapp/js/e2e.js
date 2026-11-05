@@ -4,6 +4,7 @@ import { COLORS, E2E_SLOT, el, node, startParams, state } from './core.js';
 import { connect } from './connection.js';
 import { secureStore } from './platform.js';
 import { startApproval, takeApproval } from './qr-login.js';
+import { alertDialog } from './dialogs.js';
 
 // ================================================================ End-to-end encryption
 
@@ -102,7 +103,7 @@ export async function adoptPairingLink(params) {
     const key = params.get('e2e');
     if (pair) state.pairToken = pair;
     if (key) {
-        try { await adoptKey(key); } catch (e) { alert(t('e2e.pairingFailed', { error: e.message })); }
+        try { await adoptKey(key); } catch (e) { void alertDialog(t('e2e.pairingFailed', { error: e.message })); }
     }
     return !!(pair || key);
 }

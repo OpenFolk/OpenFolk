@@ -7,6 +7,7 @@ const KEY = crypto.randomBytes(32);
 export default async function ({ start, check }) {
     const h = await start({
         secure: true,
+        recordDialogs: true,
         path: `#e2e=${KEY.toString('base64url')}`,
         online: ['desk'],
     });

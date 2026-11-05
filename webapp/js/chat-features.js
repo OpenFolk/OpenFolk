@@ -9,6 +9,7 @@ import { attachmentBar, displayTime, getLive, isQueued, liveWrap, renderApproval
 import { renderVoicePending, voicePlayer } from './voice.js';
 import { menuButton } from './menus.js';
 import { isReading, readAloud, speakButton } from './read-aloud.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -259,12 +260,12 @@ function commandButtons(content, chatId, botId) {
     }
 }
 
-function runCommand(chatId, botId, command) {
+async function runCommand(chatId, botId, command) {
     const b = bot(botId);
     if (!b || !chatId) return;
     const where = responsibleMachine(b);
-    if (!where || !state.agentOnline) { alert(t('bot.sleepsNoMachine', { name: b.name }) + '.'); return; }
-    if (!confirm(t('command.confirm', { name: b.name, command, machine: upper(where) }))) return;
+    if (!where || !state.agentOnline) { void alertDialog(t('bot.sleepsNoMachine', { name: b.name }) + '.'); return; }
+    if (!(await confirmDialog(t('command.confirm', { name: b.name, command, machine: upper(where) })))) return;
     // in groups addressed to the bot that named the command
     const text = `${isGroup(chatId) ? `@${b.id} ` : ''}${t('command.request', { command: '`' + command + '`' })}`;
     send({ type: 'send', chatId, text }, isGroup(chatId) ? undefined : where);
