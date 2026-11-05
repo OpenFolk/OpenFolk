@@ -4,6 +4,7 @@ import { el, md, node, state } from './core.js';
 import { paneFor } from './panes.js';
 import { bot, clockTime, fileSize, responsibleMachine, send, shortFolder, upper } from './e2e.js';
 import { renderTools, showEvent, toolRow } from './queue.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
 
 // ================================================================ VS Code sessions
 // Sessions that run on the machine in VS Code (or in the terminal): list per machine, history to watch along
@@ -240,12 +241,12 @@ function renderHandoverButtons() {
  * Returns whether the request went out.
  * @param {'ide' | 'terminal'} target
  */
-export function showInVscode(chatId, target) {
+export async function showInVscode(chatId, target) {
     const b = bot(chatId);
     const where = b && responsibleMachine(b);
     if (!b) return false;
-    if (!where) { alert(t('bot.sleepsNoMachine', { name: b.name }) + '.'); return false; }
-    if (!confirm(t('vscode.showConfirm', { place: placeOf(target), machine: upper(where), name: b.name }))) return false;
+    if (!where) { void alertDialog(t('bot.sleepsNoMachine', { name: b.name }) + '.'); return false; }
+    if (!(await confirmDialog(t('vscode.showConfirm', { place: placeOf(target), machine: upper(where), name: b.name })))) return false;
     send({ type: 'vscode_show', chatId, target }, where);
     showEvent(t('vscode.showing', { place: placeOf(target), machine: upper(where) }), false, chatId);
     return true;
@@ -253,5 +254,5 @@ export function showInVscode(chatId, target) {
 
 export function vscodeShown(f) {
     if (paneFor(f.chatId)) showEvent(f.ok ? f.message : t('vscode.showFailed', { error: f.message }), !f.ok, f.chatId);
-    else if (!f.ok) alert(t('vscode.showFailed', { error: f.message }));
+    else if (!f.ok) void alertDialog(t('vscode.showFailed', { error: f.message }));
 }

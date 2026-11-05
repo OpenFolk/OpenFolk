@@ -10,6 +10,7 @@ import { closeSettings } from './panes.js';
 import { bundled, canScanQr, parsePairingLink, scanQrCode } from './platform.js';
 import { currentRelayName, goToRelay, isCurrentRelay, otherRelays, ownRelayAddress, removeRelay, renameRelay, switchRelay } from './relays.js';
 import { accountsOf, openOtherChat, showAllAccounts } from './others.js';
+import { confirmDialog } from './dialogs.js';
 
 /** Passwords of accounts other than main; the relay requires as many characters. */
 const MIN_PASSWORD = 16;
@@ -231,8 +232,8 @@ export function renderAccountList() {
             if (r.manageable) button(t(r.admin ? 'accounts.removeAdmin' : 'accounts.makeAdmin'), '', () => send({ type: 'account_update', id: r.id, admin: !r.admin }));
             // "Remove" forgets the sign-in on this device; "Delete" is the admin's, for everyone. The current sign-in
             // has no "remove": signing out is in the devices block.
-            if (!r.current && r.signedIn && r.own) button(t('relays.remove'), ' danger', () => { if (confirm(t('accounts.forgetConfirm', { name: r.name }))) forgetAccount(r.id); });
-            if (r.manageable) button(t('accounts.delete'), ' danger', () => { if (confirm(t('accounts.deleteConfirm', { name: r.name }))) send({ type: 'account_delete', id: r.id }); });
+            if (!r.current && r.signedIn && r.own) button(t('relays.remove'), ' danger', async () => { if (await confirmDialog(t('accounts.forgetConfirm', { name: r.name }))) forgetAccount(r.id); });
+            if (r.manageable) button(t('accounts.delete'), ' danger', async () => { if (await confirmDialog(t('accounts.deleteConfirm', { name: r.name }))) send({ type: 'account_delete', id: r.id }); });
         }
         li.append(text, actions);
         el.accountsList.appendChild(li);

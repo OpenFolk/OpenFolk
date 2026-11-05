@@ -1,6 +1,7 @@
 // The app signed in to several relays (one per customer): adding one with its pairing link keeps the first relay's
 // device key and end-to-end key, each relay signs in with its own, the sidebar switches between them, and removing
 // one forgets only what belongs to it.
+import { onDialog } from './harness.mjs';
 
 const HOME = 'https://home.example.com';
 const CUSTOMER = 'https://customer.example.com';
@@ -36,7 +37,7 @@ export default async function ({ start, check }) {
             : f.device === 'test' || f.device === 'c.key' ? { type: 'auth', ok: true } : { type: 'auth', ok: false, code: 'wrong_password', message: 'no' }),
     });
     const p = h.page;
-    p.on('dialog', (d) => void d.accept());
+    await onDialog(p, (d) => void d.accept());
     const relays = () => p.evaluate(() => JSON.parse(localStorage.getItem('openfolk-relays') || '[]'));
     const stored = (k) => p.evaluate((k) => localStorage.getItem(k), k);
     const secure = () => p.evaluate(() => JSON.parse(sessionStorage.getItem('__secure') || '{}'));

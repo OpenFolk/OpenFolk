@@ -13,6 +13,7 @@ import { relayClaimForm } from './relay-claim.js';
 import { closeSettingsDialog, openSettingsDialog } from './menus.js';
 import { autoReadOn } from './read-aloud.js';
 import { RELEASES, VERSION } from './release.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
 
 // ================================================================ Settings
 
@@ -121,10 +122,10 @@ export function renderSettings() {
         box.checked = Boolean(auto && auto.on);
         // Switching off always works, switching on only with a stored password
         box.disabled = !auto || pending || Boolean(state.shuttingDown[h]) || (!auto.on && !auto.password);
-        box.addEventListener('change', () => {
+        box.addEventListener('change', async () => {
             const on = box.checked;
             box.checked = !on;
-            if (!askAutologon(h, on)) return;
+            if (!(await askAutologon(h, on))) return;
             autologonPending.add(h);
             renderSettings();
         });
@@ -226,8 +227,8 @@ function machineLogout(host) {
     row.appendChild(node('span', 'settings-hint', t('machines.joined')));
     const b = node('button', 'btn small danger', t('machines.logout'));
     b.type = 'button';
-    b.addEventListener('click', () => {
-        if (confirm(t('machines.logoutConfirm', { machine: upper(host) }))) send({ type: 'machine_token_remove', machine: host });
+    b.addEventListener('click', async () => {
+        if (await confirmDialog(t('machines.logoutConfirm', { machine: upper(host) }))) send({ type: 'machine_token_remove', machine: host });
     });
     row.appendChild(b);
     return row;
@@ -279,7 +280,7 @@ export function renderMachineJoin(invite) {
 
 export function machineJoinError(message) {
     el.machineAdd.disabled = false;
-    alert(message);
+    void alertDialog(message);
 }
 
 // ---------------------------------------------------------------- Settings of one machine
@@ -383,7 +384,7 @@ export function keyField(box, textKey, stored, onSave, disabled = false) {
         const remove = node('button', 'btn small danger', t('settings.keyRemove'));
         remove.type = 'button';
         remove.disabled = disabled;
-        remove.addEventListener('click', () => { if (confirm(t('settings.keyRemoveConfirm'))) onSave(''); });
+        remove.addEventListener('click', async () => { if (await confirmDialog(t('settings.keyRemoveConfirm'))) onSave(''); });
         row.appendChild(remove);
     }
     box.append(head, row);
@@ -642,7 +643,7 @@ export function renderAiServices() {
         const remove = node('button', 'btn small danger', t('ai.remove'));
         remove.type = 'button';
         remove.disabled = asleep;
-        remove.addEventListener('click', () => { if (confirm(t('settings.keyRemoveConfirm'))) sendShared({}, { [name]: '' }); });
+        remove.addEventListener('click', async () => { if (await confirmDialog(t('settings.keyRemoveConfirm'))) sendShared({}, { [name]: '' }); });
         actions.append(replace, remove);
         li.append(text, actions);
         el.aiList.appendChild(li);
@@ -742,9 +743,9 @@ export function renderDevices(list, current) {
         text.append(name, node('span', '', t('devices.meta', { lastSeen: clockTime(d.lastSeen), ip: d.ip, created: new Date(d.created).toLocaleDateString(locale()) })));
         const logout = node('button', 'btn small danger', t('devices.logout'));
         logout.type = 'button';
-        logout.addEventListener('click', () => {
+        logout.addEventListener('click', async () => {
             const question = d.id === current ? t('devices.logoutThisConfirm') : t('devices.logoutConfirm', { name: d.name });
-            if (confirm(question)) send({ type: 'device_logout', id: d.id });
+            if (await confirmDialog(question)) send({ type: 'device_logout', id: d.id });
         });
         li.append(text, logout);
         el.deviceList.appendChild(li);

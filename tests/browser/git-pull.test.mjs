@@ -1,6 +1,6 @@
 // Keeping repos current: a repo that is only behind counts as open and gets "Pull"; moving a bot with work not on
 // the git server offers to take it along, asked from the previous machine once the new one took the folder.
-import { bot } from './harness.mjs';
+import { bot, onDialog } from './harness.mjs';
 
 const BEHIND = { name: 'lib', path: 'lib', branch: 'main', ahead: 0, behind: 3, files: [], more: 0 };
 const UNPUSHED = { name: 'skool', path: '', branch: 'main', ahead: 1, behind: 0, files: [], more: 0 };
@@ -17,7 +17,7 @@ export default async function ({ start, check }) {
     const p = h.page;
     let dialog = null;
     let accept = false;
-    p.on('dialog', (d) => { dialog = d.message(); return accept ? d.accept() : d.dismiss(); });
+    await onDialog(p, (d) => { dialog = d.message(); return accept ? d.accept() : d.dismiss(); });
     const rows = () => p.$$eval('#row-menu .git-repo', (n) => n.map((x) => [...x.children].map((c) => c.textContent.trim()).join(' ')));
 
     await h.push({ type: 'git_status', machine: 'desk', status: { skool: [BEHIND] } });

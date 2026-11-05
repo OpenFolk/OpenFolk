@@ -2,6 +2,7 @@
    and the mobile apps (Capacitor, mobile/) goes through here; the rest of the app does not ask where it runs.
    Imports only i18n.js, so every module may use it. */
 import { readSetting, t, writeSetting } from './i18n.js';
+import { alertDialog } from './dialogs.js';
 
 /** Capacitor's bridge, injected by the iOS and Android apps before the page loads. */
 const cap = /** @type {any} */ (window).Capacitor;
@@ -146,7 +147,7 @@ async function webScan(instructions) {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
     } catch (e) {
         console.warn('QR scan:', e);
-        alert(t(e && e.name === 'NotAllowedError' ? 'qr.cameraDenied' : 'qr.cameraFailed'));
+        void alertDialog(t(e && e.name === 'NotAllowedError' ? 'qr.cameraDenied' : 'qr.cameraFailed'));
         return '';
     }
     const overlay = document.createElement('div');
