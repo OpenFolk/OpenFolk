@@ -54,7 +54,6 @@ export default async function ({ start, check }) {
     await h.wait(200);
     const listName = await p.locator('#chat-list li[data-chat=research] .name').textContent();
     check('chat list shows the field of work beside the name', listName === 'Rudolf · Research', listName);
-    await p.click('[data-el=chat-title]');
-    await h.wait(200);
+    // the bot's page stays open under the editor and is drawn again with the saved values
     check('info shows field of work and role', (await p.textContent('#info-area')) === 'Research' && (await p.isVisible('#info-area')) && (await p.textContent('#info-role')) === 'Web research');
 }

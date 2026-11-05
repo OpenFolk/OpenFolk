@@ -13,7 +13,7 @@ import { bundled, connectionVia, needsRelayAddress, relayAddress, saveFile, sock
 import { closeDialog, gitError, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
 import { receiveVscodeHistory, receiveVscodeSessions, renderVscodeAdoptButton, showVscodeList, vs, vscodeError, vscodeShown } from './vscode.js';
 import {
-    fillInfo, folderRequestUnknown, knowledgeError, openInfo, pickerFailed, receiveCloned, receiveFolderChecked, receiveFolderListed, receiveFolderProposed,
+    fillInfo, folderRequestUnknown, knowledgeError, openInfo, pickerFailed, refreshInfo, receiveCloned, receiveFolderChecked, receiveFolderListed, receiveFolderProposed,
     receiveSuggestion, renderRoutines, suggestButton,
 } from './editors.js';
 import { checkPush, renderPushSettings } from './push.js';
@@ -437,6 +437,7 @@ function receive(f) {
             for (const id of allChats()) if (!(id in state.last)) send({ type: 'history', chatId: id, limit: 1 });
             renderChatList();
             renderGitTotal();
+            refreshInfo();
             if (state.openAfterBots && allChats().includes(state.openAfterBots)) {
                 openChat(state.openAfterBots);
                 state.openAfterBots = null;
