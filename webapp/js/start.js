@@ -28,6 +28,7 @@ import { cancelAddAccount, createAccount, joinAny, openAccountMenu, openAccounts
 import { openRelay, switchRelay } from './relays.js';
 import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, startQrLogin, stopQrLogin } from './qr-login.js';
 import { VERSION } from './release.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
 
 // The first pane exists from the start; on phones and laptops it stays the only one
 createPane();
@@ -127,7 +128,7 @@ el.loginCancel.addEventListener('click', cancelAddAccount);
 el.loginOtherAccount.addEventListener('click', showAccountField);
 el.settingsAllAccounts.addEventListener('change', chooseAllAccounts);
 el.e2eDelete.addEventListener('click', async () => {
-    if (!confirm(t('e2e.deleteConfirm'))) return;
+    if (!(await confirmDialog(t('e2e.deleteConfirm')))) return;
     await forgetKey();
     showE2eStatus();
     if (state.ws) state.ws.close();
@@ -200,7 +201,7 @@ el.newMenu.addEventListener('click', (ev) => {
     }
     if (kind === 'bot') openEditor(null);
     if (kind === 'group') {
-        if (state.bots.length < 2) { alert(t('group.needTwoBots')); return; }
+        if (state.bots.length < 2) { void alertDialog(t('group.needTwoBots')); return; }
         openGroupEditor(null);
     }
 });
@@ -494,11 +495,11 @@ el.infoActions.addEventListener('click', (ev) => {
     const k = closest(ev, '[data-action]');
     if (k) infoAction(k.dataset.action);
 });
-el.gActions.addEventListener('click', (ev) => {
+el.gActions.addEventListener('click', async (ev) => {
     const k = closest(ev, '[data-action]');
     const g = state.groupEditorGroup;
     if (!k || !g) return;
-    if (!chatMenuAction('g:' + g.id, k.dataset.action, el.gActions)) return;
+    if (!(await chatMenuAction('g:' + g.id, k.dataset.action, el.gActions))) return;
     if (k.dataset.action === 'favorite' || k.dataset.action === 'mute') el.gActions.replaceChildren(...chatMenuButtons('g:' + g.id, true));
     else closeDialog(el.gEditor);
 });
@@ -507,8 +508,8 @@ el.textForm.addEventListener('submit', (ev) => { ev.preventDefault(); submitText
 el.textDialog.addEventListener('click', (ev) => ev.stopPropagation());
 el.vsBack.addEventListener('click', showVscodeList);
 el.vsAdopt.addEventListener('click', adoptVscodeSession);
-el.vsShow.addEventListener('click', () => { if (showInVscode(vs.chatId, 'ide')) closeDialog(el.vscode); });
-el.vsTerminal.addEventListener('click', () => { if (showInVscode(vs.chatId, 'terminal')) closeDialog(el.vscode); });
+el.vsShow.addEventListener('click', async () => { if (await showInVscode(vs.chatId, 'ide')) closeDialog(el.vscode); });
+el.vsTerminal.addEventListener('click', async () => { if (await showInVscode(vs.chatId, 'terminal')) closeDialog(el.vscode); });
 
 // Bot editor
 function fillTemplateOptions() {
@@ -589,8 +590,8 @@ el.rForm.addEventListener('submit', (ev) => {
     });
     closeDialog(el.rEditor);
 });
-el.rDelete.addEventListener('click', () => {
-    if (state.routineEdit && confirm(t('routine.deleteConfirm', { name: state.routineEdit.name }))) {
+el.rDelete.addEventListener('click', async () => {
+    if (state.routineEdit && await confirmDialog(t('routine.deleteConfirm', { name: state.routineEdit.name }))) {
         send({ type: 'routine_delete', id: state.routineEdit.id });
         closeDialog(el.rEditor);
     }
@@ -618,8 +619,8 @@ el.kForm.addEventListener('submit', (ev) => {
         oldName: state.knowledgeFact ? state.knowledgeFact.name : undefined,
     });
 });
-el.kDelete.addEventListener('click', () => {
-    if (state.knowledgeFact && confirm(t('knowledge.forgetConfirm', { name: state.knowledgeFact.name }))) sendKnowledge({ type: 'knowledge_delete', name: state.knowledgeFact.name });
+el.kDelete.addEventListener('click', async () => {
+    if (state.knowledgeFact && await confirmDialog(t('knowledge.forgetConfirm', { name: state.knowledgeFact.name }))) sendKnowledge({ type: 'knowledge_delete', name: state.knowledgeFact.name });
 });
 
 // Settings, with the blocks for notifications, devices and accounts
@@ -657,7 +658,7 @@ el.pushEnable.addEventListener('click', async () => {
         checkPush();
         renderPushSettings();
     } catch (e) {
-        alert(t('push.enableFailed', { error: e.message }));
+        void alertDialog(t('push.enableFailed', { error: e.message }));
     }
 });
 onNotificationOpen((url) => {

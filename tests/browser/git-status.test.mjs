@@ -1,6 +1,6 @@
 // Overview of open changes: badge per bot in the list and a row at the bottom left, from the machines' git_status;
 // both open the page "Open changes" in the chat area (back at the top left or swipe to the right).
-import { bot } from './harness.mjs';
+import { bot, onDialog } from './harness.mjs';
 
 const SKOOL = { name: 'skool', path: '', branch: 'main', ahead: 0, behind: 0, files: [{ status: ' M', path: 'src/a.ts' }], more: 0 };
 const MAIL = { name: 'mail', path: '', branch: 'main', ahead: 2, behind: 0, files: [], more: 0 };
@@ -43,7 +43,7 @@ export default async function ({ start, check }) {
         'mail Mail Mia · main · 2 not pushed Push',
     ]), total);
 
-    p.on('dialog', (d) => d.accept());
+    await onDialog(p, (d) => d.accept());
     await p.locator('#git-page .git-list .git-button', { hasText: /^Push$/ }).click();
     await h.wait(100);
     const push = h.sent.find((f) => f.type === 'git_commit');

@@ -6,6 +6,7 @@ import { bot, botIdOf, responsibleMachine, send, senderName } from './e2e.js';
 import { jumpToEntry } from './list.js';
 import { openChat } from './chat.js';
 import { showEvent } from './queue.js';
+import { alertDialog } from './dialogs.js';
 
 // Two voices: a cloud voice (the backend asks OpenAI or Gemini with the key of the shared settings, local/src/speech.ts)
 // or the browser's speech output (on the iPhone the iOS voices). Either way the text is read in parts: some browsers
@@ -283,7 +284,7 @@ export function readAloud(e, chatId) {
     speech.botId = e.botId || botIdOf(chatId);
     speech.cloud = cloudVoice();
     if (!speech.cloud && !('speechSynthesis' in window)) {
-        alert(t('speak.unsupported'));
+        void alertDialog(t('speak.unsupported'));
         return;
     }
     const parts = speech.cloud ? chunks(text, 220, 700) : chunks(text, 220, 220);

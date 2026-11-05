@@ -11,6 +11,7 @@ import { askText } from './menus.js';
 import { renderAccountList, renderAccountSwitch } from './accounts.js';
 import { closeOthers, connectOthers } from './others.js';
 import { renderChatList } from './list.js';
+import { confirmDialog } from './dialogs.js';
 
 /**
  * Several relays are possible here (see above). The browser keeps the other relays only as links: its page belongs
@@ -105,7 +106,7 @@ export async function removeRelay(url) {
         renderAccountList();
         return;
     }
-    if (!confirm(t('accounts.forgetConfirm', { name: r.name }))) return;
+    if (!(await confirmDialog(t('accounts.forgetConfirm', { name: r.name })))) return;
     const names = [];
     try { for (let i = 0; i < localStorage.length; i++) names.push(localStorage.key(i) || ''); } catch { /* ignore */ }
     // The base name with the relay's scope, also with an account behind it (':<id>'), never another relay's '@<n>'

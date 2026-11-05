@@ -6,6 +6,7 @@ import { bot, responsibleMachine, send, showImageLarge, upper } from './e2e.js';
 import { scroll, setReply } from './chat-features.js';
 import { approvalsToBottom, composerButtons, showEvent, textHeight } from './queue.js';
 import { expectAnswer } from './read-aloud.js';
+import { alertDialog } from './dialogs.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -35,7 +36,7 @@ export async function startRecording(p) {
     try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     } catch (e) {
-        alert(t('voice.noMicrophone', { error: e.message }));
+        void alertDialog(t('voice.noMicrophone', { error: e.message }));
         return;
     }
     // the pane may have switched chats while the browser asked for the microphone

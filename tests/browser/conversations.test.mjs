@@ -1,5 +1,5 @@
 // Several conversations per bot: list, opening with title, the conversation's page, creating new ones, state per conversation, sending.
-import { bot } from './harness.mjs';
+import { bot, onceDialog } from './harness.mjs';
 
 export default async function ({ start, check }) {
     const h = await start({
@@ -67,7 +67,7 @@ export default async function ({ start, check }) {
     const strip = await p.evaluate(() => { const s = document.querySelector('.swipe-favorite'); return s ? `${s.textContent}${s.classList.contains('swipe-archive') && s.classList.contains('ready') ? ' (ready)' : ''}` : ''; });
     check('strip "Archive" appears', strip === '🗄 Archive (ready)', strip);
     let question = '';
-    p.once('dialog', (d) => { question = d.message(); d.dismiss(); });
+    await onceDialog(p, (d) => { question = d.message(); d.dismiss(); });
     await h.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await h.wait(500);
     const a = requests('conversation_archive');

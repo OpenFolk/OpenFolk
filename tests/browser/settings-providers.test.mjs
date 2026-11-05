@@ -2,6 +2,7 @@
 // for the key; switching to a key without one stored sends key and choice together. A backend before the choice
 // shows Claude alone. Claude can also run on both by rules (switch at the limit, a daily cap for the key). The image
 // model's provider decides what the AI services list says a key is used for.
+import { onDialog } from './harness.mjs';
 
 const SETTINGS = {
     claudeAuth: 'subscription', claudeFallback: 'limit', claudeKeyBudgetUsd: 0, engineAuth: {}, disabledEngines: [], shutdown: true, shutdownDelaySeconds: 60, afterWake: 'ifIdle', afterWakeSeconds: 300,
@@ -62,7 +63,7 @@ export default async function ({ start, check }) {
 
     await machineSettings({ engineAuth: { codex: 'apikey' } }, { engineKeys: { ...NO_KEYS, codex: true } });
     await h.wait(100);
-    p.on('dialog', (d) => d.accept());
+    await onDialog(p, (d) => d.accept());
     await p.click('.settings-engine[data-engine="codex"] .settings-key .danger');
     await h.wait(100);
     save = h.sent.findLast((x) => x.type === 'machine_settings_save');

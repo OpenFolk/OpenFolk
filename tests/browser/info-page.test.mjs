@@ -1,7 +1,7 @@
 // The bot's page holds what the chat's ⋮ menu did: open changes with commit and push (message in the app's text
 // dialog), the backend's restart in the row of its repo, entries that keep the page open (favorite, a declined
 // restart) or leave it. A group's header opens its editor with search, favorite and delete.
-import { bot } from './harness.mjs';
+import { bot, onDialog } from './harness.mjs';
 
 const SKOOL = { name: 'skool', path: '', branch: 'main', ahead: 0, behind: 0, files: [{ status: ' M', path: 'src/a.ts' }], more: 0 };
 const ZETA = { name: 'zeta', path: 'zeta', branch: 'main', ahead: 2, behind: 0, files: [], more: 0 };
@@ -19,7 +19,7 @@ export default async function ({ start, check }) {
     const buttons = () => p.$$eval('#info-git .git-list .git-button', (k) => k.map((x) => x.textContent + (x.disabled ? '!' : '')));
     let dialog = null;
     let accept = true;
-    p.on('dialog', (d) => { dialog = { kind: d.type(), text: d.message() }; return accept ? d.accept() : d.dismiss(); });
+    await onDialog(p, (d) => { dialog = { kind: d.type(), text: d.message() }; return accept ? d.accept() : d.dismiss(); });
 
     await h.openChat('Skool Sven');
     await p.click('[data-el=chat-title]');
@@ -103,12 +103,12 @@ export default async function ({ start, check }) {
     const fav = h.sent.findLast((f) => f.type === 'favorite');
     check('group favorite: sent for the group, the editor stays and shows the new state', fav && fav.chatId === 'g:team' && fav.on === true && await p.isVisible('#group-editor')
         && (await p.textContent('#group-actions button[data-action="favorite"]')) === 'Remove from favorites', fav);
-    dialog = null;
-    accept = false;
     await p.click('#group-actions button[data-action="group_delete"]');
     await h.wait(100);
-    check('delete group asks first; declined, the editor stays', dialog && dialog.text.includes('Team') && await p.isVisible('#group-editor') && !h.sent.some((f) => f.type === 'group_delete'), dialog);
-    accept = true;
+    check('delete group asks first, naming the group', (await p.textContent('.overlay.ask h2')) === 'Delete group “Team”?');
+    await p.click('.overlay.ask [data-cancel]');
+    await h.wait(100);
+    check('declined, the editor stays', await p.isVisible('#group-editor') && await p.locator('.overlay.ask').count() === 0 && !h.sent.some((f) => f.type === 'group_delete'));
     if (await p.isHidden('#group-editor')) { await p.click('[data-el=chat-title]'); await h.wait(200); }
     await p.click('#group-actions button[data-action="search"]');
     await h.wait(200);

@@ -1,5 +1,5 @@
 // Bot info: knowledge in tabs (bot, folder, group, all), create a fact, error in the dialog, edit, delete.
-import { bot } from './harness.mjs';
+import { bot, onceDialog } from './harness.mjs';
 
 const T = '2026-10-12T08:00:00.000Z';
 
@@ -85,7 +85,7 @@ export default async function ({ start, check }) {
     check('changing sends oldName', changed.oldName === 'tea' && changed.fact.text === 'Green tea, no sugar.' && await p.isHidden('#knowledge-editor'), changed);
 
     await p.locator('#info-knowledge li', { hasText: 'tea' }).locator('button').click();
-    p.once('dialog', (d) => d.accept());
+    await onceDialog(p, (d) => d.accept());
     await p.click('#knowledge-delete');
     await h.wait(300);
     const deleted = h.sent.findLast((f) => f.type === 'knowledge_delete');

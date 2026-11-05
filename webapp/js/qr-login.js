@@ -10,6 +10,7 @@ import { el, state } from './core.js';
 import { adoptPairingLink, send } from './e2e.js';
 import { connect, showLogin } from './connection.js';
 import { bundled, canScanQr, parsePairingLink, relayAddress, scanQrCode, socketUrl } from './platform.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
 
 const textEnc = new TextEncoder();
 const SEAL_INFO = textEnc.encode('openfolk:pair-qr');
@@ -246,15 +247,19 @@ export function startApproval() {
 }
 
 /** The relay names the waiting device: the user confirms, then a backend mints its pairing link ("pair_link"). */
-export function receivePairRequest(f) {
+export async function receivePairRequest(f) {
     if (!approving || approving.id !== f.id || approving.confirmed) return;
-    if (!confirm(t('qr.approveConfirm', { name: f.name, ip: f.ip }))) {
+    const request = approving;
+    const yes = await confirmDialog(t('qr.approveConfirm', { name: f.name, ip: f.ip }));
+    // answered late: another request may have taken its place meanwhile
+    if (approving !== request) return;
+    if (!yes) {
         approving = null;
         return;
     }
     if (!state.online.length) {
         approving = null;
-        alert(t('qr.noMachine'));
+        void alertDialog(t('qr.noMachine'));
         return;
     }
     approving.confirmed = true;
@@ -269,12 +274,12 @@ export function approvalLink(f) {
     const fragment = new URL(f.url).hash.replace(/^#/, '');
     sealForDevice(fragment, a.id, a.pk)
         .then((box) => send({ type: 'pair_approve', id: a.id, box }))
-        .catch((e) => alert(t('qr.failed', { error: e.message })));
+        .catch((e) => void alertDialog(t('qr.failed', { error: e.message })));
     return true;
 }
 
 export function receivePairApproved() {
-    alert(t('qr.approved'));
+    void alertDialog(t('qr.approved'));
     if (!el.devices.hidden) send({ type: 'devices' });
 }
 
@@ -282,7 +287,7 @@ export function receivePairApproved() {
 export function approvalError(message) {
     if (!approving) return false;
     approving = null;
-    alert(t('qr.failed', { error: message }));
+    void alertDialog(t('qr.failed', { error: message }));
     return true;
 }
 
@@ -294,7 +299,7 @@ export async function scanToApprove() {
     if (!text) return;
     const link = parsePairingLink(text);
     if (!link || !takeApproval(link.params)) {
-        alert(t('qr.notApproveCode'));
+        void alertDialog(t('qr.notApproveCode'));
         return;
     }
     startApproval();

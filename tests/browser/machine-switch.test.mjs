@@ -2,7 +2,7 @@
 // to move it there, with its repository in the repository field and the folder there derived from it. The new machine
 // checks the folder before the bot is saved there and clones the repository into it if it is not there yet; a
 // sleeping one is woken once the user confirms it. Not in groups. The machine in the page's facts opens the editor too.
-import { bot } from './harness.mjs';
+import { bot, onDialog } from './harness.mjs';
 
 const REMOTE = 'https://git.example.com/team/skool.git';
 
@@ -42,7 +42,7 @@ export default async function ({ start, check }) {
     const editorOpen = () => p.locator('#editor').isVisible();
     let dialog = null;
     let decline = false;
-    p.on('dialog', (d) => { dialog = d.message(); return decline ? d.dismiss() : d.accept(); });
+    await onDialog(p, (d) => { dialog = d.message(); return decline ? d.dismiss() : d.accept(); });
 
     await h.openChat('Skool Sven');
     await page();
