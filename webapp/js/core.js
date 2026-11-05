@@ -166,6 +166,11 @@ export const state = {
 
 marked.setOptions({ breaks: true, gfm: true });
 // Links in messages always open in a new tab, without access of the target page to this window
+// The fence's language (class="language-js") goes as lang="js", for the bar above a code block (code-blocks.js)
+DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+    const language = data.attrName === 'class' && node.tagName === 'CODE' && /^language-([\w+#.-]{1,20})$/.exec(data.attrValue);
+    if (language) node.setAttribute('lang', language[1]);
+});
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     if (node.tagName === 'A' && node.hasAttribute('href')) {
         node.setAttribute('target', '_blank');

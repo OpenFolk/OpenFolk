@@ -1,6 +1,7 @@
 /* OpenFolk web app: VS Code sessions. */
 import { t } from './i18n.js';
 import { el, md, node, state } from './core.js';
+import { codeBlocks } from './code-blocks.js';
 import { paneFor } from './panes.js';
 import { bot, clockTime, fileSize, responsibleMachine, send, shortFolder, upper } from './e2e.js';
 import { renderTools, showEvent, toolRow } from './queue.js';
@@ -188,6 +189,7 @@ function vscodeEntry(e, index) {
             const b = node('div', 'bubble bot');
             const content = node('div', 'content');
             content.innerHTML = md(e.text);
+            codeBlocks(content);
             b.append(content, node('span', 'time', clockTime(e.ts)));
             n.appendChild(b);
         }
