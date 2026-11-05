@@ -272,15 +272,18 @@ for (const kind of ['pointerdown', 'focusin']) {
     });
 }
 
+function openChatSettings(p) {
+    if (isGroup(p.chatId)) openGroupEditor(group(p.chatId));
+    else openInfo(p.chatId);
+}
+
 /** @type {Record<string, (p: import('./panes.js').Pane, ev: MouseEvent) => void>} */
 const PANE_CLICKS = {
     'btn-back': (p) => closeChat(p),
     'btn-close': (p) => closeChat(p),
     // the header leads to the bot's page, which also holds what the chat's menu did (a group: its editor)
-    'chat-title': (p) => {
-        if (isGroup(p.chatId)) openGroupEditor(group(p.chatId));
-        else openInfo(p.chatId);
-    },
+    'chat-title': (p) => openChatSettings(p),
+    'chat-settings': (p) => openChatSettings(p),
     'chat-model': (p, ev) => { ev.stopPropagation(); toggleHeaderSwitch(p, 'model'); },
     'chat-machine': (p, ev) => { ev.stopPropagation(); toggleHeaderSwitch(p, 'machine'); },
     'rb-cancel': (p) => setReply(p, null),
