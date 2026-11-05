@@ -13,59 +13,52 @@ function node(tag, cls, text) {
 let queue = Promise.resolve();
 
 /**
- * Shows `message` with the given buttons; resolves with whether the primary one was pressed. Enter presses it, Escape and
- * a click beside the dialog press the other one (or the only one). Focus stays inside and returns afterwards.
- * @param {string} message
- * @param {{ ok?: string, cancel?: string | null }} [o] `cancel: null`: a notice with one button
+ * Shows a modal dialog and resolves with whether it was confirmed. `build` fills the form and returns the element that
+ * gets the focus. Submitting the form confirms; Escape and a click beside the dialog decline (a notice has nothing to
+ * decline: there they confirm). Tab stays inside, focus returns afterwards, Escape does not reach the dialogs below.
+ * @param {(form: HTMLFormElement) => HTMLElement} build
+ * @param {boolean} [notice] one button only
  * @returns {Promise<boolean>}
  */
-function ask(message, o = {}) {
+function present(build, notice = false) {
     const shown = queue.then(() => new Promise((resolve) => {
         const before = document.activeElement;
         const overlay = node('div', 'overlay ask');
         overlay.setAttribute('role', 'alertdialog');
         overlay.setAttribute('aria-modal', 'true');
         const form = node('form', 'dialog');
-        const text = node('p', 'ask-text', String(message));
-        text.id = 'ask-text';
-        overlay.setAttribute('aria-describedby', text.id);
-        const actions = node('div', 'actions');
-        const cancel = o.cancel === null ? null : node('button', 'btn', o.cancel || t('common.cancel'));
-        if (cancel) cancel.type = 'button';
-        const ok = node('button', 'primary', o.ok || t('common.ok'));
-        ok.type = 'submit';
-        actions.append(...(cancel ? [cancel, ok] : [ok]));
-        form.append(text, actions);
+        form.noValidate = true;
         overlay.append(form);
-
+        const focus = build(form);
         const done = (answer) => {
             overlay.remove();
             if (before instanceof HTMLElement && before.isConnected) before.focus();
             resolve(answer);
         };
         form.addEventListener('submit', (ev) => { ev.preventDefault(); done(true); });
-        if (cancel) cancel.addEventListener('click', () => done(false));
+        form.addEventListener('click', (ev) => {
+            if (ev.target instanceof HTMLElement && ev.target.dataset.cancel) done(false);
+        });
         let pressedOnBackdrop = false;
         overlay.addEventListener('pointerdown', (ev) => { pressedOnBackdrop = ev.target === overlay; });
         overlay.addEventListener('click', (ev) => {
-            if (ev.target === overlay && pressedOnBackdrop) done(!cancel);
+            if (ev.target === overlay && pressedOnBackdrop) done(notice);
             pressedOnBackdrop = false;
         });
         overlay.addEventListener('keydown', (ev) => {
             if (ev.key === 'Escape') {
-                // the dialogs below must not close with it
                 ev.stopPropagation();
                 ev.preventDefault();
-                done(!cancel);
+                done(notice);
             } else if (ev.key === 'Tab') {
-                const buttons = [...actions.querySelectorAll('button')];
-                const i = buttons.indexOf(/** @type {HTMLButtonElement} */ (document.activeElement));
+                const fields = [...form.querySelectorAll('input, button')].filter((f) => !(/** @type {HTMLButtonElement} */ (f).disabled));
+                const i = fields.indexOf(/** @type {HTMLElement} */ (document.activeElement));
                 ev.preventDefault();
-                buttons[(i + (ev.shiftKey ? buttons.length - 1 : 1)) % buttons.length].focus();
+                fields[(i + (ev.shiftKey ? fields.length - 1 : 1)) % fields.length].focus();
             }
         });
         document.body.append(overlay);
-        ok.focus();
+        focus.focus();
     }));
     queue = shown.then(() => undefined, () => undefined);
     return shown;
@@ -77,8 +70,16 @@ function ask(message, o = {}) {
  * @param {{ ok?: string, cancel?: string }} [o] other button labels
  * @returns {Promise<boolean>}
  */
-export function confirmDialog(message, o) {
-    return ask(message, o);
+export function confirmDialog(message, o = {}) {
+    return present((form) => {
+        const cancel = node('button', 'btn', o.cancel || t('common.cancel'));
+        cancel.type = 'button';
+        cancel.dataset.cancel = '1';
+        const ok = node('button', 'primary', o.ok || t('common.ok'));
+        ok.type = 'submit';
+        form.append(askText(message), actions(cancel, ok));
+        return ok;
+    });
 }
 
 /**
@@ -87,5 +88,63 @@ export function confirmDialog(message, o) {
  * @returns {Promise<void>}
  */
 export async function alertDialog(message) {
-    await ask(message, { cancel: null });
+    await present((form) => {
+        const ok = node('button', 'primary', t('common.ok'));
+        ok.type = 'submit';
+        form.append(askText(message), actions(ok));
+        return ok;
+    }, true);
+}
+
+/**
+ * The "danger zone" for something that cannot be brought back: a warning with what goes, an optional name to type
+ * and a red button named after the action that stays disabled until the name matches exactly.
+ * @param {{ title: string, items: string[], notes?: string[], name?: string, action: string }} o `items`: what is
+ *   deleted; `notes`: what stays, or other hints; `name`: what to type to confirm (none for a smaller loss)
+ * @returns {Promise<boolean>}
+ */
+export function dangerDialog(o) {
+    return present((form) => {
+        const zone = node('div', 'danger-zone');
+        zone.append(node('strong', '', t('danger.warning')));
+        if (o.items.length) {
+            zone.append(node('span', '', t('danger.willDelete')));
+            const list = node('ul');
+            for (const item of o.items) list.append(node('li', '', item));
+            zone.append(list);
+        }
+        for (const note of o.notes || []) zone.append(node('span', 'danger-note', note));
+        const cancel = node('button', 'btn', t('common.cancel'));
+        cancel.type = 'button';
+        cancel.dataset.cancel = '1';
+        const go = node('button', 'primary danger', o.action);
+        go.type = 'submit';
+        form.append(node('h2', '', o.title), zone);
+        /** @type {HTMLElement} */
+        let focus = go;
+        if (o.name) {
+            const label = node('label');
+            const name = node('strong', 'danger-name', o.name);
+            label.append(node('span', '', t('danger.typeName')), name);
+            const field = document.createElement('input');
+            field.autocomplete = 'off';
+            field.spellcheck = false;
+            field.setAttribute('aria-label', t('danger.typeName') + ' ' + o.name);
+            go.disabled = true;
+            field.addEventListener('input', () => { go.disabled = field.value.trim() !== o.name; });
+            label.append(field);
+            form.append(label);
+            focus = field;
+        }
+        form.append(actions(cancel, go));
+        return focus;
+    });
+}
+
+const askText = (message) => node('p', 'ask-text', String(message));
+
+function actions(...buttons) {
+    const row = node('div', 'actions');
+    row.append(...buttons);
+    return row;
 }

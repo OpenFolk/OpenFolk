@@ -9,7 +9,7 @@ import { closeChat, openChat, paneActivated, renderChatHeader, renderHeaders } f
 import { refreshMachinesPage, renderMachines, wake } from './machines.js';
 import { closeVscodeSession, openVscode } from './vscode.js';
 import { openEditor, openGroupEditor, openInfo } from './editors.js';
-import { alertDialog, confirmDialog } from './dialogs.js';
+import { alertDialog, confirmDialog, dangerDialog } from './dialogs.js';
 
 // ================================================================ Menus
 
@@ -246,7 +246,7 @@ export async function chatMenuAction(id, action, menu, show = (...k) => { menu.r
         send({ type: 'restart', botId: b.id, chatId: id });
     }
     if (action === 'delete' && b) {
-        if (!(await confirmDialog(t('menu.deleteBotConfirm', { name: b.name })))) return false;
+        if (!(await confirmDeleteBot(b))) return false;
         send({ type: 'bot_delete', botId: b.id });
         if (p) closeChat(p);
     }
@@ -273,7 +273,7 @@ export async function chatMenuAction(id, action, menu, show = (...k) => { menu.r
     if (action === 'conversation_delete' && b) return await deleteConversation(id);
     if (action === 'group' && g) openGroupEditor(g);
     if (action === 'group_delete' && g) {
-        if (!(await confirmDialog(t('menu.deleteGroupConfirm', { name: g.name })))) return false;
+        if (!(await confirmDeleteGroup(g))) return false;
         send({ type: 'group_delete', groupId: g.id });
         if (p) closeChat(p);
     }
@@ -821,10 +821,34 @@ export function gitError(message) {
     if (gitViewOpen()) gitShow(node('div', 'menu-info', message));
 }
 
+/**
+ * The questions before something is deleted for good. Only what this page knows is listed; the backend decides what
+ * goes. A bot's working folder is not deleted. A bot or group is confirmed by typing its name; one conversation is a
+ * smaller loss, and its title is often just "New conversation", so there the button is enough.
+ */
+function confirmDeleteBot(b) {
+    const items = [t('danger.history')];
+    const conversations = (b.conversations || []).length;
+    const routines = state.routines.filter((r) => r.botId === b.id).length;
+    const groups = state.groups.filter((g) => g.members.includes(b.id)).length;
+    if (conversations) items.push(tn('danger.conversations', conversations));
+    if (routines) items.push(tn('danger.routines', routines));
+    if (groups) items.push(tn('danger.groups', groups));
+    return dangerDialog({ title: t('danger.botTitle', { name: b.name }), items, notes: b.folder ? [t('danger.botFolder', { folder: b.folder })] : [], name: b.name, action: t('menu.deleteBot') });
+}
+
+function confirmDeleteGroup(g) {
+    return dangerDialog({ title: t('danger.groupTitle', { name: g.name }), items: [t('danger.history')], notes: [t('danger.groupBots')], name: g.name, action: t('menu.deleteGroup') });
+}
+
+function confirmDeleteConversation(chatId) {
+    return dangerDialog({ title: t('danger.conversationTitle', { title: conversationTitle(chatId) }), items: [t('danger.history')], notes: [t('danger.archiveKeeps')], action: t('danger.deleteConversation') });
+}
+
 /** Delete permanently after asking (chat menu); if it was open, go to the main chat. */
 async function deleteConversation(chatId) {
     const b = bot(chatId);
-    if (!b || !(await confirmDialog(t('menu.deleteConversationConfirm', { title: conversationTitle(chatId) })))) return false;
+    if (!b || !(await confirmDeleteConversation(chatId))) return false;
     send({ type: 'conversation_delete', chatId }, responsibleMachine(b) || undefined);
     const p = paneFor(chatId);
     if (p) toMainChat(p, b);

@@ -103,12 +103,12 @@ export default async function ({ start, check }) {
     const fav = h.sent.findLast((f) => f.type === 'favorite');
     check('group favorite: sent for the group, the editor stays and shows the new state', fav && fav.chatId === 'g:team' && fav.on === true && await p.isVisible('#group-editor')
         && (await p.textContent('#group-actions button[data-action="favorite"]')) === 'Remove from favorites', fav);
-    dialog = null;
-    accept = false;
     await p.click('#group-actions button[data-action="group_delete"]');
     await h.wait(100);
-    check('delete group asks first; declined, the editor stays', dialog && dialog.text.includes('Team') && await p.isVisible('#group-editor') && !h.sent.some((f) => f.type === 'group_delete'), dialog);
-    accept = true;
+    check('delete group asks first, naming the group', (await p.textContent('.overlay.ask h2')) === 'Delete group “Team”?');
+    await p.click('.overlay.ask [data-cancel]');
+    await h.wait(100);
+    check('declined, the editor stays', await p.isVisible('#group-editor') && await p.locator('.overlay.ask').count() === 0 && !h.sent.some((f) => f.type === 'group_delete'));
     if (await p.isHidden('#group-editor')) { await p.click('[data-el=chat-title]'); await h.wait(200); }
     await p.click('#group-actions button[data-action="search"]');
     await h.wait(200);
