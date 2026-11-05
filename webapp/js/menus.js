@@ -318,10 +318,10 @@ function leaveInfo() {
 /** An entry on the bot's page. */
 export function infoAction(action) {
     const id = state.infoChat;
-    // the editor takes the place of the page, as a page of its own
+    // the editor takes the place of the page in the side panel (editors.js); the page stays below it
     if (action === 'edit') {
         const b = bot(id);
-        if (closeDialog(el.info) && b) openEditor(b);
+        if (b) openEditor(b);
         return;
     }
     if (!chatMenuAction(id, action, el.infoActions) || ['favorite', 'mute', 'rename', 'restart'].includes(action)) {

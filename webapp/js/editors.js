@@ -16,6 +16,8 @@ import { chatMenuButtons, closeDialog, gitOpenOf, menuButton, renderInfoChat, sh
 export function openEditor(b, machine) {
     state.editorBot = b || null;
     moving = Boolean(b && machine);
+    // From the bot's page, the editor takes the place of that page in the side panel instead of opening over everything
+    el.editor.classList.toggle('side-edit', Boolean(b && !moving && !el.info.hidden && state.infoBot === b.id));
     el.editor.classList.toggle('moving', moving);
     el.editor.classList.toggle('page', !moving);
     state.editorAvatar = b ? b.avatar : '';
@@ -580,6 +582,7 @@ export function openInfo(chatId) {
     const botId = b.id;
     state.infoBot = botId;
     state.infoChat = isConversation(chatId) ? chatId : botId;
+    infoDrawn = infoFields(b);
     fillAvatar(el.infoAvatar, b, b.id, true);
     el.infoName.textContent = b.name;
     el.infoArea.textContent = b.area || '';
@@ -610,6 +613,20 @@ export function openInfo(chatId) {
     renderInfoChat(true);
     showGitChanges(b, el.infoGit, (...parts) => el.infoGit.replaceChildren(...parts));
     send({ type: 'bot_info', botId }, responsibleMachine(b) || undefined);
+}
+
+/** What the top of the bot's page shows of the bot; the page is drawn again when it changes. */
+const infoFields = (b) => JSON.stringify([b.name, b.area, b.role, b.folder, b.approval, b.avatar, b.machine]);
+let infoDrawn = '';
+
+/**
+ * The bot's page keeps what openInfo drew: after the bot changed (saved in the editor, or on another device) it is drawn
+ * again, unless the editor is open over it.
+ */
+export function refreshInfo() {
+    const b = bot(state.infoBot);
+    if (!b || el.info.hidden || !el.editor.hidden || infoFields(b) === infoDrawn) return;
+    openInfo(state.infoChat || b.id);
 }
 
 export function fillInfo(info) {
