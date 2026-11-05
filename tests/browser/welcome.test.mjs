@@ -12,7 +12,7 @@ export default async function ({ start, check }) {
         return !l.hidden && l.classList.contains('start') && !l.classList.contains('overlay') && getComputedStyle(l).backgroundColor !== 'rgba(0, 0, 0, 0.45)';
     }));
     check('German device: German texts and html lang', (await dp.textContent('#login-form button[type="submit"]')) === 'Anmelden' && (await dp.getAttribute('html', 'lang')) === 'de');
-    check('fields carry labels', await dp.evaluate(() => [...document.querySelectorAll('#login-form label')].filter((l) => l.offsetParent !== null).map((l) => l.querySelector('span').textContent).join('|')) === 'Server-URL|Passwort|Name dieses Geräts (optional)');
+    check('fields carry labels', await dp.evaluate(() => [...document.querySelectorAll('#login-form label')].filter((l) => l.offsetParent !== null).map((l) => l.querySelector('span').textContent).join('|')) === 'Server-URL|Relay-Passwort|Name dieses Geräts (optional)');
     check('server URL not editable in the browser', await dp.isVisible('#login-relay') && !(await dp.isEditable('#login-relay')));
     check('password field has the focus', await dp.evaluate(() => document.activeElement?.id === 'login-token'));
     check('no code field while the relay asks for none', !(await dp.isVisible('#login-totp')));
