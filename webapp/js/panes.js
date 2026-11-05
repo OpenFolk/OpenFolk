@@ -12,6 +12,7 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {HTMLButtonElement} chatTitle
  * @property {HTMLElement} chatName
  * @property {HTMLElement} chatSub
+ * @property {HTMLButtonElement} chatSettings
  * @property {HTMLButtonElement} chatModel
  * @property {HTMLButtonElement} chatMachine
  * @property {HTMLElement} headerMenu

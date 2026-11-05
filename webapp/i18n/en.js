@@ -644,6 +644,8 @@ registerDictionary('en', {
     'info.approvals': 'Approvals',
     'info.machine': 'Machine',
     'info.machineMove': 'Move to another machine',
+    'header.botSettings': 'Bot settings',
+    'header.groupSettings': 'Group settings',
     'header.switchModel': 'Switch the model',
     'header.switchMachine': 'Move to another machine',
     'header.oneMachine': 'Only this machine is known. Further ones appear once they are awake, or with "Add machine" in the settings.',

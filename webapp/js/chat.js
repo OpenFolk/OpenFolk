@@ -292,6 +292,7 @@ export function renderChatHeader(p) {
             : g ? g.members.map((m) => senderName(m)).join(', ')
                 : `${isConversation(id) ? b.name : shortFolder(b.folder)}`
                     + (state.context[id] ? ` · ${t('chat.context', { tokens: tokensShort(state.context[id]) })}` : '');
+    p.el.chatSettings.title = p.el.chatSettings.ariaLabel = t(g ? 'header.groupSettings' : 'header.botSettings');
     // the model stays in sight while the line below shows what the bot is doing
     p.el.chatModel.hidden = !b;
     if (b) p.el.chatModel.textContent = modelDisplay(modelOf(id));

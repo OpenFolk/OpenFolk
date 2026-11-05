@@ -644,6 +644,8 @@ registerDictionary('de', {
     'info.approvals': 'Freigaben',
     'info.machine': 'Rechner',
     'info.machineMove': 'Auf einen anderen Rechner umziehen',
+    'header.botSettings': 'Bot-Einstellungen',
+    'header.groupSettings': 'Gruppen-Einstellungen',
     'header.switchModel': 'Modell wechseln',
     'header.switchMachine': 'Auf einen anderen Rechner umziehen',
     'header.oneMachine': 'Nur dieser Rechner ist bekannt. Weitere erscheinen, sobald sie wach sind, oder mit „Rechner hinzufügen“ in den Einstellungen.',
