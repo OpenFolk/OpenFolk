@@ -65,8 +65,14 @@ async function idbGet(k, db) {
     });
 }
 
+/**
+ * Take over the key from what the user entered: the key itself or a pairing link (`…/#e2e=<key>` or
+ * `…/#pair=<token>&e2e=<key>`). Only the key is read; the link's token is not used here. Links carry the key as
+ * base64url without padding, never percent-encoded, so there is nothing to decode.
+ */
 export async function adoptKey(text) {
-    const raw = unb64(text.includes('#e2e=') ? text.split('#e2e=')[1] : text);
+    const link = text.match(/[#&]e2e=([^&\s]+)/);
+    const raw = unb64(link ? link[1] : text);
     if (raw.length !== 32) throw new Error(t('e2e.keyLength'));
     const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
     if (secureStore) await secureStore.set(E2E_SLOT, b64(raw));

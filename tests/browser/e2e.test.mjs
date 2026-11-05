@@ -86,5 +86,29 @@ export default async function ({ start, check }) {
     check('every frame carries the guard', guards.every((r) => r && typeof r.s === 'string' && r.s.length >= 8 && Math.abs(Date.now() - r.t) < 60_000), guards);
     check('one sender, counter grows', new Set(guards.map((r) => r.s)).size === 1 && guards.every((r, i) => i === 0 || r.n > guards[i - 1].n), guards);
     check('nothing sensitive in plain text', !h.sent.some((f) => f.type === 'history' || f.type === 'send'));
+
+    // The "Key needed" dialog takes the key or a whole pairing link; the link's pair token is not used there
+    const b64 = KEY.toString('base64url');
+    const inputs = {
+        'the key alone': b64,
+        'a link with #e2e=': `https://relay.example.com/#e2e=${b64}`,
+        'a link with #pair=…&e2e=': `https://relay.example.com/#pair=tok-1&e2e=${b64}`,
+        'a link with trailing whitespace': `https://relay.example.com/#pair=tok-1&e2e=${b64} \n`,
+    };
+    for (const [name, text] of Object.entries(inputs)) {
+        await p.evaluate(async () => { await forgetKey(); askForKey(''); });
+        const authsBefore = h.sent.filter((f) => f.type === 'auth').length;
+        await p.fill('#key-input', text);
+        await p.click('#key-form button[type=submit]');
+        await h.wait(300);
+        const state = await p.evaluate(() => ({ key: !!e2e.key, closed: document.getElementById('key-dialog').hidden, pair: state.pairToken }));
+        check(`key dialog takes ${name}`, state.key && state.closed, state);
+        check(`key dialog, ${name}: no pair token used`, !state.pair && h.sent.filter((f) => f.type === 'auth').slice(authsBefore).every((f) => !f.pair), h.sent.filter((f) => f.type === 'auth'));
+    }
+    await p.evaluate(async () => { await forgetKey(); askForKey(''); });
+    await p.fill('#key-input', 'https://relay.example.com/#pair=tok-1&e2e=abc');
+    await p.click('#key-form button[type=submit]');
+    await h.wait(200);
+    check('key dialog: a wrong key still shows the error', await p.isVisible('#key-error') && !(await p.evaluate(() => !!e2e.key)));
     await h.close();
 }
