@@ -1,6 +1,7 @@
 /* OpenFolk web app: queue, running answers, approvals and questions, sending and attachments. */
 import { t, tn } from './i18n.js';
 import { el, md, node, state, closest } from './core.js';
+import { codeBlocks } from './code-blocks.js';
 import { activePane, paneFor, paneOf } from './panes.js';
 import { bot, botIdOf, clockTime, colorOf, duration, fileSize, fillAvatar, isGroup, openApprovals, responsibleMachine, send, senderName, showImageLarge, upper } from './e2e.js';
 import { setLast } from './connection.js';
@@ -412,7 +413,7 @@ export function renderLiveText(chatId, botId, now = false) {
     }
     const render = () => {
         l.timer = null;
-        if (l.content) l.content.innerHTML = md(l.text);
+        if (l.content) { l.content.innerHTML = md(l.text); codeBlocks(l.content); }
         scroll(paneFor(chatId));
     };
     if (now) render();
@@ -423,7 +424,7 @@ export function finishLiveText(l) {
     if (l.timer) {
         clearTimeout(l.timer);
         l.timer = null;
-        if (l.content) l.content.innerHTML = md(l.text);
+        if (l.content) { l.content.innerHTML = md(l.text); codeBlocks(l.content); }
     }
     if (l.bubble) l.bubble.classList.remove('streaming');
 }

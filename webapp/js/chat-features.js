@@ -1,6 +1,7 @@
 /* OpenFolk web app: @ mentions, history rendering, unread, pinned messages, replies (quote). */
 import { t } from './i18n.js';
 import { SEEN_KEY, el, mdCached, node, state, storage, closest } from './core.js';
+import { codeBlocks } from './code-blocks.js';
 import { paneFor, paneOf, visibleChats } from './panes.js';
 import { bot, botIdOf, clockTime, colorOf, fillAvatar, group, isConversation, isGroup, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList } from './list.js';
@@ -223,6 +224,7 @@ export function renderEntry(p, e) {
             const content = node('div', 'content');
             content.innerHTML = mdCached(e.text);
             commandButtons(content, chatId, e.botId || (isGroup(chatId) ? null : botIdOf(chatId)));
+            codeBlocks(content);
             b.appendChild(content);
         }
         if (e.attachments && e.attachments.length) b.appendChild(attachmentBar(e.attachments));

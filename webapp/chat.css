@@ -608,6 +608,19 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .bubble .content pre { background: var(--code-bg); padding: 8px 10px; border-radius: 8px; overflow-x: auto; font: 13px/1.4 var(--mono); white-space: pre; }
 .bubble .content code { font: 13px var(--mono); background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
 .bubble .content pre code { background: none; padding: 0; }
+/* The bar above a code block (code-blocks.js): a strip of its own that stays in view while the block is */
+.code-block { margin: .5em 0; }
+.bubble .content .code-block > pre { margin: 0; border-top-left-radius: 0; border-top-right-radius: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble .content .code-block.nowrap > pre { white-space: pre; overflow-wrap: normal; }
+.code-bar {
+    position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 2px; min-height: 30px; padding: 0 4px 0 10px;
+    background: color-mix(in srgb, var(--bubble-bot), var(--text) 10%); border-radius: 8px 8px 0 0; color: var(--muted);
+}
+.code-lang { flex: 1; min-width: 0; font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: none; color: inherit; cursor: pointer; }
+.code-button svg { width: 16px; height: 16px; }
+.code-button:hover { background: var(--hover); color: var(--text); }
+.code-button[aria-pressed="true"] { color: var(--accent); }
 /* ▶ after commands: the bot runs it on a tap */
 .command-run { border: 1px solid var(--line); background: var(--surface); color: var(--accent); border-radius: 10px;
     font-size: 10px; line-height: 1; padding: 3px 6px; margin-left: 4px; cursor: pointer; vertical-align: 1px; }
