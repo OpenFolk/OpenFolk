@@ -40,6 +40,11 @@
     .where { color: var(--text); font-weight: 600; margin-bottom: 14px; }
     .warn { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--error); background: rgba(241, 92, 109, .12); color: var(--text); font-size: 13px; text-align: left; }
     #relay-confirm button { margin-top: 8px; }
+    .or { margin: 14px 0 10px; font-size: 13px; }
+    #qr-form button, #qr-box button { margin-top: 4px; }
+    /* White behind the code in the dark theme too: scanners want dark modules on light ground */
+    #qr-code { width: 220px; margin: 0 auto 10px; padding: 6px; background: #fff; border-radius: 10px; }
+    #qr-code svg { display: block; width: 100%; height: auto; }
     details.folders-setup { margin: 0 0 12px; font-size: 13px; }
     details.folders-setup summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
     [hidden] { display: none !important; }
@@ -84,6 +89,18 @@
                     <p class="error" id="join-error"></p>
                     <button type="submit" class="secondary" data-i18n="setupJoin">Connect this computer</button>
                 </form>
+                <p class="or" data-i18n="setupQrOr">or with your phone, by QR code:</p>
+                <form id="qr-form">
+                    <label for="qr-relay" data-i18n="setupLabel">Relay server URL</label>
+                    <input id="qr-relay" type="text" placeholder="https://openfolk.example.com" autocomplete="url" spellcheck="false">
+                    <p class="error" id="qr-error"></p>
+                    <button type="submit" class="secondary" data-i18n="setupQrShow">Show QR code</button>
+                </form>
+                <div id="qr-box" hidden>
+                    <div id="qr-code"></div>
+                    <p class="hint" id="qr-hint" data-i18n="setupQrHint">Scan it with the OpenFolk app on your phone.</p>
+                    <button type="button" class="secondary" id="qr-cancel" data-i18n="setupQrCancel">Cancel</button>
+                </div>
             </section>
             <section class="option">
                 <div class="head"><span class="badge">C</span><h2 data-i18n="setupRelay">Display only: connect to an existing relay server</h2></div>

@@ -1,11 +1,11 @@
 /* OpenFolk web app: wire up events, devices and keys, light/dark, language, start. */
 import { applyI18n, t } from './i18n.js';
 import { $, AVATAR_EDGE, deviceAccounts, deviceRelays, loadedAccount, relayEntry, relayScope, SIDEBAR_WIDTH_KEY, TEMPLATES, THEME_KEY, el, node, state, storage, templateValues, closest, control, toast } from './core.js';
-import { adoptKey, adoptPairingLink, askForKey, bot, e2eStart, fillAvatar, forgetKey, group, isGroup, responsibleMachine, send } from './e2e.js';
+import { adoptKey, adoptPairingLink, askForKey, bot, e2eStart, fillAvatar, forgetKey, group, isGroup, isPerson, responsibleMachine, send } from './e2e.js';
 import { allChats, checkConnection, checkTotp, connect, credentials, renderAccount, setAgentStatus, showLogin } from './connection.js';
 import { bundled, platformKind, onNotificationOpen, parsePairingLink, relayAddress, requestPushPermission, setRelayAddress } from './platform.js';
 import { CHAT_DRAG, SIDEBAR_PX, activePane, closeSettings, createPane, layoutPanes, paneOf, panes, setActivePane, setSidebarWidth, visibleChats } from './panes.js';
-import { closeChatSearch, listTap, onChatSearchInput, onSearchInput, renderChatList, renderUsage, setupListLongPress, setupListSwipe, setupSearchBox, stepChatSearch } from './list.js';
+import { closeChatSearch, listTap, onChatSearchInput, onSearchInput, openRowMenu, renderChatList, renderUsage, setupListLongPress, setupListSwipe, setupSearchBox, stepChatSearch } from './list.js';
 import { addEmptyPane, closeChat, dropChat, openChat, paneActivated, renderChatHeader, setupSwipeBack, swipeBack } from './chat.js';
 import { renderMachines, wake } from './machines.js';
 import { checkMention, closeMention, markSeen, mentionKey, renderHistory, renderPinned, scroll, setReply, setupMessageMenu, tapPinned, unpinShown } from './chat-features.js';
@@ -161,11 +161,32 @@ function buildNewMenu() {
     el.newMenu.replaceChildren(...newEntries);
 }
 
+/** "Person" only when there is someone on the relay this account may write to. */
+function personEntry() {
+    if (!state.people.length) return [];
+    const b = menuButton('person', t('people.new'));
+    b.dataset.new = 'person';
+    return [b];
+}
+
 el.btnNew.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    el.newMenu.replaceChildren(...newEntries);
+    el.newMenu.replaceChildren(...newEntries, ...personEntry());
     el.newMenu.hidden = !el.newMenu.hidden;
 });
+
+/** "Person": the "+" menu lists whom this account can chat with. */
+function choosePerson() {
+    const info = node('div', 'menu-info');
+    info.append(node('strong', '', t('people.new')), node('span', '', t('people.explain')));
+    const buttons = state.people.map((p) => {
+        const k = menuButton('person', p.name);
+        k.dataset.new = 'person_with';
+        k.dataset.person = p.id;
+        return k;
+    });
+    el.newMenu.replaceChildren(info, ...buttons);
+}
 
 /** "New conversation": the "+" menu shows the bots; sleeping ones (no responsible machine awake) are disabled. */
 function chooseNewConversation() {
@@ -192,7 +213,13 @@ el.newMenu.addEventListener('click', (ev) => {
         chooseNewConversation();
         return;
     }
+    if (kind === 'person') {
+        ev.stopPropagation();
+        choosePerson();
+        return;
+    }
     el.newMenu.hidden = true;
+    if (kind === 'person_with') openChat('p:' + k.dataset.person);
     if (kind === 'conversation_with') {
         const b = bot(k.dataset.bot);
         // The machine answers with conversation_created; then the new conversation opens
@@ -277,8 +304,9 @@ const PANE_CLICKS = {
     'btn-back': (p) => closeChat(p),
     'btn-close': (p) => closeChat(p),
     // the header leads to the bot's page, which also holds what the chat's menu did (a group: its editor)
-    'chat-title': (p) => {
+    'chat-title': (p, ev) => {
         if (isGroup(p.chatId)) openGroupEditor(group(p.chatId));
+        else if (isPerson(p.chatId)) openRowMenu(p.chatId, ev.clientX, ev.clientY);
         else openInfo(p.chatId);
     },
     'chat-model': (p, ev) => { ev.stopPropagation(); toggleHeaderSwitch(p, 'model'); },

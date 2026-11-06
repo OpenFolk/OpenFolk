@@ -511,6 +511,15 @@ function machineForm(host, ms) {
 
     providersForm(host, ms, details);
 
+    // Older backends do not know the folder for bots
+    if ('botFolder' in s) {
+        details.appendChild(node('h4', '', t('settings.botFolder')));
+        const folderField = textField('settings.botFolderField', s.botFolder, (v) => set({ botFolder: v }));
+        /** @type {HTMLInputElement} */ (folderField.querySelector('input')).placeholder = ms.roots?.[0] || '';
+        details.appendChild(folderField);
+        details.appendChild(node('p', 'hint', t('settings.botFolderHint', { roots: (ms.roots || []).join(', ') || '–' })));
+    }
+
     details.appendChild(node('h4', '', t('settings.shutdown')));
     const noShutdown = !ms.offers.shutdown;
     details.appendChild(checkField('settings.shutdownAllowed', s.shutdown && !noShutdown, (v) => set({ shutdown: v }), noShutdown));

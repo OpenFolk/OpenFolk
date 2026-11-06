@@ -5,16 +5,20 @@ import { searchEntries } from './history-index.ts';
 import { accountPath, PRIVATE } from './store.ts';
 import type { HistoryEntry, SearchHit } from '../../shared/protocol.ts';
 
-/** Group chats ('g:<id>') are stored as group-<id>.jsonl next to the bot chats; conversations keep their '~'. */
+/**
+ * Group chats ('g:<id>') are stored as group-<id>.jsonl next to the bot chats, person chats ('p:<account>') as
+ * person-<account>.jsonl (a colon is no file name on Windows); conversations keep their '~'. Bot ids cannot clash:
+ * none starts with 'group-' or 'person-' and is a chat of its own at the same time, as both are written with a prefix.
+ */
 export function historyFile(chatId: string): string {
-    const name = chatId.startsWith('g:') ? `group-${chatId.slice(2)}` : chatId;
+    const name = chatId.startsWith('g:') ? `group-${chatId.slice(2)}` : chatId.startsWith('p:') ? `person-${chatId.slice(2)}` : chatId;
     return accountPath('history', `${name.replace(/[^a-z0-9~-]/gi, '_')}.jsonl`);
 }
 const file = historyFile;
 
 function chatIdFromFile(name: string): string {
     const base = name.replace(/\.jsonl$/, '');
-    return base.startsWith('group-') ? `g:${base.slice(6)}` : base;
+    return base.startsWith('group-') ? `g:${base.slice(6)}` : base.startsWith('person-') ? `p:${base.slice(7)}` : base;
 }
 
 /**
@@ -73,6 +77,21 @@ export function countEntries(chatId: string): number {
 
 export function deleteHistory(chatId: string): void {
     fs.rmSync(file(chatId), { force: true });
+}
+
+/** Removes the entries up to `ts` (a person chat deleted on another machine); newer ones stay. */
+export function dropUntil(chatId: string, ts: string): void {
+    const all = readAll(chatId);
+    const rest = all.filter((e) => e.ts > ts);
+    if (rest.length === all.length) return;
+    if (!rest.length) {
+        deleteHistory(chatId);
+        return;
+    }
+    const p = file(chatId);
+    const tmp = p + '.tmp';
+    fs.writeFileSync(tmp, rest.map((e) => JSON.stringify(e)).join('\n') + '\n', { mode: PRIVATE });
+    fs.renameSync(tmp, p);
 }
 
 /** All chats with history on this machine. */

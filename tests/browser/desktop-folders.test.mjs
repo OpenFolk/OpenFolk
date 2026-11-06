@@ -117,6 +117,7 @@ export default async function ({ check }) {
                         saveFolders: async (list) => { window.__calls.push(['save', list]); return window.__answers.save || { state: 'restarted' }; },
                         chooseLocal: async (list) => { window.__calls.push(['local', list]); return window.__answers.local || {}; },
                         saveAddress: async () => ({}), joinServer: async () => ({}),
+                        qrJoinStart: async () => ({}), qrJoinStop: async () => ({}), onQrJoin: () => {},
                     };`);
                 const p = await context.newPage();
                 const errors = [];

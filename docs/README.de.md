@@ -50,8 +50,8 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   ist der Avatar ein generiertes Foto, sonst ein vom Modell gezeichnetes SVG. Das Feld „Ordner oder Repository“ ist
   ein Textfeld: Der Ordner muss auf dem Rechner des Bots schon existieren und unter dessen freigegebenen Ordnern
   liegen (siehe „Freigegebene Ordner“ unter Dauerbetrieb), sonst lehnt das Backend ihn mit dem Grund ab. Statt eines
-  Ordners nimmt das Feld die Adresse eines Git-Repositorys; dann klont das Backend es beim Speichern in den ersten
-  freigegebenen Ordner. Einen Ordner-Browser gibt es noch nicht.
+  Ordners nimmt das Feld die Adresse eines Git-Repositorys; dann klont das Backend es beim Speichern in den Ordner für
+  Bots des Rechners. „Durchsuchen“ zeigt die Ordner des Rechners, auf dem der Bot wohnt.
 - **Freigaben im Chat.** Je Bot *riskant* (Standard: fragt bei Löschen, Push, Deploy, SSH, Dienst-Neustarts,
   Schreiben außerhalb des Ordners oder in Secrets, Secrets lesen per Shell, Pakete installieren, Code aus dem Internet
   ausführen, erhöhten Rechten, jedem Aufruf eines externen MCP-Dienstes, auch lesenden; jeder Teil eines
@@ -64,14 +64,24 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   den Bots verschlossen, bis die Maschinen-Einstellungen sie zulassen („Connectoren“). Selbst eingerichtete
   MCP-Server (`.mcp.json`, `claude mcp add`) betrifft das nicht.
 - **Rückfragen** eines Bots mit Optionen erscheinen als Karte mit Knöpfen und Freitext.
-- **Push-Benachrichtigungen** je Art (Bot fertig, Routine fertig, Freigabe/Rückfrage, Rechner wach, Abo-Limit)
+- **Push-Benachrichtigungen** je Art (Bot fertig, Routine fertig, Freigabe/Rückfrage, Rechner wach, Abo-Limit, Nachricht einer Person, Übergabe)
   aus, leise, normal oder hoch, für alle Geräte; einzelne Bots und Gruppen schaltet man auf ihrer Seite oder im Menü der Liste stumm. Browser
   bekommen Web Push (Ende-zu-Ende-verschlüsselt), die Mobile-Apps APNs bzw. FCM; dort sehen Apple und Google den
   Inhalt, deshalb zeigt eine App-Benachrichtigung standardmäßig nur den Titel (einstellbar in den Einstellungen).
 - **Routinen** nach Zeitplan (täglich, werktags, wöchentlich, stündlich oder Cron), auf Wunsch mit Wecken des Rechners.
+- **Slash-Commands:** Im Chat eines Bots mit Claude listet „/“ am Anfang der Nachricht die Commands von Claude Code für
+  den Ordner des Bots: eigene (`~/.claude/commands`, Skills), die des Projekts (`.claude/commands`), von Plugins und
+  einige eingebaute wie `/compact` und `/context`. Claude Code führt sie aus wie im Terminal. Eine Nachricht, die mit
+  `/name` beginnt, geht unverändert an den Bot, ohne Zitat oder Gruppenhinweis davor; das wirkt auch in Gruppen und
+  Routinen. Codex und die anderen Engines bekommen keine Liste.
 - **Gruppenchats** mit `@id` und `@all`; Bots können sich per @ weiterreichen.
 - **Bot an Bot** über die Werkzeuge `message_bot` und `list_bots`; welche Bots einer erreicht, steht in seinen
   Einstellungen unter „Kann Aufträge geben an“ (alle, ausgewählte oder keinen).
+- **Chats mit Personen:** „+“ → „Person“ öffnet einen Chat mit jemandem auf demselben Relay, einem Teammitglied oder
+  einem Kunden (siehe Konten). Texte, Dateien und Sprachnachrichten gehen hin und her, mit Benachrichtigung, Ungelesen,
+  Favorit, Stumm und Suche wie bei jedem Chat. Ein Bot mit „Übergabe an“ in seinen Einstellungen bekommt das
+  Werkzeug `hand_over`: Er schickt der Person seine Zusammenfassung, sie bekommt eine Benachrichtigung, und der User
+  im Bot-Chat einen Knopf „Weiter mit …“. Bots lesen Chats zwischen Personen nicht.
 - **Dateien** anhängen, einfügen oder hineinziehen; Bots schicken Dateien mit `send_file`.
 - **Wissen:** Bots sammeln Fakten mit `remember_fact` und verwandten Werkzeugen, je Bot, Ordner, Gruppe oder für alle.
   Mit `search_history` und `read_history` durchsuchen sie außerdem den Verlauf aller Chats auf ihrem Rechner (ohne
@@ -107,9 +117,13 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
 - **Mehrere Rechner:** Auf jedem Rechner läuft dasselbe Backend, die Bots gibt es nur einmal. Jeder Bot wohnt auf
   einem Rechner und arbeitet dort in einem Ordner; schläft der Rechner, schläft der Bot, und die App bietet das
   Wecken an. Nichts weicht von selbst auf einen anderen Rechner aus. Rechner tauschen Arbeit wie Menschen über Git
-  aus: Wird ein Projekt auf zwei Rechnern bearbeitet, hat jeder seinen Klon und seinen Bot. Beim Umzug eines Bots
-  ziehen die Sessions mit dem ganzen Kontext mit, und der Bot-Editor klont das Repository auf den neuen Rechner,
-  wenn es dort noch fehlt (im Feld „Ordner oder Repository“ steht dann die Adresse des Repositorys).
+  aus: Wird ein Projekt auf zwei Rechnern bearbeitet, hat jeder seinen Klon und seinen Bot. Jeder Rechner hat einen
+  Ordner für Bots (in seinen Einstellungen, „Ordner für Bots“; ohne Wahl der erste freigegebene Ordner), und der
+  Rechner eines Bots merkt sich, wo der Bot darunter liegt und welches Repository dazugehört. Ein Umzug ist ein Tipp
+  auf den anderen Rechner auf der Seite des Bots und eine Rückfrage: Der Bot kommt an dieselbe Stelle unter dem Ordner
+  für Bots des neuen Rechners, das Repository wird dort geklont, falls es fehlt, ein Ordner ohne Repository wird
+  angelegt, und die Sessions ziehen mit dem ganzen Kontext mit. Nur wenn die Stelle dort schon anders belegt ist oder
+  der Ordner außerhalb der freigegebenen Ordner liegt, fragt die App nach Ordner und Repository.
 - **Einstellungen:** Sprache, Darstellung, Benachrichtigungen, Geräte und Sicherheit; je Gerät, ob die Antwort auf
   eine Sprachnachricht von selbst vorgelesen wird, sobald sie fertig ist (Standard: an). Für alle Rechner: die
   KI-Dienste (API-Schlüssel von OpenAI und Google Gemini als Liste), das Bildmodell für Profilbilder, die Stimme zum
@@ -201,7 +215,7 @@ optionale npm-Abhängigkeiten (etwa 600 MB); wer nur Claude nutzt, installiert m
 dieser Schritte über die Oberfläche: das Relay übernehmen in den ersten Schritten oder unter Einstellungen → „Geräte und
 Sicherheit“ → „Auf ein Relay auf einem Server umziehen“; ein Gerät koppeln unter „Weiteres Gerät koppeln“; einen weiteren
 Rechner mit dem Link aus „Rechner hinzufügen“, den die Setup-Seite der App nimmt („Diesen Rechner an meinen Server
-anschließen“); Neustart und „Auch ohne Anmeldung laufen“ im Tray-Menü. Ihre `.env` liegt im Profilordner der App
+anschließen“), oder per QR-Code auf der Setup-Seite, den ein angemeldetes Handy scannt; Neustart und „Auch ohne Anmeldung laufen“ im Tray-Menü. Ihre `.env` liegt im Profilordner der App
 (Windows `%APPDATA%\OpenFolk`, macOS `~/Library/Application Support/OpenFolk`, Linux `~/.config/OpenFolk`), nie in
 einem Checkout.
 
@@ -280,7 +294,9 @@ dürfen, mit `;` getrennt; ohne die Variable ist es der Benutzerordner des Backe
 abgelehnt, auch in anderen Konten, und die App gibt Dateien nur aus diesen Ordnern heraus. Wo die Variable steht:
 Quellcode in der `.env` des Checkouts, Desktop-App in der `.env` ihres Profilordners (oben), Container in der `.env`
 neben der Compose-Datei; dort ist `/work` der freigegebene Ordner und `WORK_DIR` der Ordner des Servers dahinter. Das
-Backend nennt die Ordner beim Start in seinem Log. Nach einer Änderung das Backend neu starten.
+Backend nennt die Ordner beim Start in seinem Log. Nach einer Änderung das Backend neu starten. Der **Ordner für Bots**
+in den Einstellungen des Rechners muss in einem freigegebenen Ordner liegen; dorthin ziehen umziehende Bots, und dorthin
+klont der Bot-Editor Repositorys. Leer gelassen ist es der erste freigegebene Ordner.
 
 **Git-Zugang:** Das Backend läuft ohne Terminal, oft als Aufgabe ohne Anmeldung oder im Container, und kann deshalb nie
 nach einem Passwort fragen; git und SSH werden so gestartet, dass sie statt einer Nachfrage scheitern. Damit Bots
@@ -329,7 +345,7 @@ Wecken, Herunterfahren und automatische Anmeldung stellt man über Umgebungsvari
 
 Ein Relay und seine Rechner können mehreren Personen oder Rollen dienen: dir bei der Arbeit und privat, einer
 Kollegin, einem Konto je Kunde. Jedes Konto hat eigene Bots, Chats, Wissen, Geräte und eigene Anmeldungen bei Claude
-und Codex, sodass Abos, Kontingente und Verbrauch getrennt bleiben, und es sieht nichts von den anderen. Wer das Relay
+und Codex, sodass Abos, Kontingente und Verbrauch getrennt bleiben, und von den anderen sieht es nur die Namen und die Chats mit ihnen. Wer das Relay
 eingerichtet hat, besitzt das Hauptkonto; solange es kein zweites gibt, ändert sich nichts.
 
 - **Eine Liste, ein „Hinzufügen“:** Einstellungen → Konten ist eine Liste, nach Relay gruppiert: jedes Konto, in dem
@@ -367,6 +383,12 @@ eingerichtet hat, besitzt das Hauptkonto; solange es kein zweites gibt, ändert 
   Rechners, auf dem sie wohnen.
 - **Löschen:** Ein Admin löscht ein Konto in derselben Liste. Seine Geräte werden sofort abgemeldet; auf jedem Rechner
   wandern seine Daten nach `local/data/deleted-accounts/`, ein Versehen lässt sich dort rückgängig machen.
+- **Chats zwischen Konten:** Jedes Konto kann den anderen Konten auf seinem Relay schreiben („+“ → „Person“). Ein Kunde
+  soll nur sein Team erreichen und keine anderen Kunden: Beim Anlegen das Häkchen „Kunde: chattet nur mit den Admins“
+  setzen, oder später in der Liste „Nur Admins“ bzw. „Erreicht alle“ wählen. Admins erreichen jeden. Ein Konto, das nur
+  chatten soll, braucht keine Claude-Anmeldung; solange es keine Bots hat, zeigt die App ihm statt der Checkliste die
+  Personen, denen es schreiben kann. Jede Seite hat ihre eigene Kopie: Wer den Chat löscht, löscht nur seine.
+  Der Supportbot eines Kunden übergibt an dich, wenn in seinen Einstellungen unter „Übergabe an“ dein Konto steht.
 
 ## Sicherheit
 

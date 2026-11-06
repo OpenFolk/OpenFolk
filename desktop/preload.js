@@ -12,6 +12,9 @@ if (location.protocol === 'file:') {
         pickFolder: () => ipcRenderer.invoke('folders-pick'),
         saveFolders: (list) => ipcRenderer.invoke('folders-save', list),
         joinServer: (link) => ipcRenderer.invoke('join-server', link),
+        qrJoinStart: (url) => ipcRenderer.invoke('qr-join-start', url),
+        qrJoinStop: () => ipcRenderer.invoke('qr-join-stop'),
+        onQrJoin: (handler) => ipcRenderer.on('qr-join', (e, state) => handler(state)),
         info: () => ipcRenderer.invoke('info'),
     });
 }

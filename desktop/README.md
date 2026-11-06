@@ -28,6 +28,9 @@ and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; ev
     signed in) joins this computer to that relay: `../local/tools/join.mjs` writes the relay, a token of this
     computer's own and the end-to-end key into the profile's `.env`, and the app runs the backend as "on this
     computer", only with the relay on the server. The window comes from there and signs itself in with a pairing link.
+    Instead of the link, the page shows a QR code for the relay's address (`qr-join.js`): a signed-in phone scans it,
+    the user confirms there, a backend mints the invitation and the phone sends it back sealed for the app's key, as in
+    the QR sign-in of a device (`webapp/js/qr-login.js`, `kind=machine` in the code). The relay only passes the box on.
 - **Moving to a relay on a server:** "on this computer" can move later. The first steps or the settings claim a
   relay with the setup code from its log; the backend moves over at once and writes `RELAY_URL` into the profile's
   `.env`. The window takes the pairing link of the new relay and is signed in there from then on (`backend.js` reads

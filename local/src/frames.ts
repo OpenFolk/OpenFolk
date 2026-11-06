@@ -13,7 +13,7 @@ const str = z.string();
 const id = z.string().min(1).max(200);
 const loose = z.looseObject;
 
-const pushKind = z.enum(['done', 'routine', 'approval', 'awake', 'limit']);
+const pushKind = z.enum(['done', 'routine', 'approval', 'awake', 'limit', 'message', 'handover']);
 const pushPriority = z.enum(['off', 'quiet', 'normal', 'high']);
 const knowledgeLocation = loose({ scope: z.enum(['bot', 'folder', 'group', 'all']), key: str });
 const quote = loose({ id: str, from: str, text: str });
@@ -26,7 +26,7 @@ const botInput = loose({
     id: str, name: str, area: str.optional(), role: str.optional(), folder: str, model: str.optional(), tone: str.optional(), avatar: str.nullish(),
     approval: z.enum(['never', 'risky', 'write']).optional(), favorite: z.boolean().optional(), muted: z.boolean().optional(),
     voice: z.enum(['', ...BOT_VOICES]).optional(), machine: str.optional(), machineOnly: z.boolean().optional(), canMessage: z.array(str).nullish(),
-    allowedTools: z.array(str).max(500).optional(),
+    allowedTools: z.array(str).max(500).optional(), contact: z.string().max(64).nullish(),
 });
 const groupInput = loose({ id: str, name: str, avatar: str.nullish(), members: z.array(str), favorite: z.boolean().optional(), muted: z.boolean().optional() });
 const routineInput = loose({ id: str, botId: id, name: str, cron: str, prompt: str, enabled: z.boolean(), wake: z.boolean().optional() });
@@ -58,7 +58,7 @@ const machineSettings = loose({
     idleMinutes: upTo(MACHINE_SETTINGS_MAX.idleMinutes).optional(), handoverIde: z.boolean().optional(), handoverTerminal: z.boolean().optional(),
     voiceModel: z.enum(VOICE_MODELS).optional(), voiceDevice: z.enum(VOICE_DEVICES).optional(), voicePreload: z.boolean().optional(),
     gitPushUser: z.string().max(200).optional(), gitPushHost: z.preprocess((v) => (typeof v === 'string' ? gitHostOf(v) : v), z.string().max(253).regex(/^[a-z0-9.:-]*$/i)).optional(),
-    claudeAiConnectors: z.boolean().optional(),
+    claudeAiConnectors: z.boolean().optional(), botFolder: z.string().max(1000).optional(),
 });
 
 const frame = <T extends string, S extends z.core.$ZodLooseShape>(type: T, shape: S = {} as S) => loose({ type: z.literal(type), ...shape });
@@ -73,6 +73,7 @@ const SCHEMAS = {
     folder_clone: frame('folder_clone', { url: z.string().min(1).max(1000), folder: z.string().min(1).max(1000).optional() }),
     folder_propose: frame('folder_propose', { url: z.string().min(1).max(1000) }),
     folder_list: frame('folder_list', { folder: z.string().max(1000) }),
+    bot_move: frame('bot_move', { botId: id, dryRun: z.boolean().optional() }),
     group_save: frame('group_save', { group: groupInput }),
     group_delete: frame('group_delete', { groupId: id }),
     favorite: frame('favorite', { chatId: id, on: z.boolean() }),
@@ -100,6 +101,7 @@ const SCHEMAS = {
     vscode_close: frame('vscode_close', { sessionId: id }),
     vscode_adopt: frame('vscode_adopt', { botId: id, sessionId: id, folder: str.optional() }),
     vscode_show: frame('vscode_show', { chatId: id, target: z.enum(HANDOVER_TARGETS).optional() }),
+    commands: frame('commands', { botId: id }),
     git_changes: frame('git_changes', { botId: id }),
     git_commit: frame('git_commit', { botId: id, path: str, message: str }),
     git_pull: frame('git_pull', { botId: id, path: str }),
@@ -118,6 +120,8 @@ const SCHEMAS = {
     file_get: frame('file_get', { path: z.string().min(1) }),
     speech_get: frame('speech_get', { id, text: z.string().min(1).max(SPEECH_TEXT_MAX), voice: z.enum(BOT_VOICES).optional() }),
     push_subscribe: frame('push_subscribe', { subscription: pushSubscription }),
+    people: frame('people'),
+    person_chat_delete: frame('person_chat_delete', { account: z.string().min(1).max(64) }),
     pair_link: frame('pair_link', { token: str.max(200).optional(), expiresAt: str.max(40).optional() }),
     engine_login: frame('engine_login', { engine: z.enum(DEVICE_LOGIN_ENGINES) }),
     claude_sign_in: frame('claude_sign_in'),
@@ -170,6 +174,7 @@ const PEER_SCHEMAS = {
             knowledge: z.record(str, loose({})).optional(), history: z.record(str, z.array(historyEntry)).optional(),
             pinned: z.record(str, loose({ entries: z.array(pinnedEntry), updatedAt: str })).optional(), seen: z.record(str, seenEntry).optional(),
             apiKeys: loose({ keys: z.record(str, str), updatedAt: str }).optional(),
+            personChats: z.array(loose({ id, updatedAt: str })).optional(),
         }),
     }),
     history: peer('history', { chatId: id, entries: z.array(historyEntry) }),

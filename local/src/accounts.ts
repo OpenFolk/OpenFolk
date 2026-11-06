@@ -9,6 +9,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { accountFolder, dataPath, DEFAULT_ACCOUNT, inAccount, isAccountId, retireAccount } from './store.ts';
 import { accountHandler, type AccountRouter, type RelayHandler } from './relay-client.ts';
+import { setPeople } from './people.ts';
+import type { HistoryEntry, Person } from '../../shared/protocol.ts';
+
+/** What a person chat needs of the other account's manager: its half of a message (people.ts). */
+export interface PersonInbox {
+    fromPerson(from: string, entry: HistoryEntry, kind?: 'message' | 'handover'): void;
+}
 
 /** What the router needs of a BotManager; agent.ts implements it. */
 export interface AccountManager extends RelayHandler {
@@ -17,6 +24,11 @@ export interface AccountManager extends RelayHandler {
     busy(): boolean;
     inUse(): boolean;
     othersInUse: () => boolean;
+    /** Runs `fn` with another account's manager, in that account's context; false if this machine does not serve it. */
+    otherAccount: (account: string, fn: (m: PersonInbox) => void) => boolean;
+    /** The relay's list of people changed. */
+    peopleChanged(): void;
+    fromPerson(from: string, entry: HistoryEntry, kind?: 'message' | 'handover'): void;
 }
 
 export class Accounts implements AccountRouter {
@@ -42,6 +54,12 @@ export class Accounts implements AccountRouter {
         if (known) return known;
         const manager = inAccount(account, () => this.create(account));
         manager.othersInUse = () => [...this.managers].some(([id, m]) => id !== account && m.manager.inUse());
+        manager.otherAccount = (id, fn) => {
+            const other = this.managers.get(id);
+            if (!other || id === account) return false;
+            inAccount(id, () => fn(other.manager));
+            return true;
+        };
         const entry = { manager, handler: accountHandler(account, manager) };
         this.managers.set(account, entry);
         inAccount(account, () => manager.start());
@@ -80,6 +98,12 @@ export class Accounts implements AccountRouter {
         this.multi = true;
         for (const id of deleted) this.deleted(id);
         for (const id of accounts) if (isAccountId(id) && !deleted.includes(id)) this.serve(id);
+    }
+
+    /** The relay's accounts with names and reach (person chats); every account's browsers get their contacts again. */
+    people(list: Person[]): void {
+        setPeople(list);
+        for (const [id, m] of this.managers) inAccount(id, () => m.manager.peopleChanged());
     }
 
     added(account: string): void {

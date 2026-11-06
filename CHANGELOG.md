@@ -5,6 +5,37 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-06
+
+### Added
+- Chats with people: "+" → "Person" writes to another account on the same relay, a team member or a customer, with
+  files, voice messages, notifications, unread, favorite, mute and search. Each side keeps its own copy. Person
+  chats and customer accounts need the relay of this version; update it together with the apps.
+- Customer accounts: "Customer: chats with the admins only" when creating an account, or "Admins only" and "Reaches
+  everyone" in the list, so a customer reaches their team and no other customer.
+- Hand-over from a bot to a person: "Hand over to" in the bot's settings gives it the tool `hand_over`; the person gets
+  the bot's summary and a notification, the user a "Continue with …" button in the bot's chat.
+- Push kinds "Message from a person" and "A bot hands a chat over to you".
+- Slash commands: "/" at the start of a message in a bot's chat lists Claude Code's commands for its folder (your own,
+  the project's, plugins', a few built-in ones). A message starting with `/name` reaches the bot without a quote,
+  delegation or group note in front, so Claude Code runs it, also in groups and routines.
+- Desktop app: "Also connect this computer to my relay server" works by QR code too. The setup page shows a code for
+  the relay's address, a signed-in phone scans it and confirms, and the computer joins without copying a link.
+- Moving a bot to another machine needs no folder or repository any more: a tap on the machine and one confirmation.
+  Each machine has a "Folder for bots" in its settings, a bot's machine remembers where the bot lives below it and its
+  repository, and the new machine puts the bot at the same place below its own folder for bots, cloning the
+  repository or creating the folder. The dialog with both fields stays for a place that is taken there. The bot
+  editor's clones go into the folder for bots too.
+
+### Fixed
+- VS Code sessions of a bot whose folder sits behind a junction or symlink, or has a very long path, are listed and
+  followed again: OpenFolk names the transcript folder the way Claude Code does (resolved path, cut at 200 characters
+  plus a hash, `CLAUDE_CODE_PROJECT_DIR_NAME`).
+
+### Security
+- Moving to a relay of one's own: the page follows the link from the backend only if it leads to the relay typed into
+  the form (http or https), never elsewhere.
+
 ## [0.2.1] - 2026-11-04
 
 ### Added
@@ -240,7 +271,8 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.1...v0.1.2

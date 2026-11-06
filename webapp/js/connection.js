@@ -2,18 +2,18 @@
 import { t, tn } from './i18n.js';
 import { COLLAPSED_KEY, DEVICE_KEY, TOKEN_KEY, el, state, storage } from './core.js';
 import { activePane, capacity, createPane, isWide, paneFor, panes, rememberedPanes, visibleChats } from './panes.js';
-import { askForKey, bot, botIdOf, decrypt, e2e, group, imageOriginal, isGroup, mergeStates, plain, send, senderName, upper } from './e2e.js';
+import { askForKey, bot, botIdOf, decrypt, e2e, group, imageOriginal, isGroup, isPerson, mergeStates, plain, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList, renderSearchResult, renderUsage, setSearchMarks } from './list.js';
 import { BRIEFLY_GONE_MS, closeChat, loadingBar, openChat, renderChatHeader, renderHeaders, updateSendAllowed } from './chat.js';
 import { BACKEND_GONE_MS, refreshMachinesPage, renderMachines, scheduleWakePoll } from './machines.js';
-import { historyUnchanged, markSeen, noteIncoming, receiveSeen, renderEntry, renderHistory, renderPinned, scroll, setRead } from './chat-features.js';
+import { historyUnchanged, markSeen, receiveCommands, noteIncoming, receiveSeen, renderEntry, renderHistory, renderPinned, scroll, setRead } from './chat-features.js';
 import { approvalsToBottom, attachmentBar, dropStaleLive, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
 import { imageRequested, playback, removeVoicePending, startPlayback } from './voice.js';
 import { bundled, connectionVia, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
 import { closeDialog, gitError, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
 import { receiveVscodeHistory, receiveVscodeSessions, renderVscodeAdoptButton, showVscodeList, vs, vscodeError, vscodeShown } from './vscode.js';
 import {
-    fillInfo, folderRequestUnknown, knowledgeError, openInfo, pickerFailed, receiveCloned, receiveFolderChecked, receiveFolderListed, receiveFolderProposed,
+    continueMove, fillInfo, folderRequestUnknown, knowledgeError, moveRequestFailed, openInfo, pickerFailed, receiveCloned, receiveFolderChecked, receiveFolderListed, receiveFolderProposed, receiveMoved,
     receiveSuggestion, renderRoutines, suggestButton,
 } from './editors.js';
 import { checkPush, renderPushSettings } from './push.js';
@@ -295,7 +295,7 @@ function receive(f) {
             receiveMachineTokens(f.list);
             break;
         case 'machine_join_link':
-            renderMachineJoin(f);
+            if (!approvalLink(f)) renderMachineJoin(f);
             break;
         case 'totp_setup':
             renderTotpSetup(f);
@@ -332,6 +332,7 @@ function receive(f) {
             for (const r of Object.keys(state.gitPerMachine)) if (!f.online.includes(r)) delete state.gitPerMachine[r];
             for (const r of Object.keys(state.backendPerMachine)) if (!f.online.includes(r)) delete state.backendPerMachine[r];
             renderGitTotal();
+            continueMove();
             // The first steps (empty list) show which machines are connected
             if (!allChats().length) renderChatList();
             for (const [id, a] of Object.entries(state.approvals)) if (a.machine && !f.online.includes(a.machine)) delete state.approvals[id];
@@ -401,6 +402,7 @@ function receive(f) {
             const r = f.machine || '?';
             state.machineSettings[r] = {
                 settings: f.settings, anthropicKey: f.anthropicKey, gitPushToken: f.gitPushToken, engineKeys: f.engineKeys, keyFallback: f.keyFallback, offers: f.offers, shutdownMethod: f.shutdownMethod, voice: f.voice,
+                roots: f.roots,
             };
             settingsSaved(r);
             if (!el.settings.hidden) renderSettings();
@@ -450,6 +452,17 @@ function receive(f) {
                     renderChatHeader(p);
                     renderApprovals(p);
                 }
+            }
+            break;
+        case 'people':
+            state.people = f.list || [];
+            state.personChats = f.chats || [];
+            for (const id of personChatIds()) if (!(id in state.last)) send({ type: 'history', chatId: id, limit: 1 });
+            renderChatList();
+            for (const p of panes) if (p.chatId && isPerson(p.chatId)) renderChatHeader(p);
+            if (state.openAfterBots && allChats().includes(state.openAfterBots)) {
+                openChat(state.openAfterBots);
+                state.openAfterBots = null;
             }
             break;
         case 'history': {
@@ -534,6 +547,9 @@ function receive(f) {
             break;
         case 'vscode_shown':
             vscodeShown(f);
+            break;
+        case 'commands':
+            receiveCommands(f);
             break;
         case 'git_changes':
             receiveGitChanges(f);
@@ -692,7 +708,7 @@ function receive(f) {
         case 'error': {
             const message = messageText(f);
             if (f.request === 'settings_save' || f.request === 'machine_settings_save') settingsSaveFailed();
-            if ((f.request === 'pair_request' || f.request === 'pair_approve' || f.request === 'pair_link') && approvalError(message)) break;
+            if (['pair_request', 'pair_approve', 'pair_link', 'machine_join_link'].includes(f.request) && approvalError(message)) break;
             if (f.request && f.request.startsWith('totp_')) {
                 totpError(message);
                 break;
@@ -710,6 +726,8 @@ function receive(f) {
             }
             // Warming up is only a speed-up; an older backend does not know it
             if (f.request === 'voice_warmup') break;
+            // The command list is a help while typing: without one (older backend, folder missing) there is simply none
+            if (f.request === 'commands') break;
             if (f.request === 'claude_sign_in') {
                 signInTerminalAnswer(f.machine || '?', message);
                 break;
@@ -728,6 +746,10 @@ function receive(f) {
             }
             if (f.request === 'folder_list') {
                 pickerFailed(message);
+                break;
+            }
+            if (f.request === 'bot_move') {
+                moveRequestFailed();
                 break;
             }
             if (f.request === 'backend_restart') {
@@ -763,6 +785,9 @@ function receive(f) {
             break;
         case 'folder_proposed':
             receiveFolderProposed(f);
+            break;
+        case 'bot_moved':
+            receiveMoved(f);
             break;
         case 'folder_listed':
             receiveFolderListed(f);
@@ -835,14 +860,24 @@ export function renderAccount() {
     ].filter(Boolean).join(' | ');
 }
 
+/** What carries favorite and mute of a chat: its bot, its group, or the record of a person chat (made on first use). */
+function flagsOf(chatId) {
+    if (isGroup(chatId)) return group(chatId);
+    if (!isPerson(chatId)) return bot(chatId);
+    const id = chatId.slice(2);
+    let c = state.personChats.find((x) => x.id === id);
+    if (!c) state.personChats.push(c = { id, updatedAt: '' });
+    return c;
+}
+
 export function isFavorite(chatId) {
-    const o = isGroup(chatId) ? group(chatId) : bot(chatId);
+    const o = flagsOf(chatId);
     return !!(o && o.favorite);
 }
 
 /** Toggle the favorite in the list right away; the backend stores it and syncs it with the other machines. */
 export function toggleFavorite(chatId) {
-    const o = isGroup(chatId) ? group(chatId) : bot(chatId);
+    const o = flagsOf(chatId);
     if (!o) return;
     o.favorite = !o.favorite;
     send({ type: 'favorite', chatId, on: o.favorite });
@@ -850,21 +885,27 @@ export function toggleFavorite(chatId) {
 }
 
 export function isMuted(chatId) {
-    const o = isGroup(chatId) ? group(chatId) : bot(chatId);
+    const o = flagsOf(chatId);
     return !!(o && o.muted);
 }
 
 export function toggleMuted(chatId) {
-    const o = isGroup(chatId) ? group(chatId) : bot(chatId);
+    const o = flagsOf(chatId);
     if (!o) return;
     o.muted = !o.muted;
     send({ type: 'mute', chatId, on: o.muted });
     renderChatList();
 }
 
-/** Main chats of the bots and groups (without further conversations). */
+/** Person chats there can be: one per contact, and those with someone this account no longer reaches. */
+export function personChatIds() {
+    return [...new Set([...state.people.map((p) => p.id), ...state.personChats.filter((c) => !c.cleared || state.lastTs['p:' + c.id]).map((c) => c.id)])].map((id) => 'p:' + id);
+}
+
+/** Main chats of the bots and groups (without further conversations), and the person chats with something in them. */
 export function baseChats() {
-    return [...state.bots.map((b) => b.id), ...state.groups.map((g) => 'g:' + g.id)];
+    return [...state.bots.map((b) => b.id), ...state.groups.map((g) => 'g:' + g.id),
+        ...personChatIds().filter((id) => state.lastTs[id] || isFavorite(id) || paneFor(id))];
 }
 
 export function conversationsOf(b) {
@@ -888,7 +929,7 @@ export function toggleConversations(botId) {
 }
 
 export function allChats() {
-    return [...state.bots.flatMap((b) => [b.id, ...conversationsOf(b)]), ...state.groups.map((g) => 'g:' + g.id)];
+    return [...state.bots.flatMap((b) => [b.id, ...conversationsOf(b)]), ...state.groups.map((g) => 'g:' + g.id), ...personChatIds()];
 }
 
 /** Whether a bot's status line belongs into a chat: its own chat, or a group it is answering in right now. */
@@ -913,6 +954,8 @@ function restorePanes() {
     const wanted = param.get('chat');
     const remembered = isWide() ? rememberedPanes().filter((id) => id && allChats().includes(id)) : [];
     const ids = remembered.length ? remembered : wanted && allChats().includes(wanted) ? [wanted] : [];
+    // The people come in a frame of their own, maybe after the bots
+    if (wanted && isPerson(wanted) && !allChats().includes(wanted)) state.openAfterBots = wanted;
     ids.slice(0, capacity()).forEach((id, i) => openChat(id, undefined, undefined, i === 0 ? activePane() : createPane()));
     if (wanted && allChats().includes(wanted)) {
         openChat(wanted);

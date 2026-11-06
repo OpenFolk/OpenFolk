@@ -17,6 +17,7 @@ const path = require('node:path');
 const { Backend, dataDir, freePort, guardQuit, joinServer, profileRoots, remoteUrl, root, setProfileEnv } = require('./backend.js');
 const task = require('./task.js');
 const { watchHandovers } = require('./handover.js');
+const { startQrJoin, stopQrJoin } = require('./qr-join.js');
 const { startUpdates, updateMenuItems } = require('./updater.js');
 
 const CONFIG = () => path.join(app.getPath('userData'), 'config.json');
@@ -177,6 +178,19 @@ const TEXTS = {
         setupJoinHint: 'Bots run on this computer, and phone and browser reach them through your relay server. Create the link in the app on a signed-in device: Settings, Machines, “Add machine”, then paste it here.',
         setupJoinLabel: 'Link from “Add machine”',
         setupJoin: 'Connect this computer',
+        setupQrOr: 'Or with your phone, by QR code: enter the address of your relay server, show the code and scan it with OpenFolk on your phone.',
+        setupQrShow: 'Show QR code',
+        setupQrHint: 'Scan it with OpenFolk on your phone (Settings, Devices, “Scan QR code”) or with the phone’s camera, then confirm there. The code is renewed when it expires.',
+        setupQrCancel: 'Cancel',
+        setupQrJoining: 'Approved, connecting this computer …',
+        setupQrFailed: {
+            unreachable: 'The relay server does not answer ({message}). Check the address.',
+            closed: 'The connection to the relay server dropped ({message}). Show a new code.',
+            refused: 'The relay server refused the request: {message}',
+            open: 'The answer from your phone could not be opened ({message}). Show a new code.',
+            old_app: 'Your phone signed in a device instead of connecting a computer: its OpenFolk is too old for this. Update it, or use the link from “Add machine”.',
+            join: '{message}',
+        },
         joinFailed: {
             not_a_link: 'That is not a link. Copy the whole link from “Add machine”.',
             no_invitation: 'The link has no invitation in it. Create a new one: Settings, Machines, “Add machine”.',
@@ -295,6 +309,19 @@ const TEXTS = {
         setupJoinHint: 'Hier laufen Bots, und Handy und Browser erreichen sie über deinen Relay-Server. Den Link erzeugst du in der App auf einem angemeldeten Gerät: Einstellungen, Rechner, „Rechner hinzufügen“, dann fügst du ihn hier ein.',
         setupJoinLabel: 'Link aus „Rechner hinzufügen“',
         setupJoin: 'Rechner anschließen',
+        setupQrOr: 'Oder mit dem Handy per QR-Code: Adresse deines Relay-Servers eingeben, Code anzeigen und mit OpenFolk auf dem Handy scannen.',
+        setupQrShow: 'QR-Code anzeigen',
+        setupQrHint: 'Mit OpenFolk auf dem Handy scannen (Einstellungen, Geräte, „QR-Code scannen“) oder mit der Kamera des Handys, dann dort bestätigen. Läuft der Code ab, kommt ein neuer.',
+        setupQrCancel: 'Abbrechen',
+        setupQrJoining: 'Freigegeben, der Rechner wird angeschlossen …',
+        setupQrFailed: {
+            unreachable: 'Der Relay-Server antwortet nicht ({message}). Adresse prüfen.',
+            closed: 'Die Verbindung zum Relay-Server ist abgebrochen ({message}). Neuen Code anzeigen.',
+            refused: 'Der Relay-Server hat die Anfrage abgelehnt: {message}',
+            open: 'Die Antwort vom Handy ließ sich nicht öffnen ({message}). Neuen Code anzeigen.',
+            old_app: 'Dein Handy hat ein Gerät angemeldet statt einen Rechner anzuschließen: Sein OpenFolk ist dafür zu alt. Aktualisieren oder den Link aus „Rechner hinzufügen“ nehmen.',
+            join: '{message}',
+        },
         joinFailed: {
             not_a_link: 'Das ist kein Link. Den ganzen Link aus „Rechner hinzufügen“ kopieren.',
             no_invitation: 'Im Link steckt keine Einladung. Eine neue erstellen: Einstellungen, Rechner, „Rechner hinzufügen“.',
@@ -433,6 +460,7 @@ function normalizeAddress(input) {
 
 function loadWebApp() {
     choosing = false;
+    stopQrJoin();
     // The web app tells "on this computer" (it has the menu "Allowed folders …") from a display-only window by this mark
     win.webContents.setUserAgent(config.mode === 'local' ? `${baseAgent} OpenFolkLocal` : baseAgent);
     if (config.mode === 'local') void startLocal();
@@ -514,6 +542,30 @@ async function pairAgain() {
     } catch (e) {
         win.loadFile(SETUP, { query: { error: e.message, log: backend.log } });
     }
+}
+
+/**
+ * Joins this computer to a relay with the invitation from "Add machine" (pasted or received by QR code) and starts the
+ * backend against it; the window then signs itself in with a pairing link from that backend (startLocal).
+ */
+async function joinWith(link) {
+    stopQrJoin();
+    const r = await joinServer(link);
+    if (!r.ok) {
+        const text = TEXTS[language()].joinFailed[r.error] ?? TEXTS.en.joinFailed[r.error];
+        return { error: text ? text.replace('{message}', r.message || '') : r.message || r.error };
+    }
+    // A backend of "on this computer" still runs against the embedded relay: start it anew with the new .env
+    if (backend) {
+        await backend.stop();
+        backend = null;
+    }
+    config.mode = 'local';
+    config.paired = '';
+    saveConfig();
+    createMenu();
+    loadWebApp();
+    return { machine: r.machine };
 }
 
 /** The window signed itself in at a relay with a pairing link in its address: remembered, so the next start needs no new one. */
@@ -888,22 +940,27 @@ if (!app.requestSingleInstanceLock()) {
     });
     ipcMain.handle('join-server', async (e, link) => {
         if (!fromSetup(e)) return { error: 'not allowed' };
-        const r = await joinServer(link);
-        if (!r.ok) {
-            const text = TEXTS[language()].joinFailed[r.error] ?? TEXTS.en.joinFailed[r.error];
-            return { error: text ? text.replace('{message}', r.message || '') : r.message || r.error };
+        return joinWith(link);
+    });
+    // The same invitation by QR code: a signed-in device scans it and sends the link back sealed (qr-join.js)
+    ipcMain.handle('qr-join-start', async (e, input) => {
+        if (!fromSetup(e)) return { error: 'not allowed' };
+        const url = normalizeAddress(input);
+        if (!url) return { error: t('invalidAddress') };
+        const sender = e.sender;
+        try {
+            await startQrJoin({
+                relay: url, root: root(),
+                emit: (state) => { if (!sender.isDestroyed()) sender.send('qr-join', state); },
+                onLink: async (link) => (await joinWith(link)).error || '',
+            });
+        } catch (err) {
+            return { error: err.message };
         }
-        // A backend of "on this computer" still runs against the embedded relay: start it anew with the new .env
-        if (backend) {
-            await backend.stop();
-            backend = null;
-        }
-        config.mode = 'local';
-        config.paired = '';
-        saveConfig();
-        createMenu();
-        loadWebApp();
-        return { machine: r.machine };
+        return {};
+    });
+    ipcMain.handle('qr-join-stop', (e) => {
+        if (fromSetup(e)) stopQrJoin();
     });
     ipcMain.handle('folders-info', (e) => (!fromSetup(e) ? {} : { roots: profileRoots(), home: os.homedir(), defaultRoot: DEFAULT_ROOT(), env: process.env.ALLOWED_ROOTS || '', language: language(), texts: TEXTS[language()] }));
     ipcMain.handle('folders-pick', async (e) => {

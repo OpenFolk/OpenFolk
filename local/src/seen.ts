@@ -7,7 +7,7 @@ import type { SeenEntry } from '../../shared/protocol.ts';
 
 export type SeenState = Record<string, SeenEntry>;
 
-const CHAT_ID = /^(g:[a-z0-9-]+|[a-z0-9-]+(~[a-z0-9]+)?)$/;
+const CHAT_ID = /^([gp]:[a-z0-9-]+|[a-z0-9-]+(~[a-z0-9]+)?)$/;
 const ISO = /^\d{4}-\d\d-\d\dT[\d:.]+Z$/;
 
 export function loadSeen(): SeenState {

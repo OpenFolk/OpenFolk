@@ -1,8 +1,8 @@
-/* OpenFolk web app: @ mentions, history rendering, unread, pinned messages, replies (quote). */
+/* OpenFolk web app: @ mentions, / commands, history rendering, unread, pinned messages, replies (quote). */
 import { t } from './i18n.js';
 import { SEEN_KEY, el, mdCached, node, state, storage, closest } from './core.js';
-import { paneFor, paneOf, visibleChats } from './panes.js';
-import { bot, botIdOf, clockTime, colorOf, fillAvatar, group, isConversation, isGroup, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
+import { paneFor, paneOf, panes, visibleChats } from './panes.js';
+import { bot, botIdOf, clockTime, colorOf, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, person, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList } from './list.js';
 import { openChat } from './chat.js';
 import { attachmentBar, displayTime, getLive, isQueued, liveWrap, renderApprovals, renderLiveText, renderQueue, renderTools, speaker, textHeight, titleFrom, toolRow } from './queue.js';
@@ -26,13 +26,17 @@ function mentionCandidates(chatId) {
 export function checkMention(p) {
     const text = p.el.text;
     const pos = text.selectionStart;
-    const m = text.selectionEnd === pos ? /(?:^|\s)@([\p{L}\p{N}_-]*)$/u.exec(text.value.slice(0, pos)) : null;
+    const before = text.selectionEnd === pos ? text.value.slice(0, pos) : '';
+    const c = /^\/([\p{L}\p{N}_:.-]*)$/u.exec(before);
+    if (c && p.chatId) return checkCommand(p, c[1]);
+    const m = /(?:^|\s)@([\p{L}\p{N}_-]*)$/u.exec(before);
     if (!m || !p.chatId) return closeMention(p);
     const query = m[1].toLowerCase();
     const hits = mentionCandidates(p.chatId)
         .filter((b) => !query || b.id.toLowerCase().includes(query) || (b.name || '').toLowerCase().includes(query))
         .sort((a, b) => Number(!a.id.toLowerCase().startsWith(query)) - Number(!b.id.toLowerCase().startsWith(query)));
     if (hits.length === 0) return closeMention(p);
+    p.mention.kind = 'bot';
     p.mention.start = pos - m[1].length - 1;
     p.mention.hits = hits;
     p.mention.active = Math.min(p.mention.active, hits.length - 1);
@@ -43,18 +47,29 @@ export function checkMention(p) {
 function renderMention(p) {
     const list = p.el.mention;
     list.innerHTML = '';
+    const commands = p.mention.kind === 'command';
+    list.setAttribute('aria-label', t(commands ? 'commands.label' : 'mention.label'));
     p.mention.hits.forEach((b, i) => {
         const row = node('div', 'match' + (i === p.mention.active ? ' active' : ''));
         row.setAttribute('role', 'option');
+        // mousedown instead of click: the input keeps the focus, the keyboard on the phone stays open
+        row.addEventListener('mousedown', (ev) => { ev.preventDefault(); chooseMention(p, i); });
+        list.appendChild(row);
+        if (commands) {
+            const who = node('div', 'who');
+            const name = node('span', '', '/' + b.name);
+            if (b.argumentHint) name.appendChild(node('span', 'hint', ' ' + b.argumentHint));
+            who.appendChild(name);
+            if (b.description) who.appendChild(node('span', 'role', b.description));
+            row.appendChild(who);
+            return;
+        }
         const av = node('div', 'avatar');
         fillAvatar(av, b, b.id);
         const who = node('div', 'who');
         who.appendChild(node('span', '', `${b.name} · @${b.id}`));
         if (b.area || b.role) who.appendChild(node('span', 'role', b.area || b.role));
         row.append(av, who);
-        // mousedown instead of click: the input keeps the focus, the keyboard on the phone stays open
-        row.addEventListener('mousedown', (ev) => { ev.preventDefault(); chooseMention(p, i); });
-        list.appendChild(row);
     });
     list.hidden = false;
     const active = list.children[p.mention.active];
@@ -67,7 +82,7 @@ function chooseMention(p, i) {
     if (!b) return;
     const text = p.el.text;
     const v = text.value;
-    const before = v.slice(0, p.mention.start) + '@' + b.id + ' ';
+    const before = v.slice(0, p.mention.start) + (p.mention.kind === 'command' ? '/' + b.name : '@' + b.id) + ' ';
     text.value = before + v.slice(text.selectionStart).replace(/^\S*\s?/, '');
     text.setSelectionRange(before.length, before.length);
     closeMention(p);
@@ -77,6 +92,7 @@ function chooseMention(p, i) {
 
 /** @param {Pane} p */
 export function closeMention(p) {
+    p.mention.kind = 'bot';
     p.mention.start = -1;
     p.mention.hits = [];
     p.mention.active = 0;
@@ -101,6 +117,63 @@ export function mentionKey(p, ev) {
     }
     ev.preventDefault();
     return true;
+}
+
+// ---------------------------------------------------------- / commands
+// "/" at the start of a message in a bot's chat suggests the slash commands Claude Code offers in the bot's folder:
+// the user's, the project's, plugins' and a few built-in ones. The machine reports them on request (commands.ts); kept
+// here for a few minutes per bot. Groups and other engines get none: the commands belong to Claude Code and to the
+// folder of one bot. The list shares the element, keys and choosing with the @ mentions.
+
+const COMMANDS_FRESH_MS = 5 * 60_000;
+const OTHER_ENGINES = ['codex', 'cursor', 'copilot', 'antigravity', 'opencode'];
+/** @type {Map<string, { list: any[] | null, at: number }>} */
+const commandLists = new Map();
+
+/** The bot whose commands fit the chat, null in groups, chats with people and chats on another engine. */
+function commandBot(chatId) {
+    if (isGroup(chatId) || isPerson(chatId)) return null;
+    const model = String(modelOf(chatId));
+    if (OTHER_ENGINES.some((e) => model === e || model.startsWith(e + ':'))) return null;
+    return bot(botIdOf(chatId)) || null;
+}
+
+/** The known list (null = none yet); asks the bot's machine when there is none or it has grown old. */
+function commandsOf(b) {
+    const known = commandLists.get(b.id);
+    if (!known || Date.now() - known.at > COMMANDS_FRESH_MS) {
+        const r = responsibleMachine(b);
+        if (r) {
+            send({ type: 'commands', botId: b.id }, r);
+            commandLists.set(b.id, { list: known ? known.list : null, at: Date.now() });
+        }
+    }
+    return known ? known.list : null;
+}
+
+/** @param {Pane} p @param {string} query typed after the "/" */
+function checkCommand(p, query) {
+    const b = commandBot(p.chatId);
+    const list = b && commandsOf(b);
+    const q = query.toLowerCase();
+    const hits = (list || [])
+        .filter((c) => c.name.toLowerCase().includes(q))
+        .sort((x, y) => Number(!x.name.toLowerCase().startsWith(q)) - Number(!y.name.toLowerCase().startsWith(q)));
+    if (hits.length === 0) return closeMention(p);
+    if (p.mention.kind !== 'command') p.mention.active = 0;
+    p.mention.kind = 'command';
+    p.mention.start = 0;
+    p.mention.hits = hits;
+    p.mention.active = Math.min(p.mention.active, hits.length - 1);
+    renderMention(p);
+}
+
+/** The machine's answer; an input still waiting for it gets the list right away. */
+export function receiveCommands(f) {
+    commandLists.set(f.botId, { list: f.commands || [], at: Date.now() });
+    for (const p of panes) {
+        if (p.chatId && botIdOf(p.chatId) === f.botId && document.activeElement === p.el.text) checkMention(p);
+    }
 }
 
 // When opening, the chat first renders the remembered history, then the fresh one from the machine. Mostly both
@@ -168,7 +241,15 @@ export function renderEntry(p, e) {
     const messages = p.el.messages;
     const chatId = p.chatId;
     if (e.role === 'event') {
-        messages.appendChild(node('div', 'event', e.text));
+        const ev = node('div', 'event' + (e.person || e.from ? ' handover' : ''), e.text);
+        // A bot handed the chat over to a person: the way to the chat with them
+        if (e.person) {
+            const go = node('button', 'handover-link', t('people.continueWith', { name: person('p:' + e.person).name }));
+            go.type = 'button';
+            go.addEventListener('click', () => openChat('p:' + e.person, undefined, undefined, p));
+            ev.appendChild(go);
+        }
+        messages.appendChild(ev);
         return;
     }
     if (e.role === 'user' && e.movedTo) {
@@ -184,8 +265,10 @@ export function renderEntry(p, e) {
     if (e.role === 'user') {
         const fromMe = !e.from || e.from === 'me';
         const routine = e.from && e.from.startsWith('routine:');
-        const b = node('div', 'bubble ' + (fromMe ? 'me' : routine ? 'me routine' : 'bot job'));
-        if (!fromMe) {
+        // The other person writes like the user does, from the other side; in a chat of two no name above it
+        const human = !fromMe && e.from.startsWith('person:');
+        const b = node('div', 'bubble ' + (fromMe ? 'me' : routine ? 'me routine' : human ? 'bot person' : 'bot job'));
+        if (!fromMe && !human) {
             const head = node('div', 'sender', routine ? senderName(e.from) : t('chat.jobFrom', { name: senderName(e.from) }));
             if (!routine) head.style.color = colorOf(e.from);
             b.appendChild(head);
@@ -284,7 +367,8 @@ if (!seen._since) seen._since = new Date().toISOString();
 storage.set(SEEN_KEY, JSON.stringify(seen));
 
 function isIncoming(e) {
-    return e.role === 'assistant' || (e.role === 'user' && e.from && e.from !== 'me' && !e.from.startsWith('routine:'));
+    // a hand-over is an event someone sent (a bot), unlike the app's own notes
+    return e.role === 'assistant' || (e.role === 'user' && e.from && e.from !== 'me' && !e.from.startsWith('routine:')) || (e.role === 'event' && !!e.from);
 }
 
 export function noteIncoming(chatId, entries) {

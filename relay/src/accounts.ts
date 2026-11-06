@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { checkPassword, hashPassword } from './auth.ts';
 import { MIN_TOKEN_LENGTH } from './owner.ts';
-import type { RelayAccount } from '../../shared/protocol.ts';
+import type { Person, Reach, RelayAccount } from '../../shared/protocol.ts';
 
 export const ACCOUNTS_FILE = 'accounts.json';
 export const MAIN = 'main';
@@ -21,7 +21,7 @@ interface StoredAccount extends RelayAccount {
     hash?: string;
 }
 
-export type AccountChange = { name?: string; password?: string; admin?: boolean };
+export type AccountChange = { name?: string; password?: string; admin?: boolean; reach?: Reach };
 export type AccountResult = 'ok' | 'name_taken' | 'invalid';
 
 /** a-z0-9 and hyphen, as the backends use it as a folder name. */
@@ -59,6 +59,11 @@ export class Accounts {
         return this.list.map(toPublic);
     }
 
+    /** The accounts as contacts for person chats (backends filter them per account). */
+    people(): Person[] {
+        return this.list.map((a) => ({ id: a.id, name: a.name, admin: a.id === MAIN || a.admin, reach: a.reach === 'admins' ? 'admins' : 'all' }));
+    }
+
     ids(): string[] {
         return this.list.map((a) => a.id);
     }
@@ -87,14 +92,14 @@ export class Accounts {
         return !this.list.some((x) => x.id !== except && x.name.toLowerCase() === name.toLowerCase());
     }
 
-    create(name: string, admin = false): RelayAccount | 'name_taken' | 'invalid' {
+    create(name: string, admin = false, reach: Reach = 'all'): RelayAccount | 'name_taken' | 'invalid' {
         const n = name.trim().slice(0, MAX_NAME);
         if (!n || this.list.length >= MAX_ACCOUNTS) return 'invalid';
         if (!this.nameFree(n)) return 'name_taken';
         const base = slug(n);
         let id = base;
         for (let i = 2; this.list.some((x) => x.id === id) || id in this.deleted; i++) id = `${base}-${i}`;
-        const a: StoredAccount = { id, name: n, admin, created: new Date().toISOString() };
+        const a: StoredAccount = { id, name: n, admin, created: new Date().toISOString(), reach };
         this.list.push(a);
         this.save();
         return toPublic(a);
@@ -115,6 +120,7 @@ export class Accounts {
             a.hash = hashPassword(change.password);
         }
         if (change.admin !== undefined && id !== MAIN) a.admin = change.admin;
+        if (change.reach !== undefined && id !== MAIN) a.reach = change.reach;
         this.save();
         return 'ok';
     }
@@ -138,5 +144,5 @@ export class Accounts {
 }
 
 function toPublic(a: StoredAccount): RelayAccount {
-    return { id: a.id, name: a.name, admin: a.id === MAIN || a.admin, created: a.created };
+    return { id: a.id, name: a.name, admin: a.id === MAIN || a.admin, created: a.created, reach: a.reach === 'admins' ? 'admins' : 'all' };
 }

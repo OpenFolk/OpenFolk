@@ -32,9 +32,48 @@ function claudeHome(): string {
     return claudeConfigDir();
 }
 
-/** Transcript folder of a project as Claude Code names it (everything except a-z0-9 becomes '-'). */
+/**
+ * A folder as Claude Code sees it: resolved through junctions and symlinks with the JS `realpathSync` (not the native
+ * one, so 8.3 short names stay as they are), NFC on macOS; a folder that does not exist (yet) stays as given.
+ */
+export function canonical(folder: string): string {
+    const abs = path.resolve(folder);
+    let real = abs;
+    try {
+        real = fs.realpathSync(abs);
+    } catch {
+        // missing: as given
+    }
+    return process.platform === 'darwin' ? real.normalize('NFC') : real;
+}
+
+/** Longer names are cut and get a hash of the full path, as Claude Code does it. */
+const MAX_NAME = 200;
+
+/** Claude Code's string hash (31-based, 32 bit), in base 36. */
+function nameHash(s: string): string {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    return Math.abs(h).toString(36);
+}
+
+/**
+ * Name of a project's transcript folder as Claude Code forms it: from the canonical path, everything except a-z0-9
+ * becomes '-', cut at 200 characters plus a hash. `CLAUDE_CODE_PROJECT_DIR_NAME` replaces it, but only together with
+ * `CLAUDE_CONFIG_DIR` and only if it is a plain name.
+ */
+export function projectName(folder: string): string {
+    const override = process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+    if (process.env.CLAUDE_CONFIG_DIR && override && /^[A-Za-z0-9_-]{1,64}$/.test(override)
+        && !/^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])$/i.test(override)) return override;
+    const real = canonical(folder);
+    const name = real.replace(/[^a-zA-Z0-9]/g, '-');
+    return name.length <= MAX_NAME ? name : `${name.slice(0, MAX_NAME)}-${nameHash(real)}`;
+}
+
+/** Transcript folder of a project, under the account's Claude Code folder. */
 export function projectDir(folder: string): string {
-    return path.join(claudeHome(), 'projects', path.resolve(folder).replace(/[^a-zA-Z0-9]/g, '-'));
+    return path.join(claudeHome(), 'projects', projectName(folder));
 }
 
 /**
@@ -186,7 +225,8 @@ function cwdOf(dir: string): string | null {
 }
 
 function isInside(p: string, folder: string): boolean {
-    const rel = path.relative(path.resolve(folder), path.resolve(p));
+    // Canonical on both sides: the bot's folder may be a junction, the transcript's cwd the real path, or the other way
+    const rel = path.relative(canonical(folder), canonical(p));
     return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
@@ -205,7 +245,7 @@ export function sessionFolders(folder: string, otherBots: string[]): string[] {
     } catch {
         return r;
     }
-    const closer = otherBots.map((b) => path.resolve(b)).filter((b) => b !== path.resolve(folder) && isInside(b, folder));
+    const closer = otherBots.map((b) => path.resolve(b)).filter((b) => canonical(b) !== canonical(folder) && isInside(b, folder));
     for (const n of names) {
         const cwd = cwdOf(path.join(projects, n));
         if (!cwd || !isInside(cwd, folder) || r.includes(cwd)) continue;

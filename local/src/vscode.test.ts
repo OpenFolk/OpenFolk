@@ -7,7 +7,7 @@ import { removeTree } from './remove-tree.ts';
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-vscode-'));
 // The Claude folder depends on the current account; the real local/data may hold several
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-vscode-data-'));
-const { Watcher, Transcript, workingFrom, clean, originFrom, projectDir, listVscodeSessions, transcriptStoreError, transcriptPath } = await import('./vscode.ts');
+const { Watcher, Transcript, workingFrom, clean, originFrom, projectDir, projectName, listVscodeSessions, transcriptStoreError, transcriptPath } = await import('./vscode.ts');
 type HistoryPart = import('./vscode.ts').HistoryPart;
 
 let failures = 0;
@@ -106,6 +106,34 @@ check('subfolder: session from the subfolder included, with folder and origin te
 check('subfolder: session in the bot folder without folder', withSub.find((s) => s.id === ID_VS)?.folder === undefined);
 check('subfolder: folder of another bot and neighbour folder not', !withSub.some((s) => s.id === ID_OTHER || s.id === ID_NEIGHBOUR));
 
+// ---- Bot folder behind a junction or symlink: Claude Code names the transcript folder after the resolved path
+const link = folder + '-link';
+fs.symlinkSync(folder, link, 'junction');
+check('junction: same transcript folder as the real path', projectDir(link) === projectDir(folder));
+const viaLink = await listVscodeSessions(link, new Set(), [link]);
+check('junction: the sessions are found', viaLink.some((s) => s.id === ID_VS) && viaLink.find((s) => s.id === ID_VS)?.folder === undefined);
+check('junction: subfolder sessions too, other bot given as real path still excluded',
+    viaLink.some((s) => s.id === ID_SUB) && (await listVscodeSessions(link, new Set(), [link, otherBot])).every((s) => s.id !== ID_OTHER));
+
+// ---- Long paths: cut at 200 characters plus a hash of the full path, as Claude Code does it
+const long = path.join(folder, 'x'.repeat(120), 'y'.repeat(120));
+const longName = projectName(long);
+check('long path: 200 characters, then a hash', longName.length > 200 && longName.slice(0, 200) === path.resolve(long).replace(/[^a-zA-Z0-9]/g, '-').slice(0, 200)
+    && /^-[0-9a-z]+$/.test(longName.slice(200)));
+check('long path: the hash tells two paths apart', projectName(long + 'z') !== longName && projectName(long + 'z').slice(0, 200) === longName.slice(0, 200));
+// The cross-check: the SDK's listSessions finds a session stored under our name for the long path
+const ID_LONG = '77777777-7777-4777-8777-777777777777';
+fs.mkdirSync(projectDir(long), { recursive: true });
+fs.writeFileSync(transcriptPath(long, ID_LONG), jsonl(withId(ID_LONG, [user('Long path'), answer([{ type: 'text', text: 'ok' }], 'end_turn')])));
+check('long path: the SDK finds the session under this name', (await listVscodeSessions(long, new Set())).some((s) => s.id === ID_LONG));
+
+// ---- CLAUDE_CODE_PROJECT_DIR_NAME replaces the name (only a plain one, only with CLAUDE_CONFIG_DIR)
+process.env.CLAUDE_CODE_PROJECT_DIR_NAME = 'fixed-name';
+check('override: plain name taken', projectName(folder) === 'fixed-name');
+process.env.CLAUDE_CODE_PROJECT_DIR_NAME = '../escape';
+check('override: not a plain name, ignored', projectName(folder) === projectName(link) && projectName(folder) !== '../escape');
+delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+
 // ---- Following live
 const parts: { part: HistoryPart; cid: string }[] = [];
 const m = new Watcher((part, cid) => parts.push({ part, cid }));
@@ -155,6 +183,7 @@ process.env.CLAUDE_CONFIG_DIR = realStore;
 removeTree(home2);
 
 removeTree(process.env.CLAUDE_CONFIG_DIR!);
+fs.rmdirSync(link);
 removeTree(folder);
 removeTree(neighbour);
 console.log(failures ? `\n${failures} failures` : '\nall ok');

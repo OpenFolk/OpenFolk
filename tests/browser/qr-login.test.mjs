@@ -2,6 +2,9 @@
 // opens it (camera app or the app's scanner) asks who is waiting, confirms, gets a pairing link from a backend and
 // sends it sealed for that key. The new device opens the box and signs in with the token, end-to-end key included.
 
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
 const KEY = Buffer.alloc(32, 9).toString('base64url');
 
 /** A fake Capacitor bridge whose scanner returns window.__scanResult. */
@@ -51,6 +54,44 @@ function fakeCamera() {
             track.stop = () => { clearInterval(timer); window.__cameraStopped = true; stop(); };
         }
         return stream;
+    };
+}
+
+/**
+ * The desktop side of joining a computer by QR code: desktop/qr-join.js against a relay that answers "pair_wait" and
+ * passes one box on. `answer(box)` resolves with the link the app would join with.
+ */
+async function desktopQrJoin() {
+    const require = createRequire(import.meta.url);
+    const { WebSocketServer } = require('ws');
+    const { startQrJoin, stopQrJoin } = require('../../desktop/qr-join.js');
+    const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    await new Promise((resolve) => wss.once('listening', resolve));
+    const origin = `http://127.0.0.1:${wss.address().port}`;
+    let waiting = null;
+    wss.on('connection', (ws) => ws.on('message', (m) => {
+        if (JSON.parse(String(m)).type !== 'pair_wait') return;
+        waiting = ws;
+        ws.send(JSON.stringify({ type: 'pair_wait', id: 'req-m', expiresAt: new Date(Date.now() + 600_000).toISOString() }));
+    }));
+    const states = [];
+    let joined;
+    const link = new Promise((resolve) => { joined = resolve; });
+    let shown;
+    const code = new Promise((resolve) => { shown = resolve; });
+    await startQrJoin({
+        relay: `${origin}/`, root: fileURLToPath(new URL('../../', import.meta.url)),
+        emit: (s) => { states.push(s); if (s.state === 'code') shown(s); },
+        onLink: async (l) => { joined(l); return ''; },
+    });
+    return {
+        origin, states, code: await code,
+        answer: (box) => {
+            waiting.send(JSON.stringify({ type: 'pair_wait', box }));
+            waiting.close(1000, 'Approved');
+            return Promise.race([link, new Promise((resolve) => setTimeout(() => resolve('timeout'), 3000))]);
+        },
+        close: () => { stopQrJoin(); wss.close(); },
     };
 }
 
@@ -109,6 +150,34 @@ export default async function ({ start, check }) {
     check('… and leaves the start page', !(await np.isVisible('#login')));
     await fresh.close();
     await approver.close();
+
+    // ---- the desktop app's setup page joins its computer: the real qr-join.js against a relay that only passes on
+    const machineJoin = await desktopQrJoin();
+    check('desktop: code marked as a computer, with id and key', /^http:\/\/127\.0\.0\.1:\d+\/#approve=req-m&pk=[\w-]{80,}&kind=machine$/.test(machineJoin.code.link) && machineJoin.code.svg.startsWith('<svg'), machineJoin.code.link);
+    let machineBox = null;
+    const phone = await start({
+        secure: true, path: new URL(machineJoin.code.link).hash,
+        before: () => { window.confirm = (m) => { (window.__dialogs ||= []).push(m); return true; }; window.alert = (m) => { (window.__dialogs ||= []).push(m); }; },
+        onSend: (f, push, state, reply) => {
+            if (f.type === 'pair_request') return reply({ type: 'pair_request', id: f.id, name: 'LAPTOP (OpenFolk desktop)', ip: '203.0.113.9', since: new Date().toISOString() });
+            if (f.type === 'machine_join_link') return reply({ type: 'machine_join_link', machine: 'desk', url: `https://relay.example/#join=tok-join&e2e=${KEY}`, command: 'npm run join -- "…"', expiresAt: new Date().toISOString(), e2e: true });
+            if (f.type === 'pair_approve') {
+                machineBox = f;
+                return reply({ type: 'pair_approved', id: f.id });
+            }
+        },
+    });
+    await phone.wait(400);
+    const phoneDialogs = await phone.page.evaluate(() => window.__dialogs || []);
+    check('phone: asks to connect a computer, with name and address', /Connect a computer/.test(phoneDialogs[0] || '') && /LAPTOP/.test(phoneDialogs[0] || '') && /203\.0\.113\.9/.test(phoneDialogs[0] || ''), phoneDialogs);
+    check('phone: asks a backend for an invitation, not a pairing link', phone.sent.some((f) => f.type === 'machine_join_link' && f.machine) && !phone.sent.some((f) => f.type === 'pair_link'));
+    check('phone: invitation sent sealed, not shown', machineBox && !JSON.stringify(machineBox).includes('tok-join') && await phone.page.isHidden('#machine-join'), machineBox);
+    check('phone: hears that the computer is being connected', phoneDialogs.some((d) => /computer is being connected/.test(d)), phoneDialogs);
+    const joined = await machineJoin.answer(machineBox.box);
+    check('desktop: opens the box and joins with the invitation of its relay', joined === `${machineJoin.origin}/#join=tok-join&e2e=${KEY}`, joined);
+    check('desktop: says it is connecting', machineJoin.states.some((s) => s.state === 'joining') && !machineJoin.states.some((s) => s.state === 'error'), machineJoin.states);
+    await machineJoin.close();
+    await phone.close();
 
     // ---- opened on a device that is not signed in: it has to sign in first
     const notYet = await start({ secure: true, device: null, path: '#approve=req-2&pk=abc' });

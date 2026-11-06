@@ -181,7 +181,7 @@ function accountRows() {
         const a = known.get(id) || signedIn.get(id);
         const d = signedIn.get(id);
         rows.push({
-            head: false, relay: here, own: true, id, name: a.name, admin: !!a.admin, created: known.get(id)?.created,
+            head: false, relay: here, own: true, id, name: a.name, admin: !!a.admin, created: known.get(id)?.created, reach: known.get(id)?.reach,
             signedIn: !!d, current: !!d && d.device === device, manageable: admin && id !== current && id !== 'main',
         });
     }
@@ -221,6 +221,7 @@ export function renderAccountList() {
         } else {
             const name = node('strong', '', r.name);
             if (r.admin && r.own) name.appendChild(node('span', 'tag', t('accounts.admin')));
+            if (!r.admin && r.own && r.reach === 'admins') name.appendChild(node('span', 'tag', t('accounts.customer')));
             if (r.current) name.appendChild(node('span', 'tag', t('accounts.current')));
             const sub = r.id === 'main' ? t('accounts.mainAccount')
                 : r.created ? t('accounts.created', { date: new Date(r.created).toLocaleDateString(locale()) }) : '';
@@ -229,6 +230,11 @@ export function renderAccountList() {
             // Not signed in here: the invitation is the way in, for this device or the person's
             if (r.manageable && !r.signedIn) button(t('accounts.invite'), '', () => { accountError(''); send({ type: 'account_invite', id: r.id }); });
             if (r.manageable) button(t(r.admin ? 'accounts.removeAdmin' : 'accounts.makeAdmin'), '', () => send({ type: 'account_update', id: r.id, admin: !r.admin }));
+            // Whom the person can chat with; an admin reaches everyone anyway. Missing reach: a relay from before person chats
+            if (r.manageable && !r.admin && r.reach) {
+                const customer = r.reach === 'admins';
+                button(t(customer ? 'accounts.makeTeam' : 'accounts.makeCustomer'), '', () => send({ type: 'account_update', id: r.id, reach: customer ? 'all' : 'admins' }));
+            }
             // "Remove" forgets the sign-in on this device; "Delete" is the admin's, for everyone. The current sign-in
             // has no "remove": signing out is in the devices block.
             if (!r.current && r.signedIn && r.own) button(t('relays.remove'), ' danger', () => { if (confirm(t('accounts.forgetConfirm', { name: r.name }))) forgetAccount(r.id); });
@@ -290,19 +296,21 @@ export function loadAccounts() {
     el.accountsPassword.value = '';
     el.accountsNewName.value = '';
     el.accountsNewAdmin.checked = false;
+    el.accountsNewCustomer.checked = false;
     el.accountsLink.value = '';
     showNewAccountForm(false);
     el.accountsOwnName.value = state.account ? state.account.name : '';
     el.accountsOwn.hidden = !state.account || state.account.id === 'main';
     el.accountsOwnHint.textContent = t('accounts.passwordHint');
     relayAccounts = [];
+    showCustomerChoice();
     renderAccountList();
     if (state.account) send({ type: 'accounts' });
 }
 
 /**
  * The relay's answer "accounts": all of them for an admin, otherwise the own one.
- * @param {{ id: string, name: string, admin: boolean, created: string }[]} list
+ * @param {{ id: string, name: string, admin: boolean, created: string, reach?: string }[]} list
  * @param {string} current
  */
 export function renderAccounts(list, current) {
@@ -317,7 +325,18 @@ export function renderAccounts(list, current) {
     // The owner's password is the relay's setup and its name shows nowhere but here: nothing of its own to edit
     el.accountsOwn.hidden = current === 'main';
     relayAccounts = list;
+    showCustomerChoice();
     renderAccountList();
+}
+
+/**
+ * "Customer" only on a relay that names the reach: one from before person chats drops it silently, and after its
+ * update the account would reach everyone.
+ */
+function showCustomerChoice() {
+    const known = relayAccounts.some((a) => a.reach !== undefined);
+    /** @type {HTMLElement} */ (el.accountsNewCustomer.closest('label')).hidden = !known;
+    if (!known) el.accountsNewCustomer.checked = false;
 }
 
 /** @param {string} message */
@@ -363,7 +382,7 @@ export function createAccount() {
         return;
     }
     el.accountsCreate.disabled = true;
-    send({ type: 'account_create', name, admin: el.accountsNewAdmin.checked });
+    send({ type: 'account_create', name, admin: el.accountsNewAdmin.checked, ...(el.accountsNewCustomer.checked ?{ reach: 'admins' } : {}) });
 }
 
 /**
@@ -375,6 +394,7 @@ export function receiveAccountCreated(f) {
     el.accountsCreate.disabled = false;
     el.accountsNewName.value = '';
     el.accountsNewAdmin.checked = false;
+    el.accountsNewCustomer.checked = false;
     showNewAccountForm(false);
     pendingInvite = { token: f.pair.token, name: f.account.name };
     send({ type: 'pair_link', token: f.pair.token, expiresAt: f.pair.expiresAt });

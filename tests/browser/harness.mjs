@@ -42,7 +42,8 @@ export function bot(id, name = id, extra = {}) {
  * @param {import('playwright').Browser} browser
  * @param {object} o
  *   bots, groups, history ({ chatId: entries }), online, states/activity/activeChats, pinned,
- *   dark, before (script before loading, in the browser), onSend(frame, push, state) for own answers,
+ *   dark, before (script before loading, in the browser), now (the page's clock starts at this time, for tests of
+ *   "today", "yesterday" and the like, which otherwise depend on the hour the test runs), onSend(frame, push, state) for own answers,
  *   ownHistory (history requests are answered by onSend), agentsLater (the test sends the machine list), path,
  *   language ('en' by default; null = do not pin, the app decides), locale (browser locale, default en-US),
  *   device (stored device key, default 'test'; null = none), secure (https, e.g. for crypto.subtle),
@@ -121,6 +122,7 @@ export async function start(browser, o = {}) {
         window.WebSocket = FakeWS;
     }, [o.language === undefined ? 'en' : o.language, o.device === undefined ? 'test' : o.device]);
     if (o.before) await ctx.addInitScript(o.before);
+    if (o.now) await page.clock.install({ time: o.now });
     page.on('load', () => exposeModules(page));
     await page.goto(`${o.secure ? 'https' : 'http'}://test.local/${o.path ?? ''}`);
     await exposeModules(page);

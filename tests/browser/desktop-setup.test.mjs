@@ -43,7 +43,11 @@ export default async function ({ check }) {
                     info: async () => ({ mode: ${JSON.stringify(mode)}, language: 'en', version: '0.0.0', texts: { setupHint: 'OpenFolk {version}', invalidAddress: 'Please enter a server URL.', foldersSetupHint: 'Hint {default}', foldersDefault: 'Own folder {default}', foldersDefaultTag: 'default', foldersAdd: 'Add folder …', foldersRemove: 'Remove', foldersLastRemoved: '{default} applies.', foldersWide: '{folder} is very wide.', foldersEnvWarn: 'ALLOWED_ROOTS ({value})' } }),
                     saveAddress: async (url) => { window.__calls.push(url); return ${JSON.stringify(answer)}; },
                     chooseLocal: async () => ({}), joinServer: async () => ({}),
-                };`);
+                    qrJoinStart: async (url) => { window.__qr.push(url); return {}; },
+                    qrJoinStop: async () => { window.__qr.push('stop'); },
+                    onQrJoin: (handler) => { window.__qrEvent = handler; },
+                };
+                window.__qr = [];`);
             const page = await context.newPage();
             const errors = [];
             page.on('pageerror', (e) => errors.push(e.message));
@@ -70,7 +74,22 @@ export default async function ({ check }) {
         await p.click('.terms summary');
 
         const fills = await p.$$eval('.option > button, .option form > button', (n) => n.map((x) => getComputedStyle(x).backgroundColor !== 'rgba(0, 0, 0, 0)'));
-        check('setup page: only A, "Start on this computer", has the filled button; B and C are outlined', fills.join() === 'true,false,false', fills);
+        check('setup page: only A, "Start on this computer", has the filled button; B and C are outlined', fills.join() === 'true,false,false,false', fills);
+
+        // B by QR code: the phone scans what the main process draws (desktop/qr-join.js)
+        await p.click('#qr-form button');
+        check('setup page: QR code: an empty address is refused', (await p.textContent('#qr-error')) === 'Please enter a server URL.' && (await p.evaluate(() => window.__qr)).length === 0);
+        await p.fill('#qr-relay', 'openfolk.example.test');
+        await p.click('#qr-form button');
+        check('setup page: QR code: asks the main process with the address', JSON.stringify(await p.evaluate(() => window.__qr)) === '["openfolk.example.test"]');
+        await p.evaluate(() => window.__qrEvent({ state: 'code', svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0h1v1h-1z"/></svg>' }));
+        check('setup page: QR code: shown instead of the form, with a hint', await shown('#qr-code svg') && !(await shown('#qr-form')) && (await p.textContent('#qr-hint')).length > 0);
+        await p.evaluate(() => window.__qrEvent({ state: 'error', reason: 'closed', message: 'x' }));
+        check('setup page: QR code: a failure brings the form back with the reason', !(await shown('#qr-box')) && await shown('#qr-form') && (await p.textContent('#qr-error')) === 'x');
+        await p.click('#qr-form button');
+        await p.evaluate(() => window.__qrEvent({ state: 'code', svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>' }));
+        await p.click('#qr-cancel');
+        check('setup page: QR code: "Cancel" drops the request and brings the form back', (await p.evaluate(() => window.__qr)).at(-1) === 'stop' && await shown('#qr-form') && !(await shown('#qr-box')));
 
         // Alternatives, not steps: always one below the other, each as wide as the page allows (at most 820 px)
         const tops = () => p.$$eval('.option', (n) => n.map((x) => { const r = x.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width) }; }));

@@ -40,8 +40,10 @@ export function checkPush() {
 
 const PUSH_KINDS = [
     ['done', 'push.kind.done'], ['routine', 'push.kind.routine'], ['approval', 'push.kind.approval'],
-    ['awake', 'push.kind.awake'], ['limit', 'push.kind.limit'],
+    ['awake', 'push.kind.awake'], ['limit', 'push.kind.limit'], ['message', 'push.kind.message'], ['handover', 'push.kind.handover'],
 ];
+/** Kinds a backend from before person chats does not know: shown only once a backend reports them. */
+const NEWER_KINDS = new Set(['message', 'handover']);
 const PUSH_PRIORITIES = [['off', 'push.priority.off'], ['quiet', 'push.priority.quiet'], ['normal', 'push.priority.normal'], ['high', 'push.priority.high']];
 const PUSH_STATUS = {
     granted: 'push.status.granted',
@@ -60,6 +62,7 @@ export function renderPushSettings() {
     const kinds = (state.pushSettings && state.pushSettings.kinds) || {};
     el.pushKinds.innerHTML = '';
     for (const [kind, label] of PUSH_KINDS) {
+        if (NEWER_KINDS.has(kind) && !(kind in kinds)) continue;
         const l = node('label', '', t(label));
         const select = document.createElement('select');
         select.id = 'push-kind-' + kind;

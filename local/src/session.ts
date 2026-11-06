@@ -10,6 +10,7 @@ import {
     type SDKMessage,
     type SDKRateLimitInfo,
     type SDKUserMessage,
+    type SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
 import { checkSignIn, claudeSignedIn, keyRejected, type AuthMode } from './auth.ts';
 import { accountAuth, claudeEnv, claudeSettings, engineAvailable } from './engine-home.ts';
@@ -18,6 +19,7 @@ import { ACP_AGENTS, AcpRun, acpModels, type AcpAgent } from './acp.ts';
 import { claudeInstructions, CodexRun, codexBinary, codexModels, type CodexLimits, type EngineStart, type EngineTool, type EngineTarget } from './codex.ts';
 import { t } from './i18n.ts';
 import { knowledgeIndex } from './knowledge.ts';
+import { personName } from './people.ts';
 import { keyTurnCost } from './key-fallback.ts';
 import { engineEnabled } from './machine-settings.ts';
 import { foreignMcp, needsApproval, secretRead } from './policy.ts';
@@ -815,6 +817,11 @@ export class BotSession {
         }
     }
 
+    /** Slash commands of the running Claude process (with the MCP servers' prompts); null without one. */
+    commands(): Promise<SlashCommand[]> | null {
+        return this.running ? this.running.supportedCommands() : null;
+    }
+
     /** Running background tasks (subagents, shells), for the display and the restart protection. */
     get backgroundTasks(): { id: string; description: string }[] {
         return [...this.background].map(([id, description]) => ({ id, description }));
@@ -871,6 +878,7 @@ export function persona(bot: Bot, knowledge: string, engine: Engine = 'claude'):
         '',
         t('persona.knowledge'),
     ];
+    if (bot.contact) lines.push('', t('persona.handover', { name: personName(bot.contact) }));
     if (bot.tone.trim()) lines.push('', bot.tone.trim());
     if (knowledge.trim()) lines.push('', knowledge.trim());
     return lines.join('\n');
@@ -928,6 +936,8 @@ export function toolSummary(name: string, input: unknown): string {
             return shorten(`${s('query')}${s('chat') ? ` · ${s('chat')}` : ''}${s('since') ? ` · ${s('since')}` : ''}`);
         case 'mcp__openfolk__read_history':
             return shorten(s('chat'));
+        case 'mcp__openfolk__hand_over':
+            return shorten(s('summary'));
         default:
             return shorten(JSON.stringify(i));
     }

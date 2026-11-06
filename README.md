@@ -54,8 +54,8 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   a Gemini or OpenAI key in the settings the avatar is a generated photo, otherwise an SVG drawn by the model. The field
   "Folder or repository" is a text field: the folder has to exist on the bot's machine and lie under that machine's
   allowed folders (`docs/running.md`, "Allowed folders"), otherwise the backend refuses it with the reason. A git
-  repository's address instead of a folder makes the backend clone it into the first allowed folder on save. There is
-  no folder browser yet.
+  repository's address instead of a folder makes the backend clone it into the machine's folder for bots on save;
+  "Browse" lists the folders of the bot's machine.
 - **Approvals in the chat.** Per bot: *risky* (default) asks before deleting, pushing, deploying, SSH, service
   restarts, writing outside the folder or into secrets, reading secrets through the shell, installing packages,
   running code from the internet (`curl … | sh`), elevated rights and every call of an external MCP service, reading
@@ -69,7 +69,7 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   so on) stay out of the bots' sessions unless the machine settings let them in ("Connectors"). MCP servers you
   configure yourself (`.mcp.json`, `claude mcp add`) are not affected.
 - **Questions.** Multiple-choice questions of a bot (AskUserQuestion) appear as a card with buttons and free text.
-- **Push notifications.** Per kind (bot done, routine done, approval/question, machine awake, usage limit) off,
+- **Push notifications.** Per kind (bot done, routine done, approval/question, machine awake, usage limit, message from a person, hand-over) off,
   quiet, normal or high, for all devices. Single bots and groups are muted on their page or in the list's menu. Sent directly from your machine:
   Web Push/VAPID to browsers (on iPhone only from the installed PWA), APNs and FCM to the mobile apps
   (`mobile/README.md`).
@@ -77,11 +77,21 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
 - **Usage.** Five-hour and weekly window of the subscription; Codex limits are shown separately.
 - **Routines.** Scheduled prompts (daily, weekdays, weekly, hourly or cron) with "run now". A routine can wake
   its machine (`docs/running.md`, "Machine settings") and shut it down afterwards.
+- **Slash commands.** In a bot's chat on Claude, "/" at the start of a message lists Claude Code's commands for the
+  bot's folder: your own (`~/.claude/commands`, skills), the project's (`.claude/commands`), plugins' and a few
+  built-in ones such as `/compact` and `/context`. Claude Code runs them as in the terminal. A message that starts
+  with `/name` goes to the bot exactly as typed, without the quote or group note OpenFolk otherwise puts in front, so
+  this also works in groups and in routines. Codex and the other engines get no list.
 - **Group chats.** Several bots in one chat; `@id` addresses one bot, `@all` everyone. Bots can hand over to
   each other with @ (up to four hops per message).
 - **Bot to bot.** Every bot has the tools `message_bot` and `list_bots`, can give other bots jobs and wait
   for the answer; cycles are detected. Which bots a bot can reach is set in its settings under "Can give jobs to"
   (all, selected or none); group chats are not limited by it.
+- **Chats with people.** "+" → "Person" opens a chat with someone on the same relay, a team member or a customer
+  (see Accounts). Text, files and voice messages go both ways, with notifications, unread, favorite, mute and search
+  like any chat. A bot with "Hand over to" set in its settings gets the tool `hand_over`: it sends that person its
+  summary, they get a notification, and the user gets a "Continue with …" button in the bot's chat. Bots do not read
+  the chats between people.
 - **Files.** Attach, paste or drop files; images and PDFs go straight to the model. Bots send files with
   `send_file`. Secrets (`.env`, keys) and the backend's data are never handed out.
 - **Knowledge.** Bots build a memory of single facts with `remember_fact` and related tools, scoped to the bot,
@@ -118,9 +128,13 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   without a desktop (a Windows task in session 0, a Linux service) cannot open windows; the desktop app, running in the
   signed-in session of that machine, opens them for it.
 - **Several machines.** The same backend runs on every machine; bots exist once. Every bot lives on one machine
-  and works in a folder there; while that machine sleeps, the bot sleeps and the app offers to wake it. Moving a bot
-  to another machine takes its sessions along with full context, and the bot editor clones the project's repository
-  there if it is not there yet. Work that is not on the git server yet (uncommitted changes, new files, unpushed
+  and works in a folder there; while that machine sleeps, the bot sleeps and the app offers to wake it. Every machine
+  has a folder for bots (its settings, "Folder for bots"; the first allowed folder unless chosen), and a bot's machine
+  writes down where the bot lives below it, with its repository. Moving a bot is a tap on the other machine on the
+  bot's page and one confirmation: the bot goes to the same place below that machine's folder for bots, the
+  repository is cloned there if it is missing, a folder without one is created, and the sessions come along with full
+  context. Only when that place is taken by something else, or the folder lies outside the allowed folders, the app
+  asks for folder and repository. Work that is not on the git server yet (uncommitted changes, new files, unpushed
   commits) goes along on request, end-to-end encrypted through the relay, without a push; the new machine applies
   what fits cleanly and parks the rest in the repo's `.git/openfolk-work/`.
 - **Settings.** Language, theme, notifications, devices and security; per device whether the answer to a voice
@@ -254,7 +268,8 @@ For your phone from anywhere, push and machines that wake for their routines, ru
 (`ghcr.io/openfolk/openfolk`, Docker Compose, Coolify, Unraid) and claim it with the setup code from its log: in the
 app (first steps, or settings → "Devices and security" → "Move to a relay on a server"), where the backend moves over
 and the page follows it, signed in there; or in the terminal with `npm run claim`. The desktop app joins a computer to
-that relay with the link from "Add machine" ("Connect this computer to my server") and, on Windows, runs its backend
+that relay with the link from "Add machine" ("Connect this computer to my server"), or by a QR code on its setup page
+that a signed-in phone scans, and, on Windows, runs its backend
 without signing in ("Run without signing in" in the tray menu). Backends from a checkout start with their machine (a
 scheduled task on Windows) or run as a container that never sleeps (`ghcr.io/openfolk/openfolk-local`);
 `docker-compose.server.yml` puts relay and backend on one server (`docker-compose.coolify.yml` in Coolify), and its
@@ -272,7 +287,7 @@ profile folder. Which folders bots may use (`ALLOWED_ROOTS`) and how git pushes 
 
 One relay and its machines can serve several people or roles: you at work and at home, a colleague, one account
 per customer. Each account has its own bots, chats, knowledge, devices and its own sign-ins to Claude and Codex, so
-subscriptions, limits and usage stay apart, and it sees nothing of the others. Whoever set up the relay owns the
+subscriptions, limits and usage stay apart, and of the others it sees only the names and the chats with them. Whoever set up the relay owns the
 main account; nothing changes until a second one exists.
 
 - **One list, one "Add":** settings → Accounts is one list grouped by relay: every account this device is signed in to
@@ -308,6 +323,12 @@ main account; nothing changes until a second one exists.
   machine they live on.
 - **Deleting:** an admin deletes an account in the same list. Its devices are signed out at once; on every machine
   its data goes to `local/data/deleted-accounts/`, so a mistake can be undone there.
+- **Chats between accounts:** every account can write to the other accounts on its relay ("+" → "Person"). A customer
+  should reach their team and no other customer: tick "Customer: chats with the admins only" when creating the account,
+  or choose "Admins only" or "Reaches everyone" in the list later. Admins reach everyone. An account that only chats needs
+  no Claude sign-in; while it has no bots, the app shows it the people it can write to instead of the checklist. Each
+  side keeps its own copy: deleting the chat deletes one's own. A customer's support bot hands over to you when your
+  account is set under "Hand over to" in its settings.
 
 ## Security
 

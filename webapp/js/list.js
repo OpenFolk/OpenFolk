@@ -2,7 +2,7 @@
 import { locale, t, tn } from './i18n.js';
 import { el, node, state, closest } from './core.js';
 import { CHAT_DRAG, activePane, paneFor, visibleChats } from './panes.js';
-import { bot, clockTime, conversationTitle, fillAvatar, group, isConversation, isGroup, modelOf, openApprovals, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
+import { bot, clockTime, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, openApprovals, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
 import { allChats, baseChats, collapsed, conversationsOf, isFavorite, isMuted, toggleConversations, toggleFavorite } from './connection.js';
 import { loadingBar, openBeside, openChat, swipeBack } from './chat.js';
 import { isUnread, toggleUnread } from './chat-features.js';
@@ -100,8 +100,10 @@ export function renderChatList() {
     // Bots and groups of the other accounts this device is signed in to (others.js), sorted in with the own ones
     const foreign = otherRows();
     if (ids.length === 0) {
-        // Nothing to list yet: the first steps instead (machine, first bot, other devices)
-        el.chatList.appendChild(renderWelcome({ newBot: () => openEditor(null), devices: () => openSettingsAt(el.settingsDevices) }));
+        // Nothing to list yet: the first steps instead (machine, first bot, other devices). An account of someone who
+        // came to chat (a customer) has people to write to and no bots; the engines' sign-in is not its first step
+        el.chatList.appendChild(state.people.length && state.account && state.account.id !== 'main' ? peopleStart()
+            : renderWelcome({ newBot: () => openEditor(null), devices: () => openSettingsAt(el.settingsDevices) }));
         for (const r of foreign.sort((x, y) => x.section - y.section || y.ts.localeCompare(x.ts))) el.chatList.appendChild(foreignRow(r));
         setBadge(otherUnreadCount());
         return;
@@ -134,6 +136,10 @@ export function renderChatList() {
         }
         if (other) {
             el.chatList.appendChild(foreignRow(other));
+            continue;
+        }
+        if (isPerson(id)) {
+            el.chatList.appendChild(personRow(id));
             continue;
         }
         const g = isGroup(id) ? group(id) : null;
@@ -197,6 +203,43 @@ export function renderChatList() {
         for (const cid of subs) if (!closed || paneFor(cid)) el.chatList.appendChild(conversationRow(cid));
     }
     setBadge(allChats().filter(isUnread).length + otherUnreadCount());
+}
+
+/** The start of an account without bots or chats: whom it can write to. */
+function peopleStart() {
+    const box = node('li', 'welcome');
+    box.append(node('h2', '', t('people.startTitle')), node('p', 'welcome-intro', t('people.startText')));
+    for (const p of state.people) {
+        const b = node('button', 'primary small', p.name);
+        b.type = 'button';
+        b.addEventListener('click', () => openChat('p:' + p.id));
+        box.append(b);
+    }
+    return box;
+}
+
+/** A chat with another person: name, last message, time, unread; no model, machine or queue, nobody works there. */
+function personRow(id) {
+    const who = person(id);
+    const li = node('li', 'person');
+    li.dataset.chat = id;
+    markOpen(li, id);
+    const av = node('div', 'avatar person');
+    fillAvatar(av, who, id);
+    const info = node('div', 'info');
+    const name = node('div', 'name', who.name);
+    name.appendChild(node('small', '', ' · ' + t('people.badge')));
+    info.append(name, node('div', 'last', state.last[id] || t('people.noMessages')));
+    const meta = node('div', 'meta');
+    timeBadge(meta, latest(id));
+    const icons = node('div', 'meta-icons');
+    if (isMuted(id)) icons.appendChild(node('span', 'muted-badge', '🔕'));
+    icons.appendChild(node('i', 'dot ' + (isUnread(id) ? 'new' : 'idle')));
+    if (isUnread(id)) li.classList.add('unread');
+    meta.appendChild(icons);
+    li.append(av, info, meta);
+    openOnClick(li, id);
+    return li;
 }
 
 /** A steady colour per account for its badge in the list. */
@@ -378,6 +421,7 @@ function gitBadge(b, open) {
 function rowHead(chatId) {
     const g = isGroup(chatId) ? group(chatId) : null;
     const b = g ? null : bot(chatId);
+    const who = isPerson(chatId) ? person(chatId) : null;
     const head = node('div', 'menu-head');
     const back = node('button', 'menu-back');
     back.type = 'button';
@@ -386,16 +430,16 @@ function rowHead(chatId) {
     back.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.back}</svg>`;
     back.addEventListener('click', (ev) => { ev.stopPropagation(); rowMenu.hidden = true; });
     const avatar = node('div', 'avatar');
-    fillAvatar(avatar, g || b, chatId);
+    fillAvatar(avatar, g || b || who, chatId);
     const title = node('div', 'title');
-    title.append(node('strong', '', isConversation(chatId) ? conversationTitle(chatId) : (g || b).name));
+    title.append(node('strong', '', isConversation(chatId) ? conversationTitle(chatId) : (g || b || who).name));
     if (isConversation(chatId)) title.append(node('span', '', b.name));
     head.append(back, avatar, title);
     return head;
 }
 
-function openRowMenu(chatId, x, y) {
-    if (!bot(chatId) && !group(chatId)) return;
+export function openRowMenu(chatId, x, y) {
+    if (!bot(chatId) && !group(chatId) && !isPerson(chatId)) return;
     rowMenu.dataset.chat = chatId;
     fillChatMenu(rowMenu, chatId);
     rowShow = rowMenuAt(chatId, x, y);

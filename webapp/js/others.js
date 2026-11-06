@@ -19,7 +19,7 @@ const RETRY_MS = 15_000;
  * `relay`: null for the page's own relay, otherwise the other relay with its end-to-end key (`key`, null without one).
  * @typedef {{ account: { id: string, name: string, device: string }, relay: { url: string, name: string, scope: string } | null, key: CryptoKey | null,
  *   ws: WebSocket | null, channel: ReturnType<typeof newChannel>,
- *   bots: any[], groups: any[], perMachine: Record<string, { states: Record<string, string>, activity: Record<string, string>, activeChats: Record<string, string> }>,
+ *   bots: any[], groups: any[], people: { id: string, name: string }[], personChats: { id: string, favorite?: boolean, muted?: boolean }[], perMachine: Record<string, { states: Record<string, string>, activity: Record<string, string>, activeChats: Record<string, string> }>,
  *   approvals: Record<string, { chatId: string, machine?: string }>, last: Record<string, string>, lastTs: Record<string, string>, incoming: Record<string, string>,
  *   seen: Record<string, any>, online: string[], retry: any }} Other
  */
@@ -70,7 +70,7 @@ export function connectOthers() {
 function add(account, relay) {
     /** @type {Other} */
     const o = {
-        account, relay, key: null, ws: null, channel: newChannel(), bots: [], groups: [], perMachine: Object.create(null), approvals: {}, last: {}, lastTs: {},
+        account, relay, key: null, ws: null, channel: newChannel(), bots: [], groups: [], people: [], personChats: [], perMachine: Object.create(null), approvals: {}, last: {}, lastTs: {},
         incoming: {}, seen: storedSeen(account.id, relay ? relay.scope : relayScope), online: [], retry: null,
     };
     if (others.has(idOf(o))) return;
@@ -146,7 +146,13 @@ function chatIds(o) {
     return [
         ...o.bots.flatMap((b) => [b.id, ...(b.conversations || []).filter((c) => !c.archived).map((c) => `${b.id}~${c.id}`)]),
         ...o.groups.map((g) => 'g:' + g.id),
+        ...personIds(o),
     ];
+}
+
+/** The person chats of another account: one per contact and those it keeps with someone it no longer reaches. @param {Other} o */
+function personIds(o) {
+    return [...new Set([...o.people.map((p) => p.id), ...o.personChats.map((c) => c.id)])].map((id) => 'p:' + id);
 }
 
 /** @param {Other} o @param {any} raw */
@@ -171,12 +177,12 @@ async function receive(o, raw) {
         // With a key only encrypted frames count, as on the main connection
         return;
     }
-    const nameOf = (id) => (o.bots.find((b) => b.id === id) || {}).name || id;
+    const nameOf = (id) => (id.startsWith('person:') ? (o.people.find((p) => p.id === id.slice(7)) || {}).name : (o.bots.find((b) => b.id === id) || {}).name) || id;
     const note = (chatId, e) => {
         if (!e) return;
         o.last[chatId] = preview(chatId, e, nameOf);
         if (e.ts) o.lastTs[chatId] = e.ts;
-        const incoming = e.role === 'assistant' || (e.role === 'user' && e.from && e.from !== 'me' && !e.from.startsWith('routine:'));
+        const incoming = e.role === 'assistant' || (e.role === 'user' && e.from && e.from !== 'me' && !e.from.startsWith('routine:')) || (e.role === 'event' && !!e.from);
         if (incoming && e.ts && (!o.incoming[chatId] || e.ts > o.incoming[chatId])) o.incoming[chatId] = e.ts;
     };
     switch (f.type) {
@@ -189,6 +195,11 @@ async function receive(o, raw) {
             }
             for (const a of f.approvals || []) o.approvals[a.id] = Object.assign({ machine: f.machine }, a);
             for (const id of chatIds(o)) if (!(id in o.last)) sendOn(o.ws, o.channel, { type: 'history', chatId: id, limit: 1 }, undefined, key);
+            break;
+        case 'people':
+            o.people = f.list || [];
+            o.personChats = f.chats || [];
+            for (const id of personIds(o)) if (!(id in o.last)) sendOn(o.ws, o.channel, { type: 'history', chatId: id, limit: 1 }, undefined, key);
             break;
         case 'history': {
             const entries = f.entries || [];
@@ -279,6 +290,18 @@ export function otherRows() {
                 last: o.last[id] || '', unread: chats.some((c) => unread(o, c)),
                 approvals: Object.values(o.approvals).filter((a) => chats.includes(a.chatId)).length,
                 sleeping, machine: item.machine || '',
+            });
+        }
+        // Person chats with something in them; nobody works there, so no state, machine or approvals
+        for (const id of personIds(o)) {
+            if (!o.lastTs[id]) continue;
+            const flags = o.personChats.find((c) => 'p:' + c.id === id) || { id: '' };
+            const item = { id: id.slice(2), name: (o.people.find((p) => 'p:' + p.id === id) || {}).name || id.slice(2), favorite: flags.favorite, muted: flags.muted };
+            const isUnread = unread(o, id);
+            rows.push({
+                account: o.account, relay: o.relay, id, item, group: false, ts: o.lastTs[id],
+                section: !item.muted && isUnread ? 0 : item.favorite ? 2 : 3,
+                state: 'idle', activity: '', last: o.last[id] || '', unread: isUnread, approvals: 0, sleeping: false, machine: '',
             });
         }
     }

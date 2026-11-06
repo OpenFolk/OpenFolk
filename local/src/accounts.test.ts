@@ -79,6 +79,8 @@ const fake = (account: string) => {
         inUse: () => f.working,
         handle(frame: { type: string }) { f.calls.push(`${frame.type}:${currentAccount()}`); },
         greet() {}, leave() {}, updateAgents() {}, peerInbound() {}, woken() {}, warning() {}, pushGone() {},
+        peopleChanged() { f.calls.push(`people:${currentAccount()}`); },
+        fromPerson(from: string) { f.calls.push(`from:${from}:${currentAccount()}`); },
     });
 };
 const router = new Accounts(fake as never, () => undefined);
@@ -90,6 +92,11 @@ check('hello: the relay\'s accounts served', router.served().join() === 'main,wo
 router.handler('work')!.handle({ type: 'ping' } as never, 'c1');
 check('frame of an account runs in its context', made[1].calls.includes('ping:work'));
 check('invalid account from the relay: no handler', router.handler('../x') === null && router.handler('Main') === null);
+router.people([{ id: 'main', name: 'Marco', admin: true, reach: 'all' }, { id: 'work', name: 'Work', admin: false, reach: 'all' }]);
+check('people: every account hears of it in its context', made[0].calls.includes('people:main') && made[1].calls.includes('people:work'));
+const toWork = (made[0] as unknown as { otherAccount: (a: string, fn: (m: { fromPerson: (from: string) => void }) => void) => boolean }).otherAccount;
+check('a person chat reaches the other account in its context', toWork('work', (m) => m.fromPerson('main')) && made[1].calls.includes('from:main:work'));
+check('… not one this machine does not serve, nor itself', !toWork('nobody', () => undefined) && !toWork('main', () => undefined));
 made[1].working = true;
 check('the other account working counts for shutting down', made[0].othersInUse() && !made[1].othersInUse());
 made[1].working = false;

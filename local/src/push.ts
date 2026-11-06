@@ -47,9 +47,9 @@ export function removeSubscriptions(gone: NativeSubscription[]): number {
     return list.length - next.length;
 }
 
-export const PUSH_KINDS: PushKind[] = ['done', 'routine', 'approval', 'awake', 'limit'];
+export const PUSH_KINDS: PushKind[] = ['done', 'routine', 'approval', 'awake', 'limit', 'message', 'handover'];
 const PRIORITIES: PushPriority[] = ['off', 'quiet', 'normal', 'high'];
-const DEFAULTS: Record<PushKind, PushPriority> = { done: 'normal', routine: 'normal', approval: 'high', awake: 'normal', limit: 'normal' };
+const DEFAULTS: Record<PushKind, PushPriority> = { done: 'normal', routine: 'normal', approval: 'high', awake: 'normal', limit: 'normal', message: 'normal', handover: 'high' };
 const FILE = 'push-settings.json';
 
 export function pushSettings(): PushSettings {

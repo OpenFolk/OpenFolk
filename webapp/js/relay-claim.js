@@ -20,8 +20,21 @@ if (startParams.get('moved') === '1') {
 
 /** What is typed: the forms render anew with every state that arrives and must not lose it. */
 const draft = { address: '', code: '', focus: '' };
-/** The claim on its way, done, or why it failed. */
-let claim = /** @type {{ machine: string, state: 'sent' | 'done' | 'failed', message?: string } | null} */ (null);
+/** The claim on its way (with the host typed in, the only one its link may lead to), done, or why it failed. */
+let claim = /** @type {{ machine: string, state: 'sent' | 'done' | 'failed', host?: string, message?: string } | null} */ (null);
+
+/**
+ * The host name of a typed relay address, read as the backend reads it (relayOrigin): without a scheme it is https.
+ * @param {string} address
+ */
+function typedHost(address) {
+    const text = address.trim();
+    try {
+        return new URL(/^[a-z]+:\/\//i.test(text) ? text : `https://${text}`).hostname;
+    } catch {
+        return '';
+    }
+}
 /** The places that show the form (first steps, settings), rendered again when the claim moves on. */
 const places = new Set();
 const rerender = () => { for (const render of places) render(); };
@@ -72,7 +85,7 @@ export function relayClaimForm(onChange) {
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         if (busy || !draft.address.trim() || !draft.code.trim()) return;
-        claim = { machine, state: 'sent' };
+        claim = { machine, state: 'sent', host: typedHost(draft.address) };
         send({ type: 'relay_claim', address: draft.address.trim(), code: draft.code.trim() }, machine);
         rerender();
     });
@@ -85,13 +98,22 @@ export function relayClaimForm(onChange) {
  * @param {string} url
  */
 export function relayClaimed(machine, url) {
-    if (!claim || claim.machine !== machine || !/^https?:\/\//.test(url)) return;
+    if (!claim || claim.machine !== machine) return;
+    // Only a link to the relay typed into the form: whoever sends this frame cannot send the page anywhere else
+    let target;
+    try {
+        target = new URL(url);
+    } catch {
+        return;
+    }
+    if ((target.protocol !== 'https:' && target.protocol !== 'http:') || !claim.host || target.hostname !== claim.host) return;
     claim = { machine, state: 'done' };
     draft.address = draft.code = '';
     rerender();
     // A moment to read what happens; the backend moves over shortly after its answer. An app that brings the web app
     // along takes the new relay in and loads its page for it; the browser's page is the relay's and opens the link.
-    const moved = `${url}${url.includes('#') ? '&' : '#'}moved=1`;
+    target.hash = target.hash ? `${target.hash}&moved=1` : '#moved=1';
+    const moved = target.href;
     setTimeout(() => { if (!bundled || !goToRelay(moved)) location.assign(moved); }, 1200);
 }
 

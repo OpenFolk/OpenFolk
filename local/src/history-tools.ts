@@ -1,6 +1,7 @@
 // The bots' tools over the history (search_history, read_history in agent.ts): which chat a name means, what a time
 // like "7d" means, and the answers as the bot reads them. Every chat on this machine belongs to the same user, so a
-// bot searches all of them; a decision is usually asked about in another chat than the one it was made in.
+// bot searches all of them; a decision is usually asked about in another chat than the one it was made in. Person
+// chats are the exception: what two people write to each other is not the bots' to read.
 
 import { findConversation, loadBots, loadGroups } from './bots.ts';
 import { allChats } from './history.ts';
@@ -33,6 +34,7 @@ export function resolveChat(name: string, current: string): string | null {
     const n = name.trim();
     if (!n) return null;
     if (n === 'this') return current;
+    if (n.startsWith('p:')) return null;
     if (allChats().includes(n)) return n;
     const lower = n.toLowerCase();
     const bot = loadBots().find((b) => b.id === lower || b.name.toLowerCase() === lower);
@@ -47,6 +49,11 @@ function resolveSender(name: string): string | null {
     if (lower === 'me' || lower === 'user') return 'me';
     if (lower.startsWith('routine:')) return lower;
     return loadBots().find((b) => b.id === lower || b.name.toLowerCase() === lower)?.id ?? null;
+}
+
+/** Every chat a bot may search: all but the person chats. */
+function botChats(): string[] {
+    return allChats().filter((c) => !c.startsWith('p:'));
 }
 
 const UNIT_MS: Record<string, number> = { h: 3600_000, d: 86_400_000, w: 7 * 86_400_000, m: 30 * 86_400_000 };
@@ -77,7 +84,7 @@ export function searchHistoryText(a: SearchArgs, current: string, elsewhere: str
     const until = a.until ? parseTime(a.until, now) : undefined;
     if (since === null || until === null) return { text: 'since and until take a date (2026-10-01), a time or a span back from now (12h, 7d, 2w, 3m).', error: true };
     const max = Math.min(Math.max(a.max ?? 20, 1), 50);
-    const hits = searchEntries(a.query, { chats: chats ? [chats] : undefined, from, since, until, max });
+    const hits = searchEntries(a.query, { chats: chats ? [chats] : botChats(), from, since, until, max });
     const note = elsewhere.length ? `\nNot searched: the chats of ${elsewhere.join(', ')} run on another machine right now; ask that bot with message_bot if it matters.` : '';
     if (!hits.length) return { text: `No hits for "${a.query}". Every word has to occur; try fewer or other words.${note}` };
     const lines = hits.map((h) => `- ${minute(h.ts)} · ${chatName(h.chatId)} [chat ${h.chatId}] · ${senderName(h.from)}: ${h.excerpt} [entry ${h.id}]`);

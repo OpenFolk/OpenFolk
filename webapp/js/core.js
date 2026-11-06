@@ -19,7 +19,7 @@ export const el = {
     accountSwitch: /** @type {HTMLButtonElement} */ ($('account-switch')), accountMenu: $('account-menu'),
     settingsAccounts: $('settings-accounts'), accountsOwnName: /** @type {HTMLInputElement} */ ($('accounts-own-name')), accountsPassword: /** @type {HTMLInputElement} */ ($('accounts-password')),
     accountsOwnHint: $('accounts-own-hint'), accountsOwnSave: /** @type {HTMLButtonElement} */ ($('accounts-own-save')), accountsList: $('accounts-list'), accountsNewName: /** @type {HTMLInputElement} */ ($('accounts-new-name')),
-    accountsNewAdmin: /** @type {HTMLInputElement} */ ($('accounts-new-admin')), accountsCreate: /** @type {HTMLButtonElement} */ ($('accounts-create')),
+    accountsNewAdmin: /** @type {HTMLInputElement} */ ($('accounts-new-admin')), accountsNewCustomer: /** @type {HTMLInputElement} */ ($('accounts-new-customer')), accountsCreate: /** @type {HTMLButtonElement} */ ($('accounts-create')),
     accountsNewForm: $('accounts-new-form'), accountsNewCancel: /** @type {HTMLButtonElement} */ ($('accounts-new-cancel')),
     accountsLink: /** @type {HTMLInputElement} */ ($('accounts-link')), accountsLinkGo: /** @type {HTMLButtonElement} */ ($('accounts-link-go')),
     inviteBox: $('invite-box'), accountsError: $('accounts-error'),
@@ -56,6 +56,7 @@ export const el = {
     editorRoleSuggest: /** @type {HTMLButtonElement} */ ($('editor-role-suggest')),
     editorName: /** @type {HTMLInputElement} */ ($('editor-name')), editorArea: /** @type {HTMLInputElement} */ ($('editor-area')), editorRole: /** @type {HTMLInputElement} */ ($('editor-role')), editorFolder: /** @type {HTMLInputElement} */ ($('editor-folder')), editorRepo: /** @type {HTMLInputElement} */ ($('editor-repo')), editorModel: /** @type {HTMLSelectElement} */ ($('editor-model')),
     editorModelCustom: /** @type {HTMLInputElement} */ ($('editor-model-custom')), editorApproval: /** @type {HTMLSelectElement} */ ($('editor-approval')), editorTone: /** @type {HTMLTextAreaElement} */ ($('editor-tone')), editorVoice: /** @type {HTMLSelectElement} */ ($('editor-voice')),
+    editorContact: /** @type {HTMLSelectElement} */ ($('editor-contact')), editorContactBlock: $('editor-contact-block'),
     editorCanMessage: /** @type {HTMLSelectElement} */ ($('editor-can-message')), editorCanMessageBots: $('editor-can-message-bots'), editorAllowedTools: $('editor-allowed-tools'), editorError: $('editor-error'),
     editorMachine: /** @type {HTMLSelectElement} */ ($('editor-machine')), editorFolderHint: $('editor-folder-hint'), editorFolderBrowse: /** @type {HTMLButtonElement} */ ($('editor-folder-browse')),
     folderPicker: $('folder-picker'), pickerPath: $('picker-path'), pickerList: $('picker-list'), pickerError: $('picker-error'), pickerChoose: /** @type {HTMLButtonElement} */ ($('picker-choose')),
@@ -141,6 +142,8 @@ export const state = {
     autologon: {},           // host -> { on, password } according to its backend (automatic Windows sign-in)
     capabilities: {},        // host -> { shutdown, shutdownSeconds, cancelShutdown, autologon, restart } from its settings
     bots: [], groups: [], states: {}, activity: {}, activeChats: {}, approvals: {}, routines: [],
+    people: [],              // whom this account can chat with [{ id, name, admin, reach }], from the backends
+    personChats: [],         // favorite, mute and deletion of the person chats [{ id, favorite, muted, cleared, updatedAt }]
     usage: null, pushKey: '',
     models: [],              // models of the CLI [{ value, resolvedModel, displayName }], 'default' points to the real one
     history: {},             // chatId -> HistoryEntry[]

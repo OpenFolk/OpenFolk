@@ -40,6 +40,12 @@ check('main cannot be deleted', !store.remove('main'));
 check('deleted account leaves a tombstone', store.remove('kunde-mueller') && store.deletedIds().includes('kunde-mueller') && !store.get('kunde-mueller'));
 const again = store.create('Kunde Müller');
 check('a deleted id is never given out again', typeof again === 'object' && again.id === 'kunde-mueller-2');
+const shop = store.create('Shop', false, 'admins');
+check('reach stored with a new account', typeof shop === 'object' && shop.reach === 'admins');
+check('accounts without reach count as all', store.people().find((p) => p.id === 'kunde-mueller-2')?.reach === 'all');
+check('people: main is an admin', store.people().find((p) => p.id === 'main')?.admin === true);
+check('reach changed', store.update('shop', { reach: 'all' }) === 'ok' && store.get('shop')?.reach === 'all');
+check('main keeps reaching all', store.update('main', { reach: 'admins' }) === 'ok' && store.get('main')?.reach === 'all');
 
 // ---------------------------------------------------------------- the relay with two accounts
 const dataDir = tmp();
@@ -92,6 +98,8 @@ const server = await agent('server', true);
 const old = await agent('old', false);
 check('hello of a backend with accounts lists them', JSON.stringify(desk.got.find((m) => m.type === 'relay_hello')?.accounts) === '["main"]');
 check('hello of an old backend without accounts', !('accounts' in old.got.find((m) => m.type === 'relay_hello')!));
+check('hello of a backend with accounts names the people', ((desk.got.find((m) => m.type === 'relay_hello')?.people ?? []) as { id: string }[]).map((p) => p.id).join() === 'main');
+check('… an old backend gets no people', !('people' in old.got.find((m) => m.type === 'relay_hello')!));
 
 const owner = await client({ token: CLIENT });
 check('password without account: main', owner.reply?.ok === true && (owner.reply.account as { id: string }).id === 'main');
@@ -102,6 +110,7 @@ const created = await owner.next((m) => m.type === 'account_created');
 const id = (created?.account as { id: string } | undefined)?.id;
 check('main creates an account with a pairing token', id === 'kunde-mueller' && typeof (created?.pair as { token?: unknown })?.token === 'string');
 check('backends with accounts hear of it, old ones not', !!(await desk.next((m) => m.type === 'account_added' && m.account === id)) && await none(old, (m) => m.type === 'account_added'));
+check('… and get the people with it', !!(await desk.next((m) => m.type === 'people' && (m.list as { id: string; reach: string }[]).some((p) => p.id === id && p.reach === 'all'))) && await none(old, (m) => m.type === 'people'));
 
 const guest = await client({ pair: (created!.pair as { token: string }).token, name: 'Phone' });
 check('pairing token signs in to the new account', guest.reply?.ok === true && (guest.reply.account as { id: string }).id === id);
@@ -149,6 +158,13 @@ check('cannot rename another account', !!(await guest.next((m) => m.type === 'er
 guest.got.length = 0;
 guest.send({ type: 'account_update', id, password: 'guest-password-0123' });
 check('sets its own password', !!(await guest.next((m) => m.type === 'accounts')));
+guest.send({ type: 'account_update', id, reach: 'all' });
+check('nobody sets their own reach', !!(await guest.next((m) => m.type === 'error' && m.request === 'account_update')));
+desk.got.length = 0;
+owner.send({ type: 'account_update', id, reach: 'admins' });
+check('an admin sets the reach: backends get the people', !!(await desk.next((m) => m.type === 'people' && (m.list as { id: string; reach: string }[]).some((p) => p.id === id && p.reach === 'admins'))));
+owner.send({ type: 'account_update', id, reach: 'nobody' });
+check('unknown reach refused', !!(await owner.next((m) => m.type === 'error' && m.request === 'account_update')));
 owner.send({ type: 'account_update', id, password: 'owner-sets-it-012345' }); // gitleaks:allow
 check('an admin cannot set someone else\'s password', !!(await owner.next((m) => m.type === 'error' && m.request === 'account_update')));
 
@@ -196,6 +212,7 @@ check('main cannot be deleted', !!(await owner.next((m) => m.type === 'error' &&
 owner.send({ type: 'account_delete', id });
 check('admin deletes the account: its devices are disconnected', await Promise.race([guest.closed, new Promise<number>((r) => setTimeout(() => r(0), 2000))]) === 4004);
 check('backends with accounts remove its data', !!(await desk.next((m) => m.type === 'account_deleted' && m.account === id)) && await none(old, (m) => m.type === 'account_deleted'));
+check('… and get the people without it', !!(await desk.next((m) => m.type === 'people' && !(m.list as { id: string }[]).some((p) => p.id === id))));
 const after = await client({ device: (guest.reply!.device as { token: string }).token });
 check('the device key of a deleted account no longer works', after.reply?.ok === false && after.reply.loggedOut === true);
 const ownerAgain = await client({ device: ownerKey });

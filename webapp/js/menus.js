@@ -2,13 +2,13 @@
 import { locale, t, tn } from './i18n.js';
 import { MIN_BACKEND_PROTOCOL, PROTOCOL_VERSION, el, node, state } from './core.js';
 import { activePane, layoutPanes, paneFor } from './panes.js';
-import { bot, clockTime, conversation, conversationTitle, group, isConversation, isGroup, modelOf, responsibleMachine, send, upper } from './e2e.js';
+import { bot, clockTime, conversation, conversationTitle, group, isConversation, isGroup, isPerson, modelOf, person, responsibleMachine, send, upper } from './e2e.js';
 import { archivedOf, isFavorite, isMuted, toggleFavorite, toggleMuted } from './connection.js';
 import { listTap, openChatSearch, renderChatList, rowMenu } from './list.js';
 import { closeChat, openChat, paneActivated, renderChatHeader, renderHeaders } from './chat.js';
 import { refreshMachinesPage, renderMachines, wake } from './machines.js';
 import { closeVscodeSession, openVscode } from './vscode.js';
-import { openEditor, openGroupEditor, openInfo } from './editors.js';
+import { moveBot, openEditor, openGroupEditor, openInfo } from './editors.js';
 
 // ================================================================ Menus
 
@@ -77,7 +77,9 @@ export function chatMenuButtons(id, onPage = false) {
     const vscode = ['vscode', 'monitor', t('menu.vscode')];
     const restart = ['restart', 'restart', t('menu.newSession')];
     const editBot = ['edit', 'pencil', t('menu.editBot')];
-    const entries = !b
+    const entries = isPerson(id)
+        ? [search, fav, mute, ['person_delete', 'delete', t('people.deleteChat'), 'danger']]
+        : !b
         ? [search, ...(onPage ? [] : [['group', 'group', t('menu.editGroup')]]), fav, mute, ['group_delete', 'delete', t('menu.deleteGroup'), 'danger']]
         : isConversation(id)
             ? [...(onPage ? [] : [git]), search, conversationNew, ['main_chat', 'back', t('menu.mainChat', { name: b.name })], vscode,
@@ -224,7 +226,7 @@ function chooseMachine(b, host) {
         if (!confirm(t('machine.moveWakeConfirm', { name: b.name, machine: upper(host) }))) return;
         wake(host);
     }
-    openEditor(b, host);
+    moveBot(b, host);
 }
 
 /**
@@ -269,6 +271,11 @@ export function chatMenuAction(id, action, menu, show = (...k) => { menu.replace
         else showGitChanges(b, menu, show);
     }
     if (action === 'conversation_delete' && b) return deleteConversation(id);
+    if (action === 'person_delete' && isPerson(id)) {
+        if (!confirm(t('people.deleteChatConfirm', { name: person(id).name }))) return false;
+        send({ type: 'person_chat_delete', account: id.slice(2) });
+        if (p) closeChat(p);
+    }
     if (action === 'group' && g) openGroupEditor(g);
     if (action === 'group_delete' && g) {
         if (!confirm(t('menu.deleteGroupConfirm', { name: g.name }))) return false;

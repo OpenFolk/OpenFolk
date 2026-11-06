@@ -126,7 +126,13 @@ bot fell back to any machine awake when its own slept; that needed the same fold
 could keep true, and turned a sleeping PC into bots failing on the server. Now a bot sleeps with its machine, and
 machines share work through git like people do. Only the bot's machine can check its folder, so the web app asks
 that machine (`folder_check`, `folder_clone`) before it saves; a backend accepts a bot for another machine only
-with its folder unchanged, and checks the folder again before every run. Bots saved before 0.2 have no machine;
+with its folder unchanged, and checks the folder again before every run. To move a bot without asking for a folder,
+its machine writes down its place (`Bot.place`): the folder relative to that machine's folder for bots, the repository's
+origin and root. Only the bot's machine can read its repository, so the place is stored with the synced bot rather than
+asked at move time, when that machine may sleep. The new machine resolves the place below its own folder for bots
+(`bot_move`, `planMove` in `folders.ts`), refuses anything that leads out of it because the place came over the sync,
+and saves the bot itself; a place that is taken or missing falls back to the editor's folder and repository fields.
+Bots saved before 0.2 have no machine;
 the machine that runs them by the old rule claims them once the relay reports who is awake (`claimUnplacedBots`).
 `machineOnly` stays in the frames, always true, so apps from the stores before 0.2 do not move bots around. The relay only knows which machines are awake
 and when it last saw each one; waking goes through the relay (`WAKE_METHOD`) because a sleeping machine cannot
@@ -190,6 +196,17 @@ names), and never deletes `main`. The relay keeps a tombstone, so a machine asle
 next connect, and never gives out a deleted id again, which a backend would take for the old account. All accounts
 share the end-to-end key: it keeps chats from whoever hosts the relay, while separating accounts is the relay's
 routing and, on the machine, the account folders; the owner of a machine can read every account on it anyway.
+
+**Person chats** are the one place where accounts see each other: a contact's name and the chat with them. The chat
+is `p:<the other account>` from each side, and the backend that gets a message writes it into both accounts' folders
+with the same entry id (`local/src/people.ts`, `messageToPerson` in `agent.ts`). Two halves instead of one shared chat
+keep everything else as it was: history, read state, search, sync and deleting an account work per account, and each
+side deletes only its own copy. A deleted half is a time (`cleared`), not a tombstone, so another machine's older copy
+stays away while new messages still arrive. Who may write to whom is the relay's list of accounts with their reach,
+sent to backends in the hello and after every change (`people`); the relay routes person chats like every other frame
+and sees nothing new. Bots never read person chats (`search_history` skips them), because the people did not write
+them for a bot. `hand_over` writes a bot's summary into the person chat between the bot's account and its contact,
+with a push of its own kind that ignores mute; it does not wait for the person, as a session must not hang for hours.
 
 In the web app a device keeps its accounts with one device key each (`openfolk-accounts`, `webapp/js/accounts.js`).
 Switching sets the stored key and loads the page again rather than swapping state in place: everything the page

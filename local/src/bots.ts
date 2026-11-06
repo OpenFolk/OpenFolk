@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.ts';
 import { t } from './i18n.ts';
+import { personChat } from './people.ts';
 import { rememberable } from './policy.ts';
 import { readJson, readJsonCached, setTombstone, slug, writeJson } from './store.ts';
-import { BOT_VOICES, botIdOf, type ApprovalPolicy, type Bot, type BotInput, type BotVoice, type Group, type GroupInput } from '../../shared/protocol.ts';
+import { BOT_VOICES, botIdOf, type ApprovalPolicy, type Bot, type BotInput, type BotPlace, type BotVoice, type Group, type GroupInput } from '../../shared/protocol.ts';
 
 const POLICIES: ApprovalPolicy[] = ['never', 'risky', 'write'];
 
@@ -137,6 +138,10 @@ export function saveBot(input: BotInput): Bot {
             : input.canMessage === null ? undefined : [...new Set(input.canMessage)].filter((b) => b !== id && bots.some((x) => x.id === b)),
         machine,
         machineOnly: true,
+        // '' takes the contact off; an app without the field leaves it as it is
+        contact: input.contact === undefined || input.contact === null ? existing?.contact : (String(input.contact).trim().toLowerCase() || undefined),
+        // Written down by the bot's machine (setPlace); another folder needs a new one
+        place: existing?.folder === folder ? existing.place : undefined,
         // Favorite and mute are only set by their own frames; editing leaves them as they are
         favorite: existing?.favorite || undefined,
         muted: existing?.muted || undefined,
@@ -157,6 +162,21 @@ export function saveBot(input: BotInput): Bot {
     else bots.push(bot);
     saveBots(bots);
     return bot;
+}
+
+/**
+ * Writes down the place of a bot's folder (Bot.place) if the bot still has that folder; true if it changed. The
+ * place travels with the bot to the other machines.
+ */
+export function setPlace(botId: string, folder: string, place: BotPlace | undefined): boolean {
+    const bots = loadBots();
+    const b = bots.find((x) => x.id === botId);
+    if (!b || b.folder !== folder || JSON.stringify(b.place) === JSON.stringify(place)) return false;
+    if (place) b.place = place;
+    else delete b.place;
+    b.updatedAt = new Date().toISOString();
+    saveBots(bots);
+    return true;
 }
 
 /** `id`: bot id (main chat) or chatId of a conversation. */
@@ -336,6 +356,7 @@ export function setMuted(chatId: string, on: boolean): void {
 
 /** Whether answers of this chat stay without push. */
 export function isMuted(chatId: string): boolean {
+    if (chatId.startsWith('p:')) return Boolean(personChat(chatId.slice(2))?.muted);
     return chatId.startsWith('g:') ? Boolean(findGroup(chatId.slice(2))?.muted) : Boolean(findBot(botIdOf(chatId))?.muted);
 }
 

@@ -1,7 +1,7 @@
 /* OpenFolk web app: bot, group and routine editors, info panel, knowledge. */
 import { locale, t } from './i18n.js';
 import { desktopLocal } from './platform.js';
-import { AVATAR_EDGE, TEMPLATES, el, node, state, templateValues } from './core.js';
+import { AVATAR_EDGE, TEMPLATES, el, node, state, templateValues, toast } from './core.js';
 import { layoutPanes } from './panes.js';
 import { bot, clockTime, fillAvatar, group, isConversation, responsibleMachine, send, upper } from './e2e.js';
 import { shrinkImage } from './voice.js';
@@ -19,7 +19,8 @@ export function openEditor(b, machine) {
     el.editor.classList.toggle('moving', moving);
     el.editor.classList.toggle('page', !moving);
     state.editorAvatar = b ? b.avatar : '';
-    state.editorRemote = '';
+    // The repository the bot's machine wrote down; the folder check below brings it too, if that machine is awake
+    state.editorRemote = b?.place?.repo || '';
     el.editorRepo.value = '';
     filled.folder = filled.repo = false;
     folderAsked = '';
@@ -62,6 +63,7 @@ export function editorValues(v) {
     el.editorTone.value = v.tone || '';
     el.editorVoice.value = v.voice || '';
     canMessageValues(v);
+    contactValues(v);
     allowedToolValues(v);
     // A template keeps the machine already chosen; a new bot starts on the first machine awake
     machineOptions(v.machine || (v.id ? responsibleMachine(v) : '') || el.editorMachine.value || [...state.online].sort()[0] || '');
@@ -88,6 +90,29 @@ function canMessageValues(v) {
 
 export function canMessageChanged() {
     el.editorCanMessageBots.hidden = el.editorCanMessage.value !== 'some';
+}
+
+/** Whom the bot hands a chat over to (hand_over): a person on the relay; shown only when there is one. */
+function contactValues(v) {
+    const current = v.contact || '';
+    const choices = [...state.people];
+    if (current && !choices.some((p) => p.id === current)) choices.push({ id: current, name: current });
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = t('editor.contactNone');
+    el.editorContact.replaceChildren(none, ...choices.map((p) => {
+        const o = document.createElement('option');
+        o.value = p.id;
+        o.textContent = p.name;
+        return o;
+    }));
+    el.editorContact.value = current;
+    el.editorContactBlock.hidden = choices.length === 0;
+}
+
+/** undefined (unchanged) while the field is hidden, '' takes the contact off. */
+function contactInput() {
+    return el.editorContactBlock.hidden ? undefined : el.editorContact.value;
 }
 
 /** The MCP tools allowed for good on an approval card; unticking one takes it off when saving. */
@@ -323,7 +348,7 @@ function saveBot(folder, to) {
             id: b ? b.id : '',
             name: el.editorName.value.trim(), area: el.editorArea.value.trim(), role: el.editorRole.value.trim(), folder,
             model, tone: el.editorTone.value.trim(), avatar: state.editorAvatar, approval: el.editorApproval.value, machine: el.editorMachine.value,
-            voice: el.editorVoice.value, canMessage: canMessageInput(), allowedTools: allowedToolsInput(),
+            voice: el.editorVoice.value, canMessage: canMessageInput(), allowedTools: allowedToolsInput(), contact: contactInput(),
         },
     }, to);
     setSaving(false);
@@ -347,7 +372,7 @@ export function submitEditor() {
     // Its sessions follow the bot to the new machine; what is not on the git server yet goes along only on request
     takeWork = null;
     if (b && b.machine && b.machine !== machine) {
-        const unpushed = gitOpenOf(b).filter((r) => r.files.length || r.more || r.ahead);
+        const unpushed = unpushedOf(b);
         if (unpushed.length) {
             if (!confirm(t('editor.takeWork', { name: b.name, from: upper(b.machine), to: upper(machine), repos: unpushed.map((r) => r.name).join(', ') }))) return;
             takeWork = { botId: b.id, from: b.machine, folder: b.folder };
@@ -416,6 +441,72 @@ export function receiveFolderChecked(f) {
     if (f.ok && s.repo && !sameRepository(f.remote, s.repo)) { setSaving(false); startClone(s.repo, s.asked); return; }
     if (!f.ok) { setSaving(false); showEditorError(f.message || t('editor.noAnswer'), f.refused); return; }
     s.save(f.folder);
+}
+
+// ---------------------------------------------------------------- Moving a bot without the dialog
+
+/** A move in progress: the bot, the machine, whether it waits for that machine to wake, the work to take along. */
+let move = null;
+
+/** Open files, unpushed or unpulled commits in the bot's repos: they are not on the git server yet. */
+const unpushedOf = (b) => gitOpenOf(b).filter((r) => r.files.length || r.more || r.ahead);
+
+/**
+ * Moving a bot to `host` without questions about folders: the machine there puts it at its place (Bot.place) under
+ * its folder for bots, after one confirmation that names the folder. Without a place, with a place that is taken
+ * there or with a backend before bot_move, the small move dialog asks for folder and repository as before.
+ */
+export function moveBot(b, host) {
+    if (!b.place) { openEditor(b, host); return; }
+    move = { botId: b.id, host, waiting: !state.online.includes(host), work: null };
+    if (move.waiting) { toast(t('move.waiting', { machine: upper(host) }), 4000); return; }
+    send({ type: 'bot_move', botId: b.id, dryRun: true }, host);
+}
+
+/** The machine of a move woke up: ask it where the bot would go. */
+export function continueMove() {
+    if (!move || !move.waiting || !state.online.includes(move.host)) return;
+    move.waiting = false;
+    send({ type: 'bot_move', botId: move.botId, dryRun: true }, move.host);
+}
+
+function moveByDialog(message, refused) {
+    const b = move && bot(move.botId);
+    const host = move?.host;
+    move = null;
+    if (!b) return;
+    openEditor(b, host);
+    if (message) showEditorError(message, refused);
+}
+
+export function receiveMoved(f) {
+    if (!move || f.botId !== move.botId) return;
+    const b = bot(f.botId);
+    const host = move.host;
+    if (!b) { move = null; return; }
+    if (!f.ok) { moveByDialog(f.message, f.refused); return; }
+    if (f.dryRun) {
+        const question = { use: 'move.confirmUse', clone: 'move.confirmClone', create: 'move.confirmCreate' }[f.action] || 'move.confirmUse';
+        if (!confirm(t(question, { name: b.name, machine: upper(host), folder: f.folder, repo: b.place?.repo || '' }))) { move = null; return; }
+        // Its sessions follow the bot; what is not on the git server yet goes along only on request
+        const unpushed = b.machine ? unpushedOf(b) : [];
+        if (unpushed.length) {
+            if (!confirm(t('editor.takeWork', { name: b.name, from: upper(b.machine), to: upper(host), repos: unpushed.map((r) => r.name).join(', ') }))) { move = null; return; }
+            move.work = { from: b.machine, folder: b.folder };
+        }
+        if (f.action === 'clone') toast(t('move.cloning', { machine: upper(host) }), 4000);
+        send({ type: 'bot_move', botId: b.id }, host);
+        return;
+    }
+    // Only now that the new machine took the bot: the previous one packs once the move reaches it
+    if (move.work) send({ type: 'work_take', botId: b.id, machine: host, folder: move.work.folder }, move.work.from);
+    move = null;
+    toast(t('move.done', { name: b.name, machine: upper(host), folder: f.folder }), 4000);
+}
+
+/** A backend before bot_move, or a bot it does not know: the dialog asks instead. */
+export function moveRequestFailed() {
+    moveByDialog('');
 }
 
 /** A backend before 0.2 does not know folder_check and folder_clone: it checks the folder itself when saving. */

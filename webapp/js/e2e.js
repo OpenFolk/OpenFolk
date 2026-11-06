@@ -191,6 +191,13 @@ export const conversationTitle = (chatId) => (conversation(chatId) || {}).title 
 /** Model of a chat: the conversation's, otherwise the bot's ('default' = default of the CLI). */
 export const modelOf = (chatId) => (conversation(chatId) || {}).model || (bot(chatId) || {}).model || 'default';
 export const group = (chatId) => state.groups.find((g) => 'g:' + g.id === chatId);
+/** A chat with another person on the relay: `p:<their account id>`. */
+export const isPerson = (chatId) => typeof chatId === 'string' && chatId.startsWith('p:');
+/** The other person of a person chat; one this account no longer reaches keeps a chat with the id as name. */
+export const person = (chatId) => {
+    const id = String(chatId).slice(2);
+    return state.people.find((p) => p.id === id) || { id, name: id, gone: true };
+};
 
 export function clockTime(ts) {
     const d = ts ? new Date(ts) : new Date();
@@ -274,6 +281,7 @@ export function plain(text) {
 export function senderName(from) {
     if (!from || from === 'me') return t('sender.me');
     if (from.startsWith('routine:')) return '⏰ ' + from.slice(8);
+    if (from.startsWith('person:')) return person('p:' + from.slice(7)).name;
     return (bot(from) || {}).name || from;
 }
 

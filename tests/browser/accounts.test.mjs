@@ -205,6 +205,27 @@ export default async function ({ start, check }) {
     await m.locator('#accounts-list li').nth(2).locator('button').nth(1).click();
     await admin.wait(200);
     check('refusal of the relay shown on the page', (await m.textContent('#accounts-error')).includes('may not'), await m.textContent('#accounts-error'));
+
+    // A relay from before person chats names no reach and would drop "customer": the choice is not offered
+    await m.click('#accounts-join');
+    await admin.wait(100);
+    check('relay without reach: no "Customer" choice', await m.isHidden('#accounts-new-customer'));
+    await m.click('#accounts-new-cancel');
+
+    // Person chats: a customer reaches only the admins; a relay that names the reach gets the switch in the list
+    list[1] = { ...WORK, created: '2026-10-01T08:00:00Z', reach: 'admins' };
+    await m.evaluate(() => send({ type: 'accounts' }));
+    await admin.wait(200);
+    check('a customer account: tagged, with "Reaches everyone"', (await rows())[2] === 'Work *: Create invitation link,Make admin,Reaches everyone,Delete', await rows());
+    await m.locator('#accounts-list li').nth(2).locator('button', { hasText: 'Reaches everyone' }).click();
+    await admin.wait(100);
+    check('… which goes to the relay as reach "all"', admin.sent.some((f) => f.type === 'account_update' && f.id === 'work' && f.reach === 'all'));
+    await m.click('#accounts-join');
+    await m.fill('#accounts-new-name', 'Shop');
+    await m.check('#accounts-new-customer');
+    await m.click('#accounts-create');
+    await admin.wait(300);
+    check('a new customer: created with reach "admins"', admin.sent.some((f) => f.type === 'account_create' && f.name === 'Shop' && f.reach === 'admins'));
     await admin.close();
 
     // ---- another account edits its own name and password

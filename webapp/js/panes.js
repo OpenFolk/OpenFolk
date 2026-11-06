@@ -76,7 +76,7 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {{ id: string | null, snapshot: string }} rendered
  * @property {number} fxIndex          pinned message shown in the bar
  * @property {{ hits: any[], index: number, timer: any }} cs
- * @property {{ start: number, hits: any[], active: number }} mention
+ * @property {{ start: number, hits: any[], active: number, kind: 'bot' | 'command' }} mention
  * @property {any} loadingTimer
  * @property {() => void} dispose
  */
@@ -118,7 +118,7 @@ export function createPane() {
     const p = {
         root, el: els, chatId: null, follow: true, queueOpen: false, queueSettle: null, uploads: [], replyTo: null,
         jumpTo: null, globalSearch: null, rendered: { id: null, snapshot: '' }, fxIndex: 0,
-        cs: { hits: [], index: 0, timer: null }, mention: { start: -1, hits: [], active: 0 }, loadingTimer: null,
+        cs: { hits: [], index: 0, timer: null }, mention: { start: -1, hits: [], active: 0, kind: 'bot' }, loadingTimer: null,
         dispose: () => undefined,
     };
     // Every change in the history (text chunks, tool rows, cards), every resize (phone keyboard) and every image

@@ -62,6 +62,7 @@ export function cleanMachineSettings(s: Partial<Record<keyof MachineSettings, un
         gitPushUser: typeof s.gitPushUser === 'string' ? s.gitPushUser.trim() : d.gitPushUser,
         gitPushHost: typeof s.gitPushHost === 'string' && /^[a-z0-9.:-]*$/i.test(gitHostOf(s.gitPushHost)) ? gitHostOf(s.gitPushHost) : d.gitPushHost,
         claudeAiConnectors: bool('claudeAiConnectors'),
+        botFolder: typeof s.botFolder === 'string' ? s.botFolder.trim().replace(/\\/g, '/') : d.botFolder,
     };
 }
 

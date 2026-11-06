@@ -175,6 +175,30 @@ export default async function ({ start, check }) {
     const hostSaved = h.sent.findLast((f) => f.type === 'machine_settings_save' && f.settings && 'gitPushHost' in f.settings);
     check('git host typed as an address: cut down to the host in the field and in the frame', hostTyped === 'git.example.com' && hostSaved?.settings.gitPushHost === 'git.example.com', [hostTyped, hostSaved]);
 
+    // The folder for bots: none from an older backend; empty shows the first allowed folder, a change goes to that machine
+    const botFolder = () => p.evaluate(() => {
+        const label = [...document.querySelectorAll('#settings-machines label')].find((l) => l.querySelector('span')?.textContent === 'Folder');
+        return label ? { value: label.querySelector('input').value, placeholder: label.querySelector('input').placeholder } : null;
+    });
+    check('older backend: no folder for bots', (await botFolder()) === null);
+    await h.push({ type: 'machine_settings', machine: 'desk', anthropicKey: false, gitPushToken: true, shutdownMethod: 'script', roots: ['D:/work', 'E:/more'],
+        offers: { shutdown: true, ide: true, terminal: false, voice: true },
+        settings: { claudeAuth: 'subscription', shutdown: false, shutdownDelaySeconds: 60, afterWake: 'ifIdle', afterWakeSeconds: 300, afterWakeWaitMinutes: 60, idleMinutes: 15,
+            handoverIde: true, handoverTerminal: true, voiceModel: '', voiceDevice: 'auto', voicePreload: true, gitPushUser: 'bot', gitPushHost: 'git.example.com', botFolder: '' } });
+    await h.wait(100);
+    const folderShown = await botFolder();
+    const folderHint = await p.evaluate(() => [...document.querySelectorAll('#settings-machines .hint')].map((n) => n.textContent).find((x) => x.includes('moving here')) || '');
+    check('folder for bots: empty, the first allowed folder as placeholder, the allowed ones named', folderShown?.value === '' && folderShown.placeholder === 'D:/work'
+        && folderHint.includes('D:/work, E:/more'), [folderShown, folderHint]);
+    await p.evaluate(() => {
+        const input = [...document.querySelectorAll('#settings-machines label')].find((l) => l.querySelector('span')?.textContent === 'Folder').querySelector('input');
+        input.value = 'D:/work/OpenFolk';
+        input.dispatchEvent(new Event('change'));
+    });
+    await h.wait(50);
+    const folderSaved = h.sent.findLast((f) => f.type === 'machine_settings_save' && f.settings && 'botFolder' in f.settings);
+    check('folder for bots goes to that machine', folderSaved?.machine === 'desk' && folderSaved.settings.botFolder === 'D:/work/OpenFolk', folderSaved);
+
     // The setup loads the speech model as a step of its own, with its size
     await h.push({ type: 'machine_settings', machine: 'desk', anthropicKey: false, gitPushToken: true, shutdownMethod: 'script', voice: { state: 'installing', detail: 'model:large-v3-turbo' },
         offers: { shutdown: true, ide: true, terminal: false, voice: true },

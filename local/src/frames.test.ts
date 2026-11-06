@@ -28,6 +28,9 @@ accepted('answer to a question', { type: 'approval_reply', id: 'q1', allow: true
 accepted('check a folder', { type: 'folder_check', folder: '/work/website' });
 accepted('list the allowed roots', { type: 'folder_list', folder: '' });
 accepted('clone a repository', { type: 'folder_clone', url: 'https://git.example.com/team/website.git' });
+accepted('ask where a moving bot would go', { type: 'bot_move', botId: 'skool', dryRun: true, machine: 'workstation' });
+rejected('move without a bot', { type: 'bot_move', botId: '' }, 'botId');
+accepted('folder for bots', { type: 'machine_settings_save', settings: { botFolder: 'D:/OpenFolk' } });
 accepted('denial with a reason', { type: 'approval_reply', id: 'a1', message: 'not now', allow: false });
 accepted('read state', { type: 'seen', state: { cloud: { until: '2026-10-13T08:00:00Z', updatedAt: '2026-10-13T08:00:00Z' }, pdf: { until: undefined, unread: true, updatedAt: '2026-10-13T08:00:00Z' } } });
 accepted('message with attachment and quote', { type: 'send', chatId: 'cloud', text: 'see file', attachments: [{ name: 'a.png', type: 'image/png', data: 'AAAA' }], replyTo: { id: 'e1', from: 'me', text: 'earlier' } });

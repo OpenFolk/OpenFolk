@@ -1,4 +1,4 @@
-// The bots' own tools (list_bots, message_bot, send_file, knowledge, history), the same for every engine: Claude gets
+// The bots' own tools (list_bots, message_bot, send_file, knowledge, history, hand_over), the same for every engine: Claude gets
 // them as an MCP server, the other engines as plain functions (EngineTool). What a tool needs of the bot manager
 // comes through ToolHost; this module imports only types from agent.ts.
 
@@ -27,6 +27,8 @@ export interface ToolHost {
     machineOf(bot: Pick<Bot, 'machine'>): string | null;
     send: Sender;
     messageBot(s: BotSession, target: string, job: string, wait: boolean): Promise<ToolText>;
+    /** Hands the current chat over to the bot's contact (person chats); never waits for the person. */
+    handOver(s: BotSession, summary: string): ToolText;
     knowledgeChanged(locations: KnowledgeLocation[], by: BotSession): void;
 }
 
@@ -200,6 +202,17 @@ export function botTools(s: BotSession, host: ToolHost) {
                 return toolText(r.text, r.error);
             },
         ),
+        // Only for a bot with a contact: without one there is nobody to hand over to
+        ...(s.bot.contact ? [tool(
+            'hand_over',
+            'Hands this conversation over to a person (your contact): they get your summary and a notification, the user gets a link '
+            + 'to continue with them. Use it when the user asks for a person or you cannot help further. Does not wait for the person; '
+            + 'tell the user in your answer that they will reply in their chat.',
+            {
+                summary: z.string().describe('What the user wants, what you found out or tried, and what is open; written for the person taking over'),
+            },
+            async (args) => host.handOver(s, args.summary),
+        )] : []),
     ];
 }
 

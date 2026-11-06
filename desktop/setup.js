@@ -21,6 +21,7 @@ let folders = null;
 window.openfolkDesktop.info().then((i) => {
     texts = i.texts;
     currentMode = i.mode;
+    qrInput.value = i.url || '';
     folders = window.mountFolders(document.getElementById('setup-folders'), { roots: i.roots || [], home: i.home || '', defaultRoot: i.defaultRoot || '', env: i.envRoots || '', texts: i.texts });
     document.documentElement.lang = i.language;
     for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = i.texts[el.dataset.i18n] ?? el.textContent;
@@ -54,6 +55,50 @@ document.getElementById('join-form').addEventListener('submit', async (e) => {
     const r = await window.openfolkDesktop.joinServer(document.getElementById('join').value);
     button.disabled = false;
     if (r.error) joinError.textContent = r.error;
+});
+
+// The same invitation by QR code: main.js waits at the relay (qr-join.js), a signed-in phone scans and approves
+const qrForm = document.getElementById('qr-form');
+const qrInput = document.getElementById('qr-relay');
+const qrError = document.getElementById('qr-error');
+const qrBox = document.getElementById('qr-box');
+const qrCode = document.getElementById('qr-code');
+const qrHint = document.getElementById('qr-hint');
+
+function qrWaiting(on) {
+    qrBox.hidden = !on;
+    qrForm.hidden = on;
+    if (!on) qrCode.replaceChildren();
+}
+
+qrForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    qrError.textContent = '';
+    if (!qrInput.value.trim()) { qrError.textContent = texts.invalidAddress || ''; return; }
+    const button = qrForm.querySelector('button');
+    button.disabled = true;
+    const r = await window.openfolkDesktop.qrJoinStart(qrInput.value);
+    button.disabled = false;
+    if (r && r.error) qrError.textContent = r.error;
+});
+document.getElementById('qr-cancel').addEventListener('click', () => {
+    void window.openfolkDesktop.qrJoinStop();
+    qrWaiting(false);
+});
+window.openfolkDesktop.onQrJoin((s) => {
+    if (s.state === 'code') {
+        // Markup from the main process (qr-join.js), drawn from the request id and key only
+        qrCode.innerHTML = s.svg;
+        qrHint.textContent = texts.setupQrHint || qrHint.textContent;
+        qrWaiting(true);
+    } else if (s.state === 'joining') {
+        qrCode.replaceChildren();
+        qrHint.textContent = texts.setupQrJoining || '';
+    } else if (s.state === 'error') {
+        qrWaiting(false);
+        const text = (texts.setupQrFailed || {})[s.reason];
+        qrError.textContent = text ? fill(text, { message: s.message || '' }) : s.message || s.reason;
+    }
 });
 
 const form = document.getElementById('form');

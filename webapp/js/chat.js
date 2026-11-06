@@ -2,7 +2,7 @@
 import { t } from './i18n.js';
 import { $, el, node, state, closest } from './core.js';
 import { activePane, capacity, closeSettings, createPane, isWide, layoutPanes, paneFor, panes, removePane, savePanes, setActivePane } from './panes.js';
-import { bot, conversationTitle, fillAvatar, group, isConversation, isGroup, modelOf, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
+import { bot, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
 import { backgroundOf, backgroundText, chatStatus, closeChatSearch, renderChatList } from './list.js';
 import { renderMembers } from './machines.js';
 import { closeMention, markSeen, renderHistory, renderPinned, setReply } from './chat-features.js';
@@ -275,6 +275,10 @@ export function swipeBack(area, o) {
 /** @param {Pane} p */
 export function renderChatHeader(p) {
     const id = p.chatId;
+    if (isPerson(id)) {
+        renderPersonHeader(p);
+        return;
+    }
     const g = isGroup(id) ? group(id) : null;
     const b = g ? null : bot(id);
     if (!g && !b) return;
@@ -304,6 +308,20 @@ export function renderChatHeader(p) {
     renderSleepHint(p);
     updateSendAllowed();
     renderWorking();
+}
+
+/** A person chat: the name and that it is a person, nothing about models, machines or work. @param {Pane} p */
+function renderPersonHeader(p) {
+    const who = person(p.chatId);
+    fillAvatar(p.el.chatAvatar, who, p.chatId);
+    p.el.chatName.textContent = who.name;
+    p.el.chatSub.textContent = who.gone ? t('people.unreachableShort') : t('people.badge');
+    p.el.chatModel.hidden = true;
+    p.el.chatMachine.hidden = true;
+    p.el.btnStop.hidden = true;
+    p.el.text.placeholder = t('people.placeholder', { name: who.name });
+    renderSleepHint(p);
+    updateSendAllowed();
 }
 
 /**
@@ -353,5 +371,5 @@ function renderSleepHint(p) {
 
 /** Send buttons of all panes: only with a connection and an awake machine for the chat. */
 export function updateSendAllowed() {
-    for (const p of panes) p.el.btnSend.disabled = !state.agentOnline || !!machineToWake(p.chatId);
+    for (const p of panes) p.el.btnSend.disabled = !state.agentOnline || !!machineToWake(p.chatId) || (isPerson(p.chatId) && !!person(p.chatId).gone);
 }

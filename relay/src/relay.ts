@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { MessageCode, PairBox, RelayFrame, RelayRequest, ServerFrame } from '../../shared/protocol.ts';
+import { REACHES, type MessageCode, type PairBox, type Reach, type RelayFrame, type RelayRequest, type ServerFrame } from '../../shared/protocol.ts';
 import { Accounts, MAIN } from './accounts.ts';
 import { Bridge, type ClientContext } from './bridge.ts';
 import {
@@ -351,7 +351,9 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
         }
         void handleWakeRequest(request, reply, (host) => bridge.markWoken(host));
     }, new MachinesSeen(dataDir));
-    bridge.accountList = () => ({ ids: accounts.ids(), deleted: accounts.deletedIds() });
+    bridge.accountList = () => ({ ids: accounts.ids(), deleted: accounts.deletedIds(), people: accounts.people() });
+
+    const isReach = (x: unknown): x is Reach => (REACHES as readonly unknown[]).includes(x);
 
     type AccountRequest = Extract<RelayRequest, { type: 'accounts' | 'account_create' | 'account_update' | 'account_delete' | 'account_invite' }>;
 
@@ -373,11 +375,13 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 return;
             case 'account_create': {
                 if (!admin || typeof request.name !== 'string') return refuse();
-                const created = accounts.create(request.name, request.admin === true);
+                if (request.reach !== undefined && !isReach(request.reach)) return refuse();
+                const created = accounts.create(request.name, request.admin === true, request.reach ?? 'all');
                 if (created === 'name_taken') return refuse('account_name_taken');
                 if (created === 'invalid') return refuse();
                 log(`Account ${created.id} created (by account ${own})`);
                 bridge.accountAdded(created.id);
+                bridge.peopleChanged(accounts.people());
                 reply({ type: 'account_created', account: created, pair: devices.createPairing(Date.now(), created.id) });
                 return;
             }
@@ -388,10 +392,12 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 // A password only for oneself; admin rights only from another admin
                 if (request.password !== undefined && (!self || typeof request.password !== 'string')) return refuse();
                 if (request.admin !== undefined && (self || typeof request.admin !== 'boolean')) return refuse();
+                if (request.reach !== undefined && (self || !isReach(request.reach))) return refuse();
                 if (request.name !== undefined && typeof request.name !== 'string') return refuse();
-                const r = accounts.update(id, { name: request.name, password: request.password, admin: request.admin });
+                const r = accounts.update(id, { name: request.name, password: request.password, admin: request.admin, reach: request.reach });
                 if (r !== 'ok') return refuse(r === 'name_taken' ? 'account_name_taken' : 'not_allowed');
                 log(`Account ${id} changed (by account ${own})`);
+                if (request.name !== undefined || request.admin !== undefined || request.reach !== undefined) bridge.peopleChanged(accounts.people());
                 list();
                 return;
             }
@@ -402,6 +408,7 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 log(`Account ${id} deleted (by account ${own})`);
                 list();
                 bridge.accountDeleted(id);
+                bridge.peopleChanged(accounts.people());
                 return;
             }
             case 'account_invite': {

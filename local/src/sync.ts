@@ -3,16 +3,17 @@
 // state (updatedAt) wins, tombstones prevent resurrection. The relay only passes the data through and stores nothing.
 
 import { loadBots, loadGroups, saveBots, saveGroups } from './bots.ts';
-import { allChats, deleteHistory, mergeHistory, readHistory } from './history.ts';
+import { allChats, deleteHistory, dropUntil, mergeHistory, readHistory } from './history.ts';
 import { allFacts, mergeKnowledge } from './knowledge.ts';
 import { migrateSnapshot } from './migrate.ts';
+import { clearedAt, loadPersonChats, mergePersonChats } from './people.ts';
 import { loadPinned, mergePinned } from './pinned.ts';
 import { mergePushSettings, mergeSubscriptions, pushSettings, subscriptions } from './push.ts';
 import { loadRoutines, saveRoutines } from './routines.ts';
 import { applySeen, loadSeen } from './seen.ts';
 import { keysForSync, loadSettings, mergeApiKeys, mergeSettings } from './settings.ts';
 import { saveTombstones, tombstones } from './store.ts';
-import { botIdOf, type Bot, type Group, type KnowledgeLocation, type Routine, type Snapshot } from '../../shared/protocol.ts';
+import { botIdOf, isPerson, personOf, type Bot, type Group, type KnowledgeLocation, type Routine, type Snapshot } from '../../shared/protocol.ts';
 
 /** This many entries per chat go along with the first sync. */
 const HISTORY_PER_CHAT = 300;
@@ -30,6 +31,7 @@ export function snapshot(withHistory: boolean): Snapshot {
         apiKeys: keysForSync(),
         pinned: loadPinned(),
         seen: loadSeen(),
+        personChats: loadPersonChats(),
     };
     if (withHistory) {
         s.history = {};
@@ -61,6 +63,8 @@ export interface MergeResult {
     pinned: boolean;
     /** read state taken over from the other machine */
     seen: boolean;
+    /** favorite, mute or deletion of person chats taken over from the other machine */
+    personChats: boolean;
 }
 
 function newer(a: { updatedAt?: string } | undefined, b: { updatedAt?: string }): boolean {
@@ -96,7 +100,7 @@ function mergeById<T extends { id: string; updatedAt?: string }>(
 export function merge(incoming: Snapshot): MergeResult {
     const s = migrateSnapshot(incoming);
     const result: MergeResult = {
-        config: false, botsChanged: [], botsMoved: [], botsDeleted: [], chatsDeleted: [], knowledge: [], history: [], pushSettings: false, settings: false, pinned: false, seen: false,
+        config: false, botsChanged: [], botsMoved: [], botsDeleted: [], chatsDeleted: [], knowledge: [], history: [], pushSettings: false, settings: false, pinned: false, seen: false, personChats: false,
     };
 
     // Unite tombstones (the later one wins)
@@ -158,9 +162,18 @@ export function merge(incoming: Snapshot): MergeResult {
     result.settings = mergeSettings(s.settings) || keys;
     result.pinned = mergePinned(s.pinned).length > 0;
     result.seen = Object.keys(applySeen(s.seen)).length > 0;
+    const people = mergePersonChats(s.personChats);
+    result.personChats = people.changed;
+    for (const id of people.cleared) dropUntil(`p:${id}`, clearedAt(id));
 
     for (const [chatId, entries] of Object.entries(s.history ?? {})) {
-        if (!/^(g:[a-z0-9-]+|[a-z0-9-]+(~[a-z0-9]+)?)$/.test(chatId)) continue;
+        if (!/^([gp]:[a-z0-9-]+|[a-z0-9-]+(~[a-z0-9]+)?)$/.test(chatId)) continue;
+        if (isPerson(chatId)) {
+            // Deleted here: what another machine still has from before stays away
+            const cleared = clearedAt(personOf(chatId));
+            if (mergeHistory(chatId, cleared ? entries.filter((e) => e.ts > cleared) : entries) > 0) result.history.push(chatId);
+            continue;
+        }
         if (dead[`bot:${botIdOf(chatId)}`] || dead[`chat:${chatId}`] || (chatId.startsWith('g:') && dead[`group:${chatId.slice(2)}`])) continue;
         if (mergeHistory(chatId, entries) > 0) result.history.push(chatId);
     }

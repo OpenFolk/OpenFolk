@@ -187,7 +187,9 @@ repository into it, so no machine needs a terminal for it.
 
 **One more machine:** in the app, Settings, Machines, "Add machine". A backend that is awake mints a one-time invitation
 at the relay (15 minutes) and builds the command with the end-to-end key behind '#', which no server sees. On the new
-machine, the desktop app takes the link on its setup page ("Connect this computer to my server"); from a checkout,
+machine, the desktop app takes the link on its setup page ("Connect this computer to my server") or shows a QR code
+there that a signed-in phone scans (Settings, Devices, "Scan QR code"), which fetches the invitation and sends it back
+sealed; from a checkout,
 after `npm install`: `npm run join -- "<link>"` (`local/tools/join.mjs`). Either redeems it for an agent token of
 that machine's own and writes `RELAY_URL`, `AGENT_TOKEN` and `E2E_KEY` into its `.env`; on its first start it takes
 the web push key pair from the other machines, encrypted. Then sign in to Claude Code once and install the task. The
@@ -207,7 +209,13 @@ folder of the user the backend runs as. A bot's folder outside of them is refuse
 in its `.env`, the desktop app in the `.env` of its profile folder (above), a container in the `.env` next to the
 compose file; there `/work` is the allowed folder and `WORK_DIR` the host folder behind it. The backend names the
 folders in its log on start; restart it after a change. The bot editor's folder field takes a folder that exists
-there or a repository address, which the backend clones into the first allowed folder; there is no folder browser yet.
+there or a repository address, which the backend clones into the machine's folder for bots.
+
+The **folder for bots** (the machine's settings in the app, "Folder for bots") lies inside the allowed folders; empty
+means the first of them. A bot moving to this machine gets the same place below it as below the folder for bots of its
+previous machine (`C:/www/apps/shop` with `C:/www` there becomes `D:/OpenFolk/apps/shop` with `D:/OpenFolk` here), its
+repository cloned if it is missing. Machines with the same layout below their folder for bots move bots without a
+question about folders.
 
 ## Git access
 

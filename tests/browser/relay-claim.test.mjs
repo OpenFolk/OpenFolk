@@ -39,14 +39,22 @@ export default async function ({ start, check }) {
     check('refused: the reason in the form, the button free again', (await p.textContent(`${step4} .relay-claim .error`)) === 'Wrong setup code.'
         && !(await p.isDisabled(`${step4} .relay-claim button`)));
 
-    // The settings show the same form in the devices block
+    // The settings show the same form in the devices block; this time the relay typed in is the page's own host
+    const target = new URL(p.url());
+    await p.fill(`${step4} input[name="address"]`, `http://${target.host}`);
     await p.click(`${step4} .relay-claim button`);
     await p.evaluate(() => openSettings());
     await h.wait(300);
     check('settings: the form in the devices block', await p.isVisible('#relay-claim-box .relay-claim'));
     await p.evaluate(() => closeDialog(document.getElementById('settings')));
 
-    const target = new URL(p.url());
+    // Only a link to the relay typed in: one to another host or with another scheme is not followed
+    await h.push({ type: 'relay_claimed', machine: 'desk', url: 'https://elsewhere.example/#pair=x' });
+    await h.push({ type: 'relay_claimed', machine: 'desk', url: `javascript:alert(1)//${target.host}` });
+    await h.wait(1600);
+    check('a link to another host or scheme: ignored, the page stays', new URL(p.url()).host === target.host
+        && !(await p.textContent(`${step4} .relay-claim`)).includes('Switching to it'), p.url());
+
     target.hash = 'claimed';
     await h.push({ type: 'relay_claimed', machine: 'desk', url: target.href });
     await h.wait(400);

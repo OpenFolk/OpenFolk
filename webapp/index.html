@@ -449,6 +449,7 @@
                     <h4 data-i18n="accounts.newPerson"></h4>
                     <label><span data-i18n="accounts.name"></span><input id="accounts-new-name" maxlength="60" autocomplete="off" data-i18n-placeholder="accounts.newNamePlaceholder"></label>
                     <label class="check"><input type="checkbox" id="accounts-new-admin"> <span data-i18n="accounts.adminRight"></span></label>
+                    <label class="check"><input type="checkbox" id="accounts-new-customer"> <span data-i18n="accounts.customerRight"></span></label>
                     <p class="hint" data-i18n="accounts.createHint"></p>
                     <div class="actions left">
                         <button type="button" class="btn" id="accounts-create" data-i18n="accounts.createButton"></button>
@@ -608,6 +609,12 @@
         </label>
         <fieldset class="choice" id="editor-can-message-bots" hidden><legend data-i18n="editor.canMessageBots"></legend></fieldset>
         <p class="hint" data-i18n="editor.canMessageHint"></p>
+        <div id="editor-contact-block" hidden>
+            <label><span data-i18n="editor.contact"></span>
+                <select id="editor-contact"></select>
+            </label>
+            <p class="hint" data-i18n="editor.contactHint"></p>
+        </div>
         <fieldset class="choice" id="editor-allowed-tools" hidden><legend data-i18n="editor.allowedTools"></legend></fieldset>
         <p class="error on-move" id="editor-error" hidden></p>
         <div class="actions on-move">

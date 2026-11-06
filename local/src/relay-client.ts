@@ -16,7 +16,7 @@ import { t } from './i18n.ts';
 import { migratePeerData } from './migrate.ts';
 import { DEFAULT_ACCOUNT, inAccount } from './store.ts';
 import type {
-    AgentFrame, AgentInbound, AgentOutbound, ClientFrame, E2eFrame, NativePushChannel, NativePushMessage, NativePushSubscription, PairBox, PeerData,
+    AgentFrame, AgentInbound, AgentOutbound, ClientFrame, E2eFrame, NativePushChannel, NativePushMessage, NativePushSubscription, PairBox, PeerData, Person,
     WakeEntry,
 } from '../../shared/protocol.ts';
 
@@ -56,6 +56,8 @@ export interface AccountRouter {
     all(): RelayHandler[];
     /** The relay's accounts after connecting; null for a relay without accounts. */
     hello(accounts: string[] | null, deleted: string[]): void;
+    /** The relay's accounts with names and reach, for person chats. */
+    people(list: Person[]): void;
     added(account: string): void;
     deleted(account: string): void;
 }
@@ -347,7 +349,10 @@ export class RelayClient {
                     if (this.relayPushChannels.length) this.log(`relay delivers app push over ${this.relayPushChannels.join(', ')}`);
                     r.hello(Array.isArray(e.accounts) ? e.accounts.filter((a) => typeof a === 'string') : null,
                         Array.isArray(e.deletedAccounts) ? e.deletedAccounts.filter((a) => typeof a === 'string') : []);
+                    // After hello: the accounts are served by now, so each one hears of its contacts
+                    r.people(Array.isArray(e.people) ? e.people : []);
                     break;
+                case 'people': if (Array.isArray(e.list)) r.people(e.list); break;
                 case 'account_added': if (typeof e.account === 'string') r.added(e.account); break;
                 case 'account_deleted': if (typeof e.account === 'string') r.deleted(e.account); break;
                 case 'push_result': if (Array.isArray(e.gone) && e.gone.length) for (const h of r.all()) h.pushGone(e.gone); break;

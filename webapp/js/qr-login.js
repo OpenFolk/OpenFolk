@@ -216,8 +216,14 @@ async function finish(me, box) {
 
 // ================================================================ The signed-in device that approves
 
-/** The device from a scanned code: id and key from the QR code; `asked` and `confirmed` say how far it got. */
+/**
+ * The device from a scanned code: id and key from the QR code; `asked` and `confirmed` say how far it got. `machine`:
+ * the desktop app's setup page wants to join its computer (`kind=machine`, desktop/qr-join.js), so the box carries the
+ * invitation from "Add machine" instead of a pairing link.
+ */
 let approving = null;
+/** What the last approval signed in, for the message once the relay confirms it. */
+let lastApprovedMachine = false;
 
 /**
  * Takes over a scanned code (`#approve=<id>&pk=<key>`, from the address the page was opened with or from the app's
@@ -228,7 +234,7 @@ export function takeApproval(params) {
     const id = params.get('approve');
     const pk = params.get('pk');
     if (!id || !pk) return false;
-    approving = { id, pk, asked: false, confirmed: false };
+    approving = { id, pk, asked: false, confirmed: false, machine: params.get('kind') === 'machine' };
     return true;
 }
 
@@ -245,10 +251,13 @@ export function startApproval() {
     send({ type: 'pair_request', id: approving.id });
 }
 
-/** The relay names the waiting device: the user confirms, then a backend mints its pairing link ("pair_link"). */
+/**
+ * The relay names the waiting device: the user confirms, then a backend mints its pairing link ("pair_link") or, for
+ * a computer, the invitation ("machine_join_link").
+ */
 export function receivePairRequest(f) {
     if (!approving || approving.id !== f.id || approving.confirmed) return;
-    if (!confirm(t('qr.approveConfirm', { name: f.name, ip: f.ip }))) {
+    if (!confirm(t(approving.machine ? 'qr.approveMachineConfirm' : 'qr.approveConfirm', { name: f.name, ip: f.ip }))) {
         approving = null;
         return;
     }
@@ -258,14 +267,16 @@ export function receivePairRequest(f) {
         return;
     }
     approving.confirmed = true;
-    send({ type: 'pair_link' });
+    if (approving.machine) send({ type: 'machine_join_link' }, state.online[0]);
+    else send({ type: 'pair_link' });
 }
 
-/** A pairing link a confirmed approval asked for: sealed and passed on instead of shown. True if it was one. */
+/** A pairing link or invitation a confirmed approval asked for: sealed and passed on instead of shown. True if it was one. */
 export function approvalLink(f) {
     const a = approving;
-    if (!a || !a.confirmed) return false;
+    if (!a || !a.confirmed || a.machine !== (f.type === 'machine_join_link')) return false;
     approving = null;
+    lastApprovedMachine = a.machine;
     const fragment = new URL(f.url).hash.replace(/^#/, '');
     sealForDevice(fragment, a.id, a.pk)
         .then((box) => send({ type: 'pair_approve', id: a.id, box }))
@@ -274,7 +285,7 @@ export function approvalLink(f) {
 }
 
 export function receivePairApproved() {
-    alert(t('qr.approved'));
+    alert(t(lastApprovedMachine ? 'qr.approvedMachine' : 'qr.approved'));
     if (!el.devices.hidden) send({ type: 'devices' });
 }
 

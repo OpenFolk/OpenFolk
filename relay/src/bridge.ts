@@ -17,7 +17,7 @@ import { MAIN } from './accounts.ts';
 import type { MachinesSeen } from './machines-seen.ts';
 import type {
     AgentInbound, AgentOutbound, ClientFrame, ClientMessage, E2eFrame, NativePushChannel, NativePushMessage, NativePushSubscription, PairBox,
-    RelayRequest, ServerFrame, WakeEntry,
+    Person, RelayRequest, ServerFrame, WakeEntry,
 } from '../../shared/protocol.ts';
 
 /** After this many minutes a woken machine that connects no longer counts as "just woken". */
@@ -71,7 +71,7 @@ export class Bridge {
     /** A backend's answer to "first_device" (relay.ts passes the box to the waiting device). */
     onFirstDevice: (id: string, box: PairBox | undefined, error: string | undefined) => void = () => undefined;
     /** The accounts there are and the deleted ones, for the hello of a backend that knows accounts. */
-    accountList: () => { ids: string[]; deleted: string[] } = () => ({ ids: [MAIN], deleted: [] });
+    accountList: () => { ids: string[]; deleted: string[]; people: Person[] } = () => ({ ids: [MAIN], deleted: [], people: [] });
     private lastWarning = new Map<string, number>();
     private relayRequest: RelayRequestHandler;
     private seen?: MachinesSeen;
@@ -146,6 +146,11 @@ export class Bridge {
     /** A new account: the backends start serving it. */
     accountAdded(account: string): void {
         for (const a of this.agents.values()) if (a.accounts) this.toAgent(a.ws, { type: 'account_added', account });
+    }
+
+    /** Names or reach changed: the backends get the whole list again (person chats). */
+    peopleChanged(people: Person[]): void {
+        for (const a of this.agents.values()) if (a.accounts) this.toAgent(a.ws, { type: 'people', list: people });
     }
 
     /** A deleted account: its browsers are disconnected, the backends remove its data. */
@@ -254,7 +259,7 @@ export class Bridge {
         this.log(`Agent ${machine} connected from ${ip}${accounts ? '' : ' (without accounts, serves main only)'} (${this.online().join(', ')})`);
         const list = this.accountList();
         this.toAgent(ws, accounts
-            ? { type: 'relay_hello', pushChannels: this.pushChannels, accounts: list.ids, deletedAccounts: list.deleted }
+            ? { type: 'relay_hello', pushChannels: this.pushChannels, accounts: list.ids, deletedAccounts: list.deleted, people: list.people }
             : { type: 'relay_hello', pushChannels: this.pushChannels });
         this.announceOnline();
         for (const [cid, c] of this.clients) if (serves(agent, c.account)) this.toAgent(ws, { type: 'client_open', cid, account: c.account });
