@@ -183,7 +183,8 @@ process.env.CLAUDE_CONFIG_DIR = realStore;
 removeTree(home2);
 
 removeTree(process.env.CLAUDE_CONFIG_DIR!);
-fs.rmdirSync(link);
+// A junction on Windows goes with rmdir, a symlink elsewhere only with unlink
+try { fs.unlinkSync(link); } catch { fs.rmdirSync(link); }
 removeTree(folder);
 removeTree(neighbour);
 console.log(failures ? `\n${failures} failures` : '\nall ok');
