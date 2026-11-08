@@ -7,6 +7,8 @@ import path from 'node:path';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-categories-'));
 process.env.DATA_DIR = dir;
 process.env.E2E_KEY = 'off';
+// The bots below live in the repo; without this the allowed root is the home folder, which a CI checkout is not under
+process.env.ALLOWED_ROOTS = path.resolve(import.meta.dirname, '..', '..');
 
 let failures = 0;
 const check = (name: string, ok: boolean, info?: unknown) => { console.log(`${ok ? 'ok    ' : 'FAILED'} ${name}${ok || info === undefined ? '' : ' ' + JSON.stringify(info)}`); if (!ok) failures++; };

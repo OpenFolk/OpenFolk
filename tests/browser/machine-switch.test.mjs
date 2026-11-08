@@ -24,6 +24,7 @@ export default async function ({ start, check }) {
                 await push(ok ? { type: 'folder_checked', asked: f.folder, ok, folder: f.folder, remote: REMOTE } : { type: 'folder_checked', asked: f.folder, ok, message: `Folder does not exist: ${f.folder}` });
             }
             if (f.type === 'folder_propose') await push({ type: 'folder_proposed', url: f.url, ok: true, folder: '/work/skool' });
+            if (f.type === 'folder_create') await push({ type: 'folder_created', name: f.name, ok: false, message: 'This machine has no folder for bots.' });
             if (f.type === 'folder_clone') {
                 const folder = f.folder || '/work/skool';
                 cloned.add(folder);
@@ -81,11 +82,13 @@ export default async function ({ start, check }) {
     check('the new machine checks the folder', refused.machine === 'workstation' && refused.folder === 'C:/www/skool', refused);
     check('refused: error shown, editor open, nothing saved', (await editorOpen()) && (await p.textContent('#editor-error')).includes('does not exist') && saves().length === 0);
 
-    // Neither field: said so
+    // Neither field: the new machine is asked for a folder of its own; here it has none, so nothing is saved
     await p.fill('#editor-folder', '');
     await p.click('#editor-form button[type=submit]');
     await h.wait(100);
-    check('neither folder nor repository: said so', (await p.textContent('#editor-error')).includes('folder or a repository') && saves().length === 0);
+    const own = h.sent.findLast((f) => f.type === 'folder_create');
+    check('neither folder nor repository: a folder of its own asked from the new machine', own && own.machine === 'workstation' && own.name === 'Skool Sven' && own.nextFree === true, own);
+    check('no folder for bots there: said so, nothing saved', (await p.textContent('#editor-error')).includes('no folder for bots') && saves().length === 0);
 
     // Folder and repository: the folder is not there yet, so the repository is cloned into it, then saved
     await p.fill('#editor-folder', '/work/skool');
