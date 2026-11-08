@@ -18,6 +18,8 @@ import './machines.js';
 import './chat-features.js';
 import './queue.js';
 import './voice.js';
+import './talk-realtime.js';
+import './talk.js';
 import './menus.js';
 import './vscode.js';
 import './editors.js';

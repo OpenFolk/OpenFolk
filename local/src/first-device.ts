@@ -1,5 +1,6 @@
 // The main account's first device without a terminal, for a backend in a container: on start it makes a code and
-// prints it to its log (the container log only its host reads). The sign-in page of a relay without devices offers to
+// prints it to its log (the container log only its host reads), or takes FIRST_DEVICE_CODE, which whoever set up the
+// server handed to the user beforehand; either works once only. The sign-in page of a relay without devices offers to
 // enter it; the waiting device sends its public key, the relay passes it here, and the pairing link goes back sealed
 // with ECDH and the code (PBKDF2). The code itself never travels: a relay that swaps the key gets a box it cannot open
 // without guessing the code, and with 80 bits and PBKDF2 that is out of reach. Not the relay's setup code: the relay
@@ -60,11 +61,28 @@ export async function openFirstDevice(privateKey: webcrypto.CryptoKey, id: strin
     return new TextDecoder().decode(plain);
 }
 
+/** As long as a code this backend makes itself; a shorter one would be guessable through the relay. */
+const MIN_CODE_LENGTH = 16;
+
+/**
+ * Where the code of this run comes from: FIRST_DEVICE_CODE, set by whoever set up the server and handed on to the
+ * user beforehand (a hoster, the cloud-init page), or a new one for the log. 'invalid' is a variable too short to use;
+ * the run then falls back to a new code.
+ */
+export function chooseFirstDeviceCode(container: boolean, fromEnv: string | undefined): { code: string; source: 'env' | 'log' | 'invalid' | 'off' } {
+    if (!container) return { code: '', source: 'off' };
+    const given = (fromEnv ?? '').trim();
+    if (given && normalizeCode(given).length >= MIN_CODE_LENGTH) return { code: given, source: 'env' };
+    return { code: newFirstDeviceCode(), source: given ? 'invalid' : 'log' };
+}
+
+const chosen = chooseFirstDeviceCode(process.env.OPENFOLK_CONTAINER === '1', process.env.FIRST_DEVICE_CODE);
 /**
  * The code of this run: in a container only (there the log is the way in); '' elsewhere, where the terminal of
  * `npm start` shows a pairing link anyway.
  */
-export const firstDeviceCode = process.env.OPENFOLK_CONTAINER === '1' ? newFirstDeviceCode() : '';
+export const firstDeviceCode = chosen.code;
+export const firstDeviceSource = chosen.source;
 
 /** Written once a device of the main account has talked to this backend: from then on the log keeps the code to itself. */
 const SEEN_FILE = 'first-device-seen';
@@ -87,10 +105,11 @@ let busy = false;
 
 /**
  * Answers a first-device request: a pairing link from `mint` (`pair=…&e2e=…`), sealed for the device. One at a time, so
- * a flood of requests cannot mint a flood of tokens. Null without a code.
+ * a flood of requests cannot mint a flood of tokens. Null without a code, and once a device of the main account was
+ * here: a code from FIRST_DEVICE_CODE travelled in a message and must not open a second device later.
  */
-export async function answerFirstDevice(id: string, pk: string, mint: () => Promise<string>, code = firstDeviceCode): Promise<PairBox | null> {
-    if (!code || busy) return null;
+export async function answerFirstDevice(id: string, pk: string, mint: () => Promise<string>, code = firstDeviceCode, used = deviceSeen): Promise<PairBox | null> {
+    if (!code || busy || used()) return null;
     busy = true;
     try {
         return await sealFirstDevice(await mint(), id, pk, code);

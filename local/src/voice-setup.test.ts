@@ -31,6 +31,12 @@ process.env.OPENFOLK_CONTAINER = '1';
 check('container: not available', (await voiceStatus()).state === 'unavailable');
 await setupVoice((s) => reports.push(s.state));
 check('container: no setup', reports.length === 0, reports);
+// The "-voice" image: its Python is looked at (the empty file is none, so "missing"), not "unavailable"
+process.env.WHISPER_PYTHON = fake;
+check('container with WHISPER_PYTHON: checked like any other Python', (await voiceStatus()).state === 'missing');
+await setupVoice((s) => reports.push(s.state));
+check('container with WHISPER_PYTHON: still no setup', reports.length === 0, reports);
+delete process.env.WHISPER_PYTHON;
 delete process.env.OPENFOLK_CONTAINER;
 
 // The empty file is no Python: the check reports "not set up" instead of "ready"

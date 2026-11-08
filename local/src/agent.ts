@@ -16,13 +16,13 @@ import { joinDone, joinPending } from './join.ts';
 import { appUrl, newMachineInvite, newPairingLink, pairingSvg, pairingUrl } from './pairing.ts';
 import { startDeviceLogin } from './engine-login.ts';
 import { claudeSignInCommand, engineAvailable } from './engine-home.ts';
-import { cloneRepository, inspectFolder, listFolder, originOf, placeOf, planMove, prepareMove, proposeFolder } from './folders.ts';
+import { cloneRepository, createFolder, inspectFolder, listFolder, originOf, placeOf, planMove, prepareMove, proposeFolder } from './folders.ts';
 import type { WarningCode } from './relay-client.ts';
 import type { PersonInbox } from './accounts.ts';
 import { canReach, clearPersonChat, contactsOf, loadPersonChats, personName, setPersonFlag } from './people.ts';
 import {
     archiveConversation, botSessionIds, createConversation, deleteBot, deleteGroup, findBot, findConversation, findGroup, isMuted, isUnder, loadBots, loadGroups, mayMessage,
-    readSessionId, refusalOf, removeConversation, renameConversation, roleLine, saveBot, saveBots, saveGroup, allowTool, setFavorite, setModel, setMuted, setPlace, setSessionId, underAllowedRoot,
+    readSessionId, refusalOf, removeConversation, renameConversation, roleLine, saveBot, saveBots, saveGroup, saveCategory, deleteCategory, setCategory, loadCategories, allowTool, setFavorite, setModel, setMuted, setPlace, setSessionId, underAllowedRoot,
 } from './bots.ts';
 import { autologon, canAutologon, type AutologonState } from './autologon.ts';
 import { BACKEND_VERSION, config } from './config.ts';
@@ -43,7 +43,8 @@ import {
 } from './knowledge.ts';
 import type { CodexLimits, EngineTool } from './codex.ts';
 import { approvalText, needsApproval, rememberable } from './policy.ts';
-import { gitAutoPull, loadSettings, saveApiKeys, saveLanguage, saveSettings, settingsForBrowser, voiceLanguage } from './settings.ts';
+import { apiKey, gitAutoPull, loadSettings, saveApiKeys, saveLanguage, saveSettings, settingsForBrowser, talkMode, voiceLanguage } from './settings.ts';
+import { connectRealtime, realtimeSession } from './realtime.ts';
 import { claudeOnKey, keyFallbackState, onKeyFallbackChange, resetKeyFallback, subscriptionLimit } from './key-fallback.ts';
 import {
     anthropicKey, applyGitPush, engineKey, gitPushToken, machineSettings, noEngine, saveAnthropicKey, saveEngineKey, saveGitPushToken, saveMachineSettings,
@@ -485,7 +486,7 @@ export class BotManager implements SessionHooks {
 
     private sendBots(cid?: string): void {
         this.send({
-            type: 'bots', bots: loadBots(), groups: loadGroups(), states: this.states(), activity: this.activity(), activeChats: this.activeChats(),
+            type: 'bots', bots: loadBots(), groups: loadGroups(), categories: loadCategories(), states: this.states(), activity: this.activity(), activeChats: this.activeChats(),
             approvals: [...this.approvals.values()].map((f) => f.approval), context: readJson<Record<string, number>>('context.json', {}),
             background: Object.fromEntries([...this.sessions].filter(([, s]) => s.backgroundTasks.length).map(([k, s]) => [k, s.backgroundTasks])),
             queues: Object.fromEntries([...this.sessions].filter(([, s]) => s.waiting() > 0).map(([k, s]) => [k, s.waitingPerChat()])),
@@ -1088,6 +1089,17 @@ export class BotManager implements SessionHooks {
                     }
                     break;
                 }
+                case 'folder_create': {
+                    const { name } = frame;
+                    try {
+                        const folder = createFolder(name, frame.parent, frame.nextFree);
+                        console.log(`folder: created ${folder}`);
+                        this.send({ type: 'folder_created', name, ok: true, folder }, cid);
+                    } catch (e) {
+                        this.send({ type: 'folder_created', name, ok: false, message: (e as Error).message, ...refusalOf(e) }, cid);
+                    }
+                    break;
+                }
                 case 'bot_suggest': {
                     const { what } = frame.request;
                     const begin = Date.now();
@@ -1236,6 +1248,21 @@ export class BotManager implements SessionHooks {
                     this.sendBots();
                     this.shareConfig();
                     break;
+                case 'category_save':
+                    saveCategory(frame.category, frame.chatId);
+                    this.sendBots();
+                    this.shareConfig();
+                    break;
+                case 'category_delete':
+                    deleteCategory(frame.categoryId);
+                    this.sendBots();
+                    this.shareConfig();
+                    break;
+                case 'category_assign':
+                    setCategory(frame.chatId, frame.categoryId);
+                    this.sendBots();
+                    this.shareConfig();
+                    break;
                 case 'history':
                     this.send({ type: 'history', chatId: frame.chatId, entries: withoutToolOutput(readVisible(frame.chatId, frame.limit)), live: this.live(frame.chatId) }, cid);
                     break;
@@ -1251,11 +1278,11 @@ export class BotManager implements SessionHooks {
                     }
                     if (uploads.some((u) => u.type.startsWith('audio/'))) {
                         // Voice message: first turn it into text locally, then continue like a text message
-                        void this.voiceMessage(frame.chatId, frame.text, uploads, frame.replyTo).catch((e: Error) => {
+                        void this.voiceMessage(frame.chatId, frame.text, uploads, frame.replyTo, frame.spoken === true).catch((e: Error) => {
                             this.send({ type: 'error', chatId: frame.chatId, message: e.message });
                         });
                     } else {
-                        this.messageFromUser(frame.chatId, frame.text, uploads, undefined, frame.replyTo);
+                        this.messageFromUser(frame.chatId, frame.text, uploads, undefined, frame.replyTo, frame.spoken === true);
                     }
                     break;
                 }
@@ -1548,6 +1575,17 @@ export class BotManager implements SessionHooks {
                         (e: Error) => this.send({ type: 'speech', id: frame.id, error: e.message }, cid),
                     );
                     break;
+                case 'talk_connect': {
+                    const reply = (r: { sdp?: string; error?: string }) => this.send({ type: 'talk_answer', id: frame.id, ...r }, cid);
+                    const mode = talkMode();
+                    const bot = isGroup(frame.chatId) || isPerson(frame.chatId) ? undefined : findBot(botIdOf(frame.chatId));
+                    if (!bot) { reply({ error: t('talk.notBot') }); break; }
+                    // switched back to "in the app" meanwhile: the nearest hint is the missing key
+                    if (mode === 'app') { reply({ error: t('talk.noKey') }); break; }
+                    const session = realtimeSession(bot, { mode, voice: frame.voice ?? 'female', language: loadSettings().language, transcribe: voiceLanguage() });
+                    connectRealtime(frame.sdp, session, apiKey('openai')).then((sdp) => reply({ sdp }), (e: Error) => reply({ error: e.message }));
+                    break;
+                }
                 case 'push_subscribe':
                     saveSubscription(frame.subscription);
                     this.shareConfig();
@@ -1698,7 +1736,7 @@ export class BotManager implements SessionHooks {
      * Stores the recording, turns it into text with Whisper and passes it on as a message.
      * If the transcription fails, the recording stays in the history (playable), the bot gets nothing.
      */
-    private async voiceMessage(chatId: string, text: string, uploads: UploadInput[], replyTo?: Quote): Promise<void> {
+    private async voiceMessage(chatId: string, text: string, uploads: UploadInput[], replyTo?: Quote, spoken = false): Promise<void> {
         const audio = uploads.filter((u) => u.type.startsWith('audio/'));
         const rest = uploads.filter((u) => !u.type.startsWith('audio/'));
         const saved = saveUploads(chatId, audio).map((g) => g.attachment);
@@ -1719,10 +1757,10 @@ export class BotManager implements SessionHooks {
             this.entry(chatId, { role: 'user', text: '', ts: new Date().toISOString(), from: 'me', voice: true, attachments: saved });
             throw new Error(t('errors.voiceEmpty'));
         }
-        this.messageFromUser(chatId, text, rest, { transcript, attachments: saved }, replyTo);
+        this.messageFromUser(chatId, text, rest, { transcript, attachments: saved }, replyTo, spoken);
     }
 
-    private messageFromUser(chatId: string, text: string, uploads: UploadInput[], voice?: { transcript: string; attachments: Attachment[] }, quote?: Quote): void {
+    private messageFromUser(chatId: string, text: string, uploads: UploadInput[], voice?: { transcript: string; attachments: Attachment[] }, quote?: Quote, spoken = false): void {
         text = text.trim();
         if (!text && uploads.length === 0 && !voice) return;
         const replyTo = quote?.id ? { id: String(quote.id), from: String(quote.from || 'me'), text: String(quote.text || '').slice(0, 300) } : undefined;
@@ -1733,9 +1771,11 @@ export class BotManager implements SessionHooks {
         // Claude Code runs a slash command only from the very start of the message: then nothing goes in front of it,
         // no quote, no delegation note, no group context (commands.ts)
         const command = !voice && isCommand(text);
+        // From the voice conversation (webapp/js/talk.js): the answer is read aloud, so it should be short and spoken
+        const spokenNote = spoken && !command ? `\n\n${t('prompt.spoken')}` : '';
         const forClaude = command ? text : quoteContext(replyTo) + (voice
             ? `${t('prompt.voice')}\n${voice.transcript}${text ? `\n\n${t('prompt.voiceTyped', { text })}` : ''}`
-            : text);
+            : text) + spokenNote;
         const firstAttachments = voice?.attachments ?? [];
 
         if (isGroup(chatId)) {

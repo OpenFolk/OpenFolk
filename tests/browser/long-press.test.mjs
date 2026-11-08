@@ -31,7 +31,7 @@ export default async function ({ start, check }) {
     const entries = (sel) => p.evaluate((sel) => { const m = document.querySelector(sel); return m && !m.hidden ? [...m.querySelectorAll(':scope > button')].map((b) => b.textContent.trim() + (b.disabled ? ' (disabled)' : '')) : null; }, sel);
     const menu = () => entries('#row-menu');
     const chips = () => p.locator('#row-menu .model-switch .chip').allTextContents();
-    const BOT = ['Open changes', 'Search in chat', 'New conversation', 'VS Code', 'Info, routines, knowledge', 'Edit bot', 'Mark as favorite', 'Mute', 'New session (clear context)', 'Delete bot'];
+    const BOT = ['Open changes', 'Search in chat', 'New conversation', 'VS Code', 'Info, routines, knowledge', 'Edit bot', 'Mark as favorite', 'Mute', 'Folder', 'New session (clear context)', 'Delete bot'];
     const open = () => p.evaluate(() => document.getElementById('app').classList.contains('chat-open'));
 
     await hold('Skool Sven', 150);
@@ -43,7 +43,7 @@ export default async function ({ start, check }) {
     check('finger moved (scrolling): no menu', (await menu()) === null);
 
     await hold('Team', 700);
-    check('group: its menu', JSON.stringify(await menu()) === '["Search in chat","Edit group","Mark as favorite","Mute","Delete group"]', await menu());
+    check('group: its menu', JSON.stringify(await menu()) === '["Search in chat","Edit group","Mark as favorite","Mute","Folder","Delete group"]', await menu());
     check('group: no model switch', (await chips()).length === 0);
     const page = await p.locator('#row-menu').boundingBox();
     check('phone: the menu is a page over the whole screen', page && page.x === 0 && page.y === 0 && page.width === 400 && page.height >= 858, page);

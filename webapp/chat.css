@@ -271,9 +271,11 @@ pre { white-space: pre-wrap; word-break: break-word; }
 @media (hover: hover) {
     .chat-list li:hover { background: var(--hover); }
     .chat-list li.section:hover { background: none; }
+    .chat-list li.section.category:hover { background: var(--hover); }
 }
 .chat-list li:active { background: var(--hover); }
 .chat-list li.section:active { background: none; }
+.chat-list li.section.category:active { background: var(--hover); }
 .chat-list .avatar { width: 48px; height: 48px; }
 .chat-list .info { min-width: 0; }
 .chat-list .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -304,6 +306,13 @@ pre { white-space: pre-wrap; word-break: break-word; }
     display: block; cursor: default; padding: 10px 14px 4px; border-bottom: 0;
     font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
 }
+/* A folder of the list: its heading folds it (arrow; folded, the count), a long press renames or deletes it */
+.chat-list li.section.category { display: flex; align-items: center; gap: 6px; cursor: pointer; padding-right: 14px; }
+.chat-list li.section.category svg.chev { width: 15px; height: 15px; flex: 0 0 auto; stroke-width: 2.4; transition: transform .15s; }
+.chat-list li.section.category.closed svg.chev { transform: rotate(-90deg); }
+.chat-list li.section.category .count { margin-left: auto; font-variant-numeric: tabular-nums; }
+.menu-head .avatar.category-avatar { background: var(--bar-bg); color: var(--muted); }
+.menu-head .avatar.category-avatar svg { width: 22px; height: 22px; }
 /* Queue in the overview: hourglass with count */
 .queue-badge { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--warning); font-variant-numeric: tabular-nums; }
 .queue-badge svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -553,7 +562,8 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
     max-width: min(78%, 720px); padding: 7px 11px 6px; border-radius: var(--radius);
     box-shadow: var(--shadow); position: relative; overflow-wrap: anywhere;
 }
-.answer .bubble { max-width: 100%; }
+/* Answers fill their column, however little they say; only your own messages are as wide as their content */
+.answer .bubble { width: 100%; max-width: 100%; }
 .bubble.me { align-self: flex-end; background: var(--bubble-me); color: var(--bubble-me-fg); border-bottom-right-radius: 4px; }
 /* Time, ticks and the menu dots follow the text color of the bubble when the color brings its own (white on orange) */
 .bubble.me .time, .bubble.me .more { color: var(--bubble-me-sub, var(--muted)); }
@@ -597,6 +607,29 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .speech-bar-open strong { flex: 0 0 auto; }
 .speech-bar-open span { min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .speech-bar-open:hover strong { color: var(--accent); }
+/* The voice conversation (talk.js): a page over the chat. The ring around the picture follows the microphone while
+   listening (--talk-level, set only when it changes) and breathes while the bot speaks. */
+.talk-dialog { align-items: center; text-align: center; min-height: min(100dvh - 32px, 600px); }
+.talk-dialog .page-back { align-self: flex-start; }
+.talk-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 0; }
+.talk-avatar { border: 0; background: none; padding: 0; cursor: pointer; border-radius: 50%; }
+.talk-avatar .avatar { width: 128px; height: 128px; font-size: 48px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent); transition: box-shadow .12s; }
+#talk[data-phase="listening"] .talk-avatar .avatar { box-shadow: 0 0 0 calc(4px + var(--talk-level, 0) * 36px) color-mix(in srgb, var(--accent) 30%, transparent); }
+#talk[data-phase="speaking"] .talk-avatar .avatar { animation: talk-breathe 1.4s ease-in-out infinite; }
+@keyframes talk-breathe { 50% { box-shadow: 0 0 0 16px color-mix(in srgb, var(--accent) 22%, transparent); } }
+#talk[data-phase="sending"] .talk-phase::before, #talk[data-phase="thinking"] .talk-phase::before, #talk[data-phase="connecting"] .talk-phase::before { content: '✻ '; color: var(--accent); animation: pulse 1s infinite; }
+#talk[data-phase="muted"] .talk-avatar .avatar, #talk[data-phase="paused"] .talk-avatar .avatar, #talk[data-phase="error"] .talk-avatar .avatar { opacity: .55; }
+.talk-phase { margin: 0; font-weight: 600; min-height: 1.4em; }
+.talk-heard, .talk-answer { margin: 0; font-size: 14px; max-height: 6em; overflow: hidden; }
+.talk-heard { color: var(--muted); }
+.talk-error { margin: 0; color: var(--danger); }
+.talk-actions { display: flex; justify-content: center; gap: 32px; padding: 8px 0 4px; }
+.talk-actions .round { width: 60px; height: 60px; background: var(--line); color: var(--text); }
+.talk-actions .round svg { width: 26px; height: 26px; }
+.talk-mic .slash { display: none; }
+.talk-mic.off .slash { display: block; }
+.talk-mic.off { color: var(--danger); }
+.talk-actions .talk-end { background: var(--danger); color: #fff; }
 .read-ticks { display: inline-block; vertical-align: -1px; margin-left: 4px; }
 .read-ticks svg { width: 16px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .read-ticks:not(.read) .second { display: none; }
@@ -608,6 +641,19 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .bubble .content pre { background: var(--code-bg); padding: 8px 10px; border-radius: 8px; overflow-x: auto; font: 13px/1.4 var(--mono); white-space: pre; }
 .bubble .content code { font: 13px var(--mono); background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
 .bubble .content pre code { background: none; padding: 0; }
+/* The bar above a code block (code-blocks.js): a strip of its own that stays in view while the block is */
+.code-block { margin: .5em 0; }
+.bubble .content .code-block > pre { margin: 0; border-top-left-radius: 0; border-top-right-radius: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble .content .code-block.nowrap > pre { white-space: pre; overflow-wrap: normal; }
+.code-bar {
+    position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 2px; min-height: 30px; padding: 0 4px 0 10px;
+    background: color-mix(in srgb, var(--bubble-bot), var(--text) 10%); border-radius: 8px 8px 0 0; color: var(--muted);
+}
+.code-lang { flex: 1; min-width: 0; font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: none; color: inherit; cursor: pointer; }
+.code-button svg { width: 16px; height: 16px; }
+.code-button:hover { background: var(--hover); color: var(--text); }
+.code-button[aria-pressed="true"] { color: var(--accent); }
 /* ▶ after commands: the bot runs it on a tap */
 .command-run { border: 1px solid var(--line); background: var(--surface); color: var(--accent); border-radius: 10px;
     font-size: 10px; line-height: 1; padding: 3px 6px; margin-left: 4px; cursor: pointer; vertical-align: 1px; }
@@ -834,6 +880,18 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
     display: flex; align-items: center; justify-content: center; padding: 16px;
 }
 .overlay.side { justify-content: flex-end; padding: 0; }
+/* Questions and notices of dialogs.js: above every other dialog, the text keeps its line breaks */
+.overlay.ask { z-index: 60; }
+.overlay.ask .dialog { max-width: 420px; }
+/* Delete dialogs: a warning box with what goes, a red button for the action */
+.danger-zone { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--danger); border-radius: 10px; background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.danger-zone strong { color: var(--danger); }
+.danger-zone ul { margin: 0; padding-left: 20px; }
+.danger-note { color: var(--muted); font-size: 13px; }
+.danger-name { overflow-wrap: anywhere; color: var(--text); }
+.primary.danger { background: var(--danger); color: #fff; }
+.primary.danger:disabled { opacity: .45; cursor: default; }
+.ask-text { white-space: pre-line; overflow-wrap: anywhere; color: var(--text); }
 .overlay.qr-scan { z-index: 45; flex-direction: column; gap: 14px; background: rgba(0, 0, 0, .85); color: #fff; text-align: center; }
 .qr-scan video { width: min(420px, 100%); max-height: 70dvh; border-radius: 14px; background: #000; object-fit: cover; }
 .qr-scan p { margin: 0; max-width: 420px; }
@@ -844,6 +902,12 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 }
 .page-back { display: none; }
 @keyframes page-in { from { transform: translateX(100%); } }
+/* The bot editor in the side panel, on top of the bot's page (editors.js): same place and width, no backdrop, the chats stay usable */
+@media (min-width: 761px) {
+    #editor.side-edit { background: none; justify-content: flex-end; padding: 0; pointer-events: none; }
+    #editor.side-edit .dialog { pointer-events: auto; max-width: 440px; height: 100dvh; max-height: 100dvh; border-radius: 0; box-shadow: -8px 0 24px rgba(0, 0, 0, .2); padding-top: calc(18px + env(safe-area-inset-top)); }
+    .app.info-docked ~ #editor.side-edit .dialog { max-width: 400px; box-shadow: none; border-left: 1px solid var(--line); }
+}
 .dialog.panel { max-width: 440px; height: 100dvh; max-height: 100dvh; border-radius: 0; padding-top: calc(18px + env(safe-area-inset-top)); }
 .panel-head { display: grid; grid-template-columns: auto 1fr; grid-auto-flow: column; grid-auto-columns: auto; gap: 14px; align-items: center; }
 /* The bot's page: head with the back arrow stays at the top, the rest scrolls. The padding sits in the head, so it can stick to the edge. */
@@ -881,11 +945,12 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 /* ---------------------------------------------------------------- Start page (sign-in) */
 .start {
     position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow-y: auto;
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
     padding: calc(24px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
 }
+/* Centered by auto margins, not by align-items: a card taller than the window would otherwise stick out above the top, where no scrolling reaches */
 .start-card {
-    width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; align-items: stretch;
+    margin: auto; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; align-items: stretch;
     background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 28px 24px;
 }
 .start-card img { align-self: center; }
@@ -894,6 +959,7 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .start-card .start-intro { margin: 0; font-size: 13.5px; color: var(--muted); text-align: center; }
 .start-card label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
 .start-card label:has(input[hidden]) { display: none; }
+.start-card label small { font-size: 12px; line-height: 1.4; }
 .start-card input {
     font: inherit; font-size: 16px; color: var(--text); background: var(--bar-bg); border: 1px solid var(--line);
     border-radius: 10px; padding: 11px 12px; width: 100%;
@@ -910,8 +976,7 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .start-card .login-or { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
 .start-card .login-qr .pair-qr { width: min(200px, 60vw); }
 @media (max-width: 760px) {
-    .start { align-items: flex-start; }
-    .start-card { background: none; border: 0; padding: 12px 4px; }
+    .start-card { margin: 0 auto; background: none; border: 0; padding: 12px 4px; }
 }
 
 /* ---------------------------------------------------------------- First steps (empty chat list) */
@@ -956,6 +1021,13 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .btn.danger { color: var(--danger); }
 .actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .avatar-picker { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* The set of profile pictures: round pictures in a grid, by voice */
+#avatar-grid h4 { margin: 6px 0 2px; font-size: 13.5px; color: var(--muted); }
+.avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 10px; }
+.avatar-choice { border: 0; background: none; padding: 0; cursor: pointer; border-radius: 50%; }
+.avatar-choice img { display: block; width: 100%; aspect-ratio: 1; border-radius: 50%; }
+.avatar-choice:hover img, .avatar-choice:focus-visible img { box-shadow: 0 0 0 3px var(--accent); }
+.avatar-choice:focus-visible { outline: none; }
 .with-button { display: flex; gap: 6px; align-items: stretch; }
 .with-button input { flex: 1; min-width: 0; }
 .with-button .btn { flex: 0 0 auto; white-space: nowrap; }

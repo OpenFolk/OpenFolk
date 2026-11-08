@@ -1,7 +1,7 @@
 // Person chats: "+" → "Person" opens a chat with someone on the relay, messages go out with `p:<account>` and come in
 // from `person:<account>`, the list shows the chat with name, last message and unread, its menu deletes this side, a
 // bot's hand-over event leads to the chat with the person, and the bot editor offers the contact.
-import { bot } from './harness.mjs';
+import { bot, onDialog } from './harness.mjs';
 
 const people = [{ id: 'kunde', name: 'Kunde Müller', admin: false, reach: 'admins' }];
 
@@ -23,7 +23,7 @@ export default async function ({ start, check }) {
         },
     });
     const p = h.page;
-    p.on('dialog', (d) => d.accept());
+    await onDialog(p, (d) => d.accept());
     const rows = () => p.evaluate(() => [...document.querySelectorAll('#chat-list li[data-chat]')].map((l) => l.dataset.chat));
 
     check('no person chat in the list before a message', !(await rows()).includes('p:kunde'), await rows());

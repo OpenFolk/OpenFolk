@@ -1,5 +1,5 @@
 // Open changes: in the long-press menu and on the bot's page the uncommitted files of its repos.
-import { bot } from './harness.mjs';
+import { bot, onDialog } from './harness.mjs';
 
 const REPOS = [
     { name: 'group/b', path: 'group/b', branch: 'main', ahead: 0, behind: 0, files: [], more: 0 },
@@ -45,7 +45,7 @@ export default async function ({ start, check }) {
     const asked = () => p.evaluate(() => document.getElementById('text-dialog').hidden ? null : ['text-title', 'text-hint', 'text-input', 'text-submit']
         .map((id) => { const n = /** @type {HTMLInputElement} */ (document.getElementById(id)); return id === 'text-input' ? n.value : n.textContent; }));
     let dialog = null;
-    p.on('dialog', (d) => { dialog = { kind: d.type(), text: d.message() }; return d.accept(); });
+    await onDialog(p, (d) => { dialog = { kind: d.type(), text: d.message() }; return d.accept(); });
     await p.locator('#row-menu .git-list .git-button', { hasText: 'Commit' }).click();
     await h.wait(100);
     const question = await asked();

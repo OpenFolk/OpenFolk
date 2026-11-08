@@ -18,7 +18,7 @@ export default async function ({ start, check }) {
     const p = h.page;
 
     await p.click('#btn-new');
-    check('"+" menu: icon, then label', (await checkMenu(p, '#new-menu')).length === 0 && (await p.locator('#new-menu button').count()) === 3, await checkMenu(p, '#new-menu'));
+    check('"+" menu: icon, then label', (await checkMenu(p, '#new-menu')).length === 0 && (await p.locator('#new-menu button').count()) === 4, await checkMenu(p, '#new-menu'));
     await p.locator('#new-menu button span', { hasText: 'New bot' }).click();
     check('a tap on the label opens the editor', await p.evaluate(() => !document.getElementById('editor').hidden));
     await p.evaluate(() => { document.getElementById('editor').hidden = true; });

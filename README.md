@@ -49,13 +49,16 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
 - **Bots and templates.** Create a bot with "+", optionally from a template. Per bot: folder, model (default,
   Opus, Sonnet, Haiku, Codex, Cursor, Copilot, Antigravity, OpenCode or a custom id), approval level, tone and the
   voice that reads its answers aloud (guessed from the name unless chosen).
+  "AI avatar" opens a set of ready-made portraits (drawn, in `webapp/avatars/`; `npm run avatar-set` redraws them) with
+  the image model as the last entry.
   "Suggest" proposes names (a first name with a field of work, kept in a field of its own), a role or a profile
   picture from the folder's README/CLAUDE.md; with
   a Gemini or OpenAI key in the settings the avatar is a generated photo, otherwise an SVG drawn by the model. The field
   "Folder or repository" is a text field: the folder has to exist on the bot's machine and lie under that machine's
   allowed folders (`docs/running.md`, "Allowed folders"), otherwise the backend refuses it with the reason. A git
   repository's address instead of a folder makes the backend clone it into the machine's folder for bots on save;
-  "Browse" lists the folders of the bot's machine.
+  "Browse" lists the folders of the bot's machine and creates a new one there. A bot without a project of its own
+  (research, brainstorming) leaves both empty and gets a folder named after it in the folder for bots.
 - **Approvals in the chat.** Per bot: *risky* (default) asks before deleting, pushing, deploying, SSH, service
   restarts, writing outside the folder or into secrets, reading secrets through the shell, installing packages,
   running code from the internet (`curl … | sh`), elevated rights and every call of an external MCP service, reading
@@ -84,6 +87,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   this also works in groups and in routines. Codex and the other engines get no list.
 - **Group chats.** Several bots in one chat; `@id` addresses one bot, `@all` everyone. Bots can hand over to
   each other with @ (up to four hops per message).
+- **Folders.** "+" → "New folder" adds a folder to the chat list; a bot or group goes into one from its menu
+  ("Folder") or its settings. A tap on the heading folds the folder, a long press renames or deletes it. Running
+  bots and unread answers sit at the top of the list meanwhile, whatever folder they are in; folders sync like bots.
 - **Bot to bot.** Every bot has the tools `message_bot` and `list_bots`, can give other bots jobs and wait
   for the answer; cycles are detected. Which bots a bot can reach is set in its settings under "Can give jobs to"
   (all, selected or none); group chats are not limited by it.
@@ -105,6 +111,16 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   (`local/tools/requirements-voice.txt`, also by hand), with the CUDA libraries where there is an NVIDIA card, and
   loads the model: about 1.6 GB for the default `large-v3-turbo` (without a graphics card `small`, about 0.5 GB). A
   Python that has faster-whisper already is used as it is.
+- **Voice conversation.** The button next to the microphone opens a page where you talk with a bot hands-free: the
+  recording goes out by itself after a pause, the transcript and what the bot is doing are shown, the answer is read
+  aloud (what the bot says before a tool runs right away) and the microphone opens again. A tap on the picture sends
+  at once or stops the voice; the bot is asked to answer briefly, in spoken language. The page keeps the screen on
+  where the browser allows it; in the background it pauses and reads a waiting answer when you come back. Bot chats
+  only, and it needs voice messages set up on the bot's machine.
+  With "OpenAI Realtime" in the settings (and an OpenAI key) the conversation runs like ChatGPT's instead: OpenAI's
+  `gpt-realtime-2.1` (or the cheaper mini) listens, notices the end of a sentence and lets you interrupt; it passes
+  every request on to the bot and speaks the bot's answer. Your voice then goes to OpenAI and costs a few cents a
+  minute; the key stays on the machine, which opens the connection.
 - **Read state, favorites, pinned messages** are synced across all devices and machines.
 - **Columns on wide screens.** Ctrl-click (or the middle button) opens a chat in a column of its own next to the
   others, as many as fit (one per 640 px); "+" at the right edge adds an empty one. With the mouse a chat can also
@@ -139,7 +155,7 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   what fits cleanly and parks the rest in the repo's `.git/openfolk-work/`.
 - **Settings.** Language, theme, notifications, devices and security; per device whether the answer to a voice
   message is read aloud by itself once it is done (on by default). Shared by all machines: the AI services (the API
-  keys of OpenAI and Google Gemini as a list), the image model for profile pictures, the voice for reading answers aloud (with one of those keys an OpenAI or Gemini
+  keys of OpenAI and Google Gemini as a list), the image model for profile pictures, how the voice conversation runs (in the app or over OpenAI Realtime), the voice for reading answers aloud (with one of those keys an OpenAI or Gemini
   voice, otherwise the device's own; the text then goes to that provider), the language of voice messages, what app
   notifications show, keeping the repos current. Per machine (main account only): the AI providers that run there, each on its subscription or a key,
   shutting down with its countdown and
@@ -273,7 +289,8 @@ that a signed-in phone scans, and, on Windows, runs its backend
 without signing in ("Run without signing in" in the tray menu). Backends from a checkout start with their machine (a
 scheduled task on Windows) or run as a container that never sleeps (`ghcr.io/openfolk/openfolk-local`);
 `docker-compose.server.yml` puts relay and backend on one server (`docker-compose.coolify.yml` in Coolify), and its
-first device signs in with the code the backend prints to its log. Waking (Wake-on-LAN, your own command, a wake service) is set on the relay, shutting down
+first device signs in with the code the backend prints to its log, or with one set beforehand (`FIRST_DEVICE_CODE`)
+for someone who starts with nothing but a phone. Waking (Wake-on-LAN, your own command, a wake service) is set on the relay, shutting down
 and restarting on each backend.
 
 All of it, step by step: [docs/running.md](docs/running.md), in German with a five-step guide for a relay of your

@@ -6,7 +6,7 @@
 # container. Without AGENT_TOKEN the container generates its own; RELAY_SETUP_CODE (the code from the log of an
 # unclaimed relay) lets it claim that relay on its first connection. WORK_DIR is the host folder for the bots'
 # folders (default ./work next to this file). Its log shows a code for the main account's first device, which the
-# relay's sign-in page takes while no device is signed in.
+# relay's sign-in page takes while no device is signed in; FIRST_DEVICE_CODE in the .env sets that code beforehand.
 services:
   local:
     image: ${OPENFOLK_LOCAL_IMAGE:-ghcr.io/openfolk/openfolk-local:latest}

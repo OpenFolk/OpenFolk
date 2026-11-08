@@ -2,7 +2,7 @@
 // subscriptions, settings and history. Changes go via the relay to the other backends; when merging, the newer
 // state (updatedAt) wins, tombstones prevent resurrection. The relay only passes the data through and stores nothing.
 
-import { loadBots, loadGroups, saveBots, saveGroups } from './bots.ts';
+import { loadBots, loadGroups, saveBots, saveGroups, loadCategories, saveCategories } from './bots.ts';
 import { allChats, deleteHistory, dropUntil, mergeHistory, readHistory } from './history.ts';
 import { allFacts, mergeKnowledge } from './knowledge.ts';
 import { migrateSnapshot } from './migrate.ts';
@@ -13,7 +13,7 @@ import { loadRoutines, saveRoutines } from './routines.ts';
 import { applySeen, loadSeen } from './seen.ts';
 import { keysForSync, loadSettings, mergeApiKeys, mergeSettings } from './settings.ts';
 import { saveTombstones, tombstones } from './store.ts';
-import { botIdOf, isPerson, personOf, type Bot, type Group, type KnowledgeLocation, type Routine, type Snapshot } from '../../shared/protocol.ts';
+import { botIdOf, isPerson, personOf, type Bot, type Category, type Group, type KnowledgeLocation, type Routine, type Snapshot } from '../../shared/protocol.ts';
 
 /** This many entries per chat go along with the first sync. */
 const HISTORY_PER_CHAT = 300;
@@ -22,6 +22,7 @@ export function snapshot(withHistory: boolean): Snapshot {
     const s: Snapshot = {
         bots: loadBots().map(({ sessionId: _s, ...b }) => b as Bot),
         groups: loadGroups(),
+        categories: loadCategories(),
         routines: loadRoutines(),
         knowledge: allFacts(),
         deleted: tombstones(),
@@ -144,6 +145,12 @@ export function merge(incoming: Snapshot): MergeResult {
         saveGroups(groups.list);
         result.config = true;
         for (const g of groups.removed) deleteHistory(`g:${g.id}`);
+    }
+
+    const categories = mergeById<Category>(loadCategories(), s.categories ?? [], 'category', dead);
+    if (categories.changed.length || categories.removed.length) {
+        saveCategories(categories.list);
+        result.config = true;
     }
 
     const routines = mergeById<Routine>(loadRoutines(), s.routines ?? [], 'routine', dead);

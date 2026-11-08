@@ -1,8 +1,9 @@
 /* OpenFolk web app: queue, running answers, approvals and questions, sending and attachments. */
 import { t, tn } from './i18n.js';
 import { el, md, node, state, closest } from './core.js';
+import { codeBlocks } from './code-blocks.js';
 import { activePane, paneFor, paneOf } from './panes.js';
-import { bot, botIdOf, clockTime, colorOf, duration, fileSize, fillAvatar, isGroup, openApprovals, responsibleMachine, send, senderName, showImageLarge, upper } from './e2e.js';
+import { bot, botIdOf, clockTime, colorOf, duration, fileSize, fillAvatar, isGroup, isPerson, openApprovals, responsibleMachine, send, senderName, showImageLarge, upper } from './e2e.js';
 import { setLast } from './connection.js';
 import { chatStatus, renderChatList } from './list.js';
 import { machineToWake } from './chat.js';
@@ -412,7 +413,7 @@ export function renderLiveText(chatId, botId, now = false) {
     }
     const render = () => {
         l.timer = null;
-        if (l.content) l.content.innerHTML = md(l.text);
+        if (l.content) { l.content.innerHTML = md(l.text); codeBlocks(l.content); }
         scroll(paneFor(chatId));
     };
     if (now) render();
@@ -423,7 +424,7 @@ export function finishLiveText(l) {
     if (l.timer) {
         clearTimeout(l.timer);
         l.timer = null;
-        if (l.content) l.content.innerHTML = md(l.text);
+        if (l.content) { l.content.innerHTML = md(l.text); codeBlocks(l.content); }
     }
     if (l.bubble) l.bubble.classList.remove('streaming');
 }
@@ -568,16 +569,19 @@ export function textHeight(p) {
 
 /** As in a messenger: an empty input shows the microphone, text the send button; with an attachment and no text
  *  both (the voice message takes the attachments along). There is one microphone: while a pane records, the others
- *  keep their microphone, but disabled. @param {Pane} p */
+ *  keep their microphone, but disabled. The voice conversation (talk.js) is offered in bot chats only: a group has
+ *  several voices, a person none of ours. @param {Pane} p */
 export function composerButtons(p) {
     const e = p.el;
     const noText = !e.text.value.trim();
     const empty = noText && p.uploads.length === 0;
     const recording = !!rec.recorder && rec.pane === p;
     e.btnMic.hidden = !noText || recording || !canRecord();
+    e.btnTalk.hidden = !empty || recording || !canRecord() || !p.chatId || isGroup(p.chatId) || isPerson(p.chatId);
     e.btnSend.hidden = (empty && canRecord()) || recording;
     e.recording.hidden = !recording;
     e.text.hidden = recording;
     e.btnAttach.hidden = recording;
     e.btnMic.disabled = e.btnSend.disabled || (!!rec.recorder && !recording);
+    e.btnTalk.disabled = e.btnMic.disabled;
 }

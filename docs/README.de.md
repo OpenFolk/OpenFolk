@@ -45,13 +45,16 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
 ## Funktionen
 
 - **Bots und Vorlagen.** Bot über „+“ anlegen, wahlweise aus einer Vorlage. Je Bot: Ordner, Modell, Freigabe-Stufe,
-  Ton und die Stimme, die seine Antworten vorliest (ohne Wahl passend zum Namen). „Vorschlag“ schlägt Namen (Vorname mit Aufgabenfeld in einem eigenen Feld), Rolle
+  Ton und die Stimme, die seine Antworten vorliest (ohne Wahl passend zum Namen). „KI-Avatar“ öffnet ein Set fertiger
+  Porträts (gezeichnet, in `webapp/avatars/`), das Bildmodell steht darin als letzter Eintrag. „Vorschlag“ schlägt Namen (Vorname mit Aufgabenfeld in einem eigenen Feld), Rolle
   oder ein Profilbild vor; mit einem Gemini- oder OpenAI-Schlüssel in den Einstellungen
   ist der Avatar ein generiertes Foto, sonst ein vom Modell gezeichnetes SVG. Das Feld „Ordner oder Repository“ ist
   ein Textfeld: Der Ordner muss auf dem Rechner des Bots schon existieren und unter dessen freigegebenen Ordnern
   liegen (siehe „Freigegebene Ordner“ unter Dauerbetrieb), sonst lehnt das Backend ihn mit dem Grund ab. Statt eines
   Ordners nimmt das Feld die Adresse eines Git-Repositorys; dann klont das Backend es beim Speichern in den Ordner für
-  Bots des Rechners. „Durchsuchen“ zeigt die Ordner des Rechners, auf dem der Bot wohnt.
+  Bots des Rechners. „Durchsuchen“ zeigt die Ordner des Rechners, auf dem der Bot wohnt, und legt dort einen neuen an.
+  Ein Bot ohne eigenes Projekt (Recherche, Brainstorming) lässt beide Felder leer und bekommt einen Ordner mit seinem
+  Namen im Ordner für Bots.
 - **Freigaben im Chat.** Je Bot *riskant* (Standard: fragt bei Löschen, Push, Deploy, SSH, Dienst-Neustarts,
   Schreiben außerhalb des Ordners oder in Secrets, Secrets lesen per Shell, Pakete installieren, Code aus dem Internet
   ausführen, erhöhten Rechten, jedem Aufruf eines externen MCP-Dienstes, auch lesenden; jeder Teil eines
@@ -75,6 +78,9 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   `/name` beginnt, geht unverändert an den Bot, ohne Zitat oder Gruppenhinweis davor; das wirkt auch in Gruppen und
   Routinen. Codex und die anderen Engines bekommen keine Liste.
 - **Gruppenchats** mit `@id` und `@all`; Bots können sich per @ weiterreichen.
+- **Ordner** in der Chatliste: „+“ → „Neuer Ordner“; ein Bot oder eine Gruppe kommt über das Menü („Ordner“) oder
+  die Einstellungen hinein. Ein Tipp auf die Überschrift klappt den Ordner ein, langes Drücken benennt ihn um oder
+  löscht ihn. Laufende Bots und ungelesene Antworten stehen derweil oben, egal in welchem Ordner.
 - **Bot an Bot** über die Werkzeuge `message_bot` und `list_bots`; welche Bots einer erreicht, steht in seinen
   Einstellungen unter „Kann Aufträge geben an“ (alle, ausgewählte oder keinen).
 - **Chats mit Personen:** „+“ → „Person“ öffnet einen Chat mit jemandem auf demselben Relay, einem Teammitglied oder
@@ -92,6 +98,17 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   (`local/tools/requirements-voice.txt`, auch von Hand), bei einer NVIDIA-Karte mit den CUDA-Bibliotheken, und lädt
   das Modell: etwa 1,6 GB für `large-v3-turbo` (ohne Grafikkarte `small`, etwa 0,5 GB). Ein Python, das faster-whisper
   schon hat, wird so genommen.
+- **Sprachdialog.** Der Knopf neben dem Mikrofon öffnet eine Seite, auf der du freihändig mit einem Bot sprichst: Die
+  Aufnahme geht nach einer Sprechpause von selbst raus, der verstandene Text und die Arbeit des Bots sind zu sehen,
+  die Antwort wird vorgelesen (was der Bot vor einem Werkzeug sagt, sofort) und das Mikrofon geht wieder auf. Ein
+  Tipp auf das Bild sendet sofort oder stoppt die Stimme; der Bot wird gebeten, kurz und gesprochen zu antworten.
+  Die Seite hält den Bildschirm an, wo der Browser das erlaubt; im Hintergrund pausiert sie und liest eine wartende
+  Antwort, sobald du zurück bist. Nur in Bot-Chats, und Sprachnachrichten müssen auf dem Rechner des Bots
+  eingerichtet sein.
+  Mit „OpenAI Realtime“ in den Einstellungen (und einem OpenAI-Schlüssel) läuft der Dialog stattdessen wie in
+  ChatGPT: `gpt-realtime-2.1` von OpenAI (oder das günstigere mini) hört zu, erkennt das Satzende und lässt sich
+  unterbrechen; es gibt jede Bitte an den Bot weiter und spricht dessen Antwort. Deine Stimme geht dann an OpenAI und
+  kostet einige Cent pro Minute; der Schlüssel bleibt auf dem Rechner, der die Verbindung öffnet.
 - **Gelesen-Stand, Favoriten und fixierte Nachrichten** gelten auf allen Geräten und Rechnern.
 - **Spalten auf breiten Bildschirmen:** Strg-Klick (oder die mittlere Maustaste) öffnet einen Chat in einer eigenen
   Spalte daneben, so viele wie Platz haben; „+“ am rechten Rand fügt eine leere hinzu. Mit der Maus lässt sich ein
@@ -126,7 +143,7 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   der Ordner außerhalb der freigegebenen Ordner liegt, fragt die App nach Ordner und Repository.
 - **Einstellungen:** Sprache, Darstellung, Benachrichtigungen, Geräte und Sicherheit; je Gerät, ob die Antwort auf
   eine Sprachnachricht von selbst vorgelesen wird, sobald sie fertig ist (Standard: an). Für alle Rechner: die
-  KI-Dienste (API-Schlüssel von OpenAI und Google Gemini als Liste), das Bildmodell für Profilbilder, die Stimme zum
+  KI-Dienste (API-Schlüssel von OpenAI und Google Gemini als Liste), das Bildmodell für Profilbilder, wie der Sprachdialog läuft (in der App oder über OpenAI Realtime), die Stimme zum
   Vorlesen von Antworten (mit einem dieser Schlüssel eine Stimme
   von OpenAI oder Gemini, sonst die des Geräts; der Text geht dann an diesen Anbieter), Sprache der Sprachnachrichten,
   was App-Benachrichtigungen zeigen, Repos aktuell halten. Je Rechner (nur Hauptkonto): die KI-Anbieter, die dort laufen, jeder über sein Abo oder einen Schlüssel,
@@ -269,7 +286,9 @@ Repo mit Build-Pack *Docker Compose* einbinden. Details in `docs/running.md` (en
 Ziffern, etwa `openssl rand -hex 8`) setzen; das Backend beansprucht das Relay damit beim ersten Verbinden selbst.
 Das erste Gerät braucht kein Terminal: Das Backend schreibt bei jedem Start einen Code in sein Log
 (`docker compose -f docker-compose.server.yml logs local`), und die Anmeldeseite bietet „Code aus dem Server-Log“ an,
-solange der Hauptzugang kein Gerät hat. Das Relay sieht den Code nie. Claude meldet sich mit einem
+solange der Hauptzugang kein Gerät hat. Das Relay sieht den Code nie. Wer den Code vorher weitergeben will (etwa an
+jemanden, der nur ein Handy hat), setzt ihn selbst als `FIRST_DEVICE_CODE` (mindestens 16 Buchstaben und Ziffern);
+dann bleibt er aus dem Log. Jeder Code gilt nur für das erste Gerät. Claude meldet sich mit einem
 Anthropic-API-Schlüssel direkt in den ersten Schritten an, oder mit Abo über
 `docker compose -f docker-compose.server.yml exec -u node local claude`; `… exec -u node local npm run pair` liefert
 weiterhin einen Pairing-Link. In Coolify stattdessen `docker-compose.coolify.yml` nehmen (fertige Images, kein
@@ -280,7 +299,8 @@ dieselbe Adresse ohne Port setzen.
 dort wohnen und arbeiten rund um die Uhr, ihre Routinen laufen, ohne einen PC zu wecken.
 Fertiges Image `ghcr.io/openfolk/openfolk-local`, Start mit `docker compose -f docker-compose.local.yml up -d` im
 Hauptordner (Werte aus der `.env` daneben, dazu `MACHINE_NAME` als Name in der App; `RELAY_URL` ist hier Pflicht,
-das Image hat kein eigenes Relay). Danach einmal
+das Image hat kein eigenes Relay). Für Sprachnachrichten dasselbe Tag mit `-voice` nehmen (`:latest-voice`, über
+`OPENFOLK_LOCAL_IMAGE` in der `.env`): mit Python und faster-whisper, umgewandelt auf der CPU. Danach einmal
 `docker compose -f docker-compose.local.yml exec -u node local claude` für die Claude-Anmeldung; Codex und Copilot
 melden sich ebenso im Container an, Cursor und Antigravity werden ins Home-Volume installiert. Drei Orte halten
 den Zustand: die Volumes `/home/node` (Anmeldungen) und `/data` (Bots, Verlauf, Wissen) und `/work` (die

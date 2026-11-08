@@ -12,14 +12,15 @@ import { checkMention, closeMention, markSeen, mentionKey, renderHistory, render
 import { renderQueue, sendMessage, setupQueueSwipe, textHeight } from './queue.js';
 import { AUTO_READ_KEY, primeReadAloud, readWaitingAnswer, setupSpeechBar } from './read-aloud.js';
 import { addFiles, pauseRecording, shrinkImage, startRecording, stopRecording } from './voice.js';
+import { endTalk, startTalk, talkVisibility, tapTalk, toggleTalkMic } from './talk.js';
 import {
-    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, openGitPage, openMachinesPage,
+    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, newCategory, openGitPage, openMachinesPage,
     renderGitTotal, renderPageTitle, submitText, toggleHeaderSwitch,
 } from './menus.js';
 import { adoptVscodeSession, renderVscodeAdoptButton, renderVscodeSub, showInVscode, showVscodeList, vs } from './vscode.js';
 import {
-    canMessageChanged, chooseFolder, editorValues, folderChanged, folderTyped, knowledgeSection, machineChanged, openEditor, openFolderPicker, openGroupEditor,
-    openInfo, openKnowledgeEditor, openRoutineEditor, renderEditorAvatar, renderKnowledge, renderRoutines,
+    canMessageChanged, chooseFolder, createPickerFolder, editorValues, folderChanged, folderTyped, knowledgeSection, machineChanged, openEditor, openFolderPicker, openGroupEditor,
+    openAvatarPicker, openInfo, openKnowledgeEditor, openRoutineEditor, renderEditorAvatar, renderKnowledge, renderRoutines,
     repoChanged, repoTyped, requestSuggestion, routineCron, routineFields, submitEditor,
 } from './editors.js';
 import { checkPush, renderPushSettings, subscribePush } from './push.js';
@@ -28,6 +29,7 @@ import { cancelAddAccount, createAccount, joinAny, openAccountMenu, openAccounts
 import { openRelay, switchRelay } from './relays.js';
 import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, startQrLogin, stopQrLogin } from './qr-login.js';
 import { VERSION } from './release.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
 
 // The first pane exists from the start; on phones and laptops it stays the only one
 createPane();
@@ -127,7 +129,7 @@ el.loginCancel.addEventListener('click', cancelAddAccount);
 el.loginOtherAccount.addEventListener('click', showAccountField);
 el.settingsAllAccounts.addEventListener('change', chooseAllAccounts);
 el.e2eDelete.addEventListener('click', async () => {
-    if (!confirm(t('e2e.deleteConfirm'))) return;
+    if (!(await confirmDialog(t('e2e.deleteConfirm')))) return;
     await forgetKey();
     showE2eStatus();
     if (state.ws) state.ws.close();
@@ -149,7 +151,7 @@ el.keyForm.addEventListener('submit', async (ev) => {
 });
 
 // "+" menu: entries like the other menus, icon before the label
-const NEW_ENTRIES = [['conversation', 'conversation', 'conversation.new'], ['bot', 'bot', 'editor.newBot'], ['group', 'group', 'group.new']];
+const NEW_ENTRIES = [['conversation', 'conversation', 'conversation.new'], ['bot', 'bot', 'editor.newBot'], ['group', 'group', 'group.new'], ['category', 'folder', 'category.new']];
 let newEntries = [];
 
 function buildNewMenu() {
@@ -219,6 +221,7 @@ el.newMenu.addEventListener('click', (ev) => {
         return;
     }
     el.newMenu.hidden = true;
+    if (kind === 'category') newCategory();
     if (kind === 'person_with') openChat('p:' + k.dataset.person);
     if (kind === 'conversation_with') {
         const b = bot(k.dataset.bot);
@@ -227,7 +230,7 @@ el.newMenu.addEventListener('click', (ev) => {
     }
     if (kind === 'bot') openEditor(null);
     if (kind === 'group') {
-        if (state.bots.length < 2) { alert(t('group.needTwoBots')); return; }
+        if (state.bots.length < 2) { void alertDialog(t('group.needTwoBots')); return; }
         openGroupEditor(null);
     }
 });
@@ -299,16 +302,20 @@ for (const kind of ['pointerdown', 'focusin']) {
     });
 }
 
+/** The header and its gear: a group's editor, a person's menu (no page of its own), otherwise the bot's page. */
+function openChatSettings(p, ev) {
+    if (isGroup(p.chatId)) openGroupEditor(group(p.chatId));
+    else if (isPerson(p.chatId)) openRowMenu(p.chatId, ev.clientX, ev.clientY);
+    else openInfo(p.chatId);
+}
+
 /** @type {Record<string, (p: import('./panes.js').Pane, ev: MouseEvent) => void>} */
 const PANE_CLICKS = {
     'btn-back': (p) => closeChat(p),
     'btn-close': (p) => closeChat(p),
     // the header leads to the bot's page, which also holds what the chat's menu did (a group: its editor)
-    'chat-title': (p, ev) => {
-        if (isGroup(p.chatId)) openGroupEditor(group(p.chatId));
-        else if (isPerson(p.chatId)) openRowMenu(p.chatId, ev.clientX, ev.clientY);
-        else openInfo(p.chatId);
-    },
+    'chat-title': (p, ev) => openChatSettings(p, ev),
+    'chat-settings': (p, ev) => openChatSettings(p, ev),
     'chat-model': (p, ev) => { ev.stopPropagation(); toggleHeaderSwitch(p, 'model'); },
     'chat-machine': (p, ev) => { ev.stopPropagation(); toggleHeaderSwitch(p, 'machine'); },
     'rb-cancel': (p) => setReply(p, null),
@@ -323,6 +330,7 @@ const PANE_CLICKS = {
     'rec-pause': () => pauseRecording(),
     // unlocking the sound needs this tap; the answer may come minutes later
     'rec-send': () => { primeReadAloud(); stopRecording(true); },
+    'btn-talk': (p) => startTalk(p),
     'btn-stop': (p) => { if (p.chatId) send({ type: 'interrupt', chatId: p.chatId }); },
     'btn-attach': (p) => p.el.fileInput.click(),
     'to-bottom': (p) => scroll(p, true),
@@ -480,7 +488,7 @@ el.sidebarResize.addEventListener('keydown', (ev) => {
 
 // Dialogs: "Cancel"/"×", Escape and a click on the backdrop close them. The backdrop only counts if the pointer
 // was also pressed there – otherwise selecting text that ends outside would close it.
-for (const o of [el.editor, el.folderPicker, el.gEditor, el.info, el.rEditor, el.kEditor, el.keyDialog, el.vscode, el.textDialog, el.settingsDialog, el.settings]) {
+for (const o of [el.editor, el.folderPicker, el.avatarPicker, el.gEditor, el.info, el.rEditor, el.kEditor, el.keyDialog, el.vscode, el.textDialog, el.settingsDialog, el.settings]) {
     let pressedOnBackdrop = false;
     o.addEventListener('pointerdown', (ev) => { pressedOnBackdrop = ev.target === o; });
     o.addEventListener('click', (ev) => {
@@ -491,11 +499,12 @@ for (const o of [el.editor, el.folderPicker, el.gEditor, el.info, el.rEditor, el
 }
 document.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape') return;
+    if (!el.talk.hidden) { endTalk(); return; }
     const large = document.getElementById('image-view');
     if (large && !large.hidden) { large.hidden = true; return; }
     // the docked info panel is a column, not a dialog: Escape closes it only from inside
     const docked = el.app.classList.contains('info-docked') && !el.info.contains(document.activeElement);
-    for (const o of [el.textDialog, el.keyDialog, el.settingsDialog, el.settings, el.rEditor, el.kEditor, el.folderPicker, el.editor, el.gEditor, el.info, el.vscode]) {
+    for (const o of [el.textDialog, el.keyDialog, el.settingsDialog, el.settings, el.rEditor, el.kEditor, el.folderPicker, el.avatarPicker, el.editor, el.gEditor, el.info, el.vscode]) {
         if (o.hidden || (o === el.info && docked)) continue;
         closeDialog(o);
         return;
@@ -505,7 +514,8 @@ document.addEventListener('keydown', (ev) => {
 // The settings are a tab like the repos and the status: the arrow leads back, a swipe does not.
 for (const o of document.querySelectorAll('.overlay.page')) {
     const back = () => {
-        if (o === el.vscode && !el.vsBack.hidden) showVscodeList();
+        if (o === el.talk) endTalk();
+        else if (o === el.vscode && !el.vsBack.hidden) showVscodeList();
         else closeDialog(o);
     };
     o.querySelector('[data-page-back]').addEventListener('click', back);
@@ -522,11 +532,11 @@ el.infoActions.addEventListener('click', (ev) => {
     const k = closest(ev, '[data-action]');
     if (k) infoAction(k.dataset.action);
 });
-el.gActions.addEventListener('click', (ev) => {
+el.gActions.addEventListener('click', async (ev) => {
     const k = closest(ev, '[data-action]');
     const g = state.groupEditorGroup;
     if (!k || !g) return;
-    if (!chatMenuAction('g:' + g.id, k.dataset.action, el.gActions)) return;
+    if (!(await chatMenuAction('g:' + g.id, k.dataset.action, el.gActions))) return;
     if (k.dataset.action === 'favorite' || k.dataset.action === 'mute') el.gActions.replaceChildren(...chatMenuButtons('g:' + g.id, true));
     else closeDialog(el.gEditor);
 });
@@ -535,8 +545,8 @@ el.textForm.addEventListener('submit', (ev) => { ev.preventDefault(); submitText
 el.textDialog.addEventListener('click', (ev) => ev.stopPropagation());
 el.vsBack.addEventListener('click', showVscodeList);
 el.vsAdopt.addEventListener('click', adoptVscodeSession);
-el.vsShow.addEventListener('click', () => { if (showInVscode(vs.chatId, 'ide')) closeDialog(el.vscode); });
-el.vsTerminal.addEventListener('click', () => { if (showInVscode(vs.chatId, 'terminal')) closeDialog(el.vscode); });
+el.vsShow.addEventListener('click', async () => { if (await showInVscode(vs.chatId, 'ide')) closeDialog(el.vscode); });
+el.vsTerminal.addEventListener('click', async () => { if (await showInVscode(vs.chatId, 'terminal')) closeDialog(el.vscode); });
 
 // Bot editor
 function fillTemplateOptions() {
@@ -567,7 +577,8 @@ el.editorImage.addEventListener('change', async () => {
 el.editorImageRemove.addEventListener('click', () => { state.editorAvatar = ''; renderEditorAvatar(); });
 el.editorNameSuggest.addEventListener('click', () => requestSuggestion('name'));
 el.editorRoleSuggest.addEventListener('click', () => requestSuggestion('role'));
-el.editorAvatarAi.addEventListener('click', () => requestSuggestion('avatar'));
+el.editorAvatarAi.addEventListener('click', () => openAvatarPicker());
+el.avatarGenerate.addEventListener('click', () => { closeDialog(el.avatarPicker); requestSuggestion('avatar'); });
 el.editorForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
     submitEditor();
@@ -579,6 +590,8 @@ el.editorRepo.addEventListener('input', repoTyped);
 el.editorRepo.addEventListener('change', repoChanged);
 el.editorFolderBrowse.addEventListener('click', openFolderPicker);
 el.pickerChoose.addEventListener('click', chooseFolder);
+el.pickerCreate.addEventListener('click', createPickerFolder);
+el.pickerNewName.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); createPickerFolder(); } });
 
 // Group editor
 el.gImage.addEventListener('change', async () => {
@@ -592,7 +605,7 @@ el.gForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const members = [.../** @type {NodeListOf<HTMLInputElement>} */ (el.gMembers.querySelectorAll('input:checked'))].map((c) => c.value);
     if (members.length < 2) { el.gError.textContent = t('group.chooseTwoBots'); el.gError.hidden = false; return; }
-    send({ type: 'group_save', group: { id: state.groupEditorGroup ? state.groupEditorGroup.id : '', name: el.gName.value.trim(), avatar: state.groupAvatarData, members } });
+    send({ type: 'group_save', group: { id: state.groupEditorGroup ? state.groupEditorGroup.id : '', name: el.gName.value.trim(), avatar: state.groupAvatarData, members, category: el.gCategory.value } });
     closeDialog(el.gEditor);
 });
 
@@ -617,8 +630,8 @@ el.rForm.addEventListener('submit', (ev) => {
     });
     closeDialog(el.rEditor);
 });
-el.rDelete.addEventListener('click', () => {
-    if (state.routineEdit && confirm(t('routine.deleteConfirm', { name: state.routineEdit.name }))) {
+el.rDelete.addEventListener('click', async () => {
+    if (state.routineEdit && await confirmDialog(t('routine.deleteConfirm', { name: state.routineEdit.name }))) {
         send({ type: 'routine_delete', id: state.routineEdit.id });
         closeDialog(el.rEditor);
     }
@@ -646,8 +659,8 @@ el.kForm.addEventListener('submit', (ev) => {
         oldName: state.knowledgeFact ? state.knowledgeFact.name : undefined,
     });
 });
-el.kDelete.addEventListener('click', () => {
-    if (state.knowledgeFact && confirm(t('knowledge.forgetConfirm', { name: state.knowledgeFact.name }))) sendKnowledge({ type: 'knowledge_delete', name: state.knowledgeFact.name });
+el.kDelete.addEventListener('click', async () => {
+    if (state.knowledgeFact && await confirmDialog(t('knowledge.forgetConfirm', { name: state.knowledgeFact.name }))) sendKnowledge({ type: 'knowledge_delete', name: state.knowledgeFact.name });
 });
 
 // Settings, with the blocks for notifications, devices and accounts
@@ -669,6 +682,14 @@ el.settingsReadAloud.addEventListener('change', () => {
     chooseShared('readAloud', el.settingsReadAloud.value);
     renderAiServices();
 });
+el.settingsTalkMode.addEventListener('change', () => {
+    chooseShared('talkMode', el.settingsTalkMode.value);
+    renderAiServices();
+});
+// The voice conversation: the picture sends or stops, the microphone button holds, the end button ends
+el.talkAvatarButton.addEventListener('click', tapTalk);
+el.talkMic.addEventListener('click', toggleTalkMic);
+el.talkEnd.addEventListener('click', endTalk);
 el.aiAdd.addEventListener('click', () => openAiForm());
 el.aiCancel.addEventListener('click', closeAiForm);
 el.aiSave.addEventListener('click', saveAiKey);
@@ -685,7 +706,7 @@ el.pushEnable.addEventListener('click', async () => {
         checkPush();
         renderPushSettings();
     } catch (e) {
-        alert(t('push.enableFailed', { error: e.message }));
+        void alertDialog(t('push.enableFailed', { error: e.message }));
     }
 });
 onNotificationOpen((url) => {
@@ -787,6 +808,7 @@ document.addEventListener('visibilitychange', () => {
     if (!document.hidden) hiddenSince = 0;
     send({ type: 'presence', visible: !document.hidden });
     if (!document.hidden) readWaitingAnswer();
+    talkVisibility(document.hidden);
     if (!document.hidden && state.signedIn) send({ type: 'wake_status' });
     if (!document.hidden && !state.ws && !state.rejected && credentials()) connect();
     // back in the app with open chats: they count as seen now

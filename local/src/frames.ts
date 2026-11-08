@@ -6,7 +6,7 @@
 import { z } from 'zod';
 import {
     AFTER_WAKE, AVATAR_MODELS, BOT_VOICES, CLAUDE_AUTH_MODES, CLAUDE_FALLBACK, DEVICE_LOGIN_ENGINES, ENGINE_AUTH_MODES, HANDOVER_TARGETS, KEY_ENGINES, KNOWLEDGE_TYPES, LANGUAGES, MACHINE_SETTINGS_MAX,
-    OTHER_ENGINES, PUSH_PREVIEWS, READ_ALOUD_VOICES, SPEECH_TEXT_MAX, VOICE_DEVICES, VOICE_MODELS, gitHostOf, type ClientFrame, type PeerData,
+    OTHER_ENGINES, PUSH_PREVIEWS, READ_ALOUD_VOICES, SPEECH_TEXT_MAX, TALK_MODES, TALK_SDP_MAX, VOICE_DEVICES, VOICE_MODELS, gitHostOf, type ClientFrame, type PeerData,
 } from '../../shared/protocol.ts';
 
 const str = z.string();
@@ -25,10 +25,10 @@ const seenEntry = loose({ until: str.nullish(), unread: z.boolean().optional(), 
 const botInput = loose({
     id: str, name: str, area: str.optional(), role: str.optional(), folder: str, model: str.optional(), tone: str.optional(), avatar: str.nullish(),
     approval: z.enum(['never', 'risky', 'write']).optional(), favorite: z.boolean().optional(), muted: z.boolean().optional(),
-    voice: z.enum(['', ...BOT_VOICES]).optional(), machine: str.optional(), machineOnly: z.boolean().optional(), canMessage: z.array(str).nullish(),
+    voice: z.enum(['', ...BOT_VOICES]).optional(), category: str.max(200).optional(), machine: str.optional(), machineOnly: z.boolean().optional(), canMessage: z.array(str).nullish(),
     allowedTools: z.array(str).max(500).optional(), contact: z.string().max(64).nullish(),
 });
-const groupInput = loose({ id: str, name: str, avatar: str.nullish(), members: z.array(str), favorite: z.boolean().optional(), muted: z.boolean().optional() });
+const groupInput = loose({ id: str, name: str, avatar: str.nullish(), members: z.array(str), favorite: z.boolean().optional(), muted: z.boolean().optional(), category: str.max(200).optional() });
 const routineInput = loose({ id: str, botId: id, name: str, cron: str, prompt: str, enabled: z.boolean(), wake: z.boolean().optional() });
 const suggestion = loose({
     what: z.enum(['name', 'role', 'avatar']), folder: str, name: str, area: str.optional(), role: str, tone: str, model: str, previous: z.array(str).optional(),
@@ -46,6 +46,7 @@ const upTo = (max: number) => z.number().int().min(0).max(max);
 const sharedSettings = loose({
     language: z.enum(LANGUAGES).optional(), avatarModel: z.enum(AVATAR_MODELS).optional(), voiceLanguage: z.enum(['', ...LANGUAGES]).optional(),
     gitAutoPull: z.boolean().optional(), pushPreview: z.enum(PUSH_PREVIEWS).optional(), readAloud: z.enum(READ_ALOUD_VOICES).optional(),
+    talkMode: z.enum(TALK_MODES).optional(),
 });
 /** One optional value per engine that can run on a key. */
 const perKeyEngine = <T extends z.ZodType>(value: T) => loose(Object.fromEntries(KEY_ENGINES.map((e) => [e, value.optional()])) as Record<(typeof KEY_ENGINES)[number], z.ZodOptional<T>>);
@@ -73,9 +74,13 @@ const SCHEMAS = {
     folder_clone: frame('folder_clone', { url: z.string().min(1).max(1000), folder: z.string().min(1).max(1000).optional() }),
     folder_propose: frame('folder_propose', { url: z.string().min(1).max(1000) }),
     folder_list: frame('folder_list', { folder: z.string().max(1000) }),
+    folder_create: frame('folder_create', { name: z.string().min(1).max(255), parent: z.string().max(1000).optional(), nextFree: z.boolean().optional() }),
     bot_move: frame('bot_move', { botId: id, dryRun: z.boolean().optional() }),
     group_save: frame('group_save', { group: groupInput }),
     group_delete: frame('group_delete', { groupId: id }),
+    category_save: frame('category_save', { category: loose({ id: str.max(200), name: z.string().trim().min(1).max(40) }), chatId: id.optional() }),
+    category_delete: frame('category_delete', { categoryId: id }),
+    category_assign: frame('category_assign', { chatId: id, categoryId: z.string().max(200) }),
     favorite: frame('favorite', { chatId: id, on: z.boolean() }),
     mute: frame('mute', { chatId: id, on: z.boolean() }),
     push_settings: frame('push_settings', { kinds: z.partialRecord(pushKind, pushPriority) }),
@@ -83,7 +88,7 @@ const SCHEMAS = {
     settings_save: frame('settings_save', { settings: sharedSettings, apiKeys: loose({ gemini: apiKey.optional(), openai: apiKey.optional() }).optional() }),
     history: frame('history', { chatId: id, limit: z.number().int().positive().optional() }),
     tool_output: frame('tool_output', { chatId: id, entryId: str, toolId: str }),
-    send: frame('send', { chatId: id, text: str, attachments: z.array(upload).optional(), replyTo: quote.optional() }),
+    send: frame('send', { chatId: id, text: str, attachments: z.array(upload).optional(), replyTo: quote.optional(), spoken: z.boolean().optional() }),
     interrupt: frame('interrupt', { chatId: id }),
     restart: frame('restart', { botId: id, chatId: id.optional() }),
     conversation_new: frame('conversation_new', { botId: id }),
@@ -119,6 +124,7 @@ const SCHEMAS = {
     knowledge_delete: frame('knowledge_delete', { botId: id, location: knowledgeLocation, name: str }),
     file_get: frame('file_get', { path: z.string().min(1) }),
     speech_get: frame('speech_get', { id, text: z.string().min(1).max(SPEECH_TEXT_MAX), voice: z.enum(BOT_VOICES).optional() }),
+    talk_connect: frame('talk_connect', { id, chatId: id, sdp: z.string().min(1).max(TALK_SDP_MAX), voice: z.enum(BOT_VOICES).optional() }),
     push_subscribe: frame('push_subscribe', { subscription: pushSubscription }),
     people: frame('people'),
     person_chat_delete: frame('person_chat_delete', { account: z.string().min(1).max(64) }),

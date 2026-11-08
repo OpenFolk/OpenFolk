@@ -73,6 +73,34 @@ browser's page is served by its relay, whose `connect-src 'self'` and Origin che
 chat list (`others.js`) also opens one connection per account of every other relay, each with that relay's address
 and end-to-end key; a tap loads the page with `?relay=`, as does a notification of another relay.
 
+## The voice conversation
+
+`talk.js` is a page over a bot's chat that drives the existing voice message and read-aloud code; it owns no
+microphone and no voice of its own. What would be easy to get wrong:
+
+- **Silence is decided from the recorder's meter.** `voice.js` keeps a level per 100 ms for the bars; the page
+  reads the last three and ends the turn after 1.5 s of quiet following speech. There is no voice-activity model
+  and no server round trip for it, so a noisy room needs the tap on the picture, which sends at once.
+- **The bot's state, not a frame, says the answer is not coming.** An answer may be tools only or fail; the page
+  then falls back to listening when the chat has been idle for five seconds. That grace also covers the moment
+  between the transcript and the bot's first `state`.
+- **Text before a tool is read while the tool runs.** `connection.js` hands the live text to `talkInterim` at the
+  `tool` frame, the same moment it ends that bubble. The final `done` text begins with those blocks (the backend
+  joins them with blank lines, exactly as the deltas arrived), so the page strips the prefix it already read. If the
+  prefix does not match, the whole text is read once more rather than a sentence lost.
+- **Nothing listens while the bot speaks.** On a phone's speaker the microphone would hear the voice; interrupting
+  is a tap. The read-aloud module reports its end through `onReadingEnd`, and `talk.js` ignores that report while
+  it starts or stops reading itself (`starting`), since `readAloud` ends the previous message first.
+- **In the background the page waits.** iOS lets no sound start there; the microphone is closed, a finished answer
+  is queued and read when the app returns, and the wake lock is requested again then.
+- **Over OpenAI Realtime the model is only the voice.** It has one tool, `ask_bot`; `talk.js` turns a call into a
+  typed message in the bot's chat and the bot's `done` into the call's result. One call at a time: a second one
+  while the bot works gets "still working" from the page, so the bot's queue does not fill with rephrasings.
+- **The backend opens that connection.** The page's offer goes to the bot's machine (`talk_connect`), which posts it
+  with the stored key to OpenAI (`local/src/realtime.ts`). A browser could not reach OpenAI anyway (the relay's
+  `connect-src 'self'`), and the key never leaves the machine. Audio then flows between the device and OpenAI
+  directly; the relay sees neither.
+
 ## Texts
 
 Every text a user reads is a key in `webapp/i18n/en.js` and `de.js`, with the same keys and the same

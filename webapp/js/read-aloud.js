@@ -6,6 +6,7 @@ import { bot, botIdOf, responsibleMachine, send, senderName } from './e2e.js';
 import { jumpToEntry } from './list.js';
 import { openChat } from './chat.js';
 import { showEvent } from './queue.js';
+import { alertDialog } from './dialogs.js';
 
 // Two voices: a cloud voice (the backend asks OpenAI or Gemini with the key of the shared settings, local/src/speech.ts)
 // or the browser's speech output (on the iPhone the iOS voices). Either way the text is read in parts: some browsers
@@ -185,10 +186,24 @@ function stopReading() {
     }
 }
 
+/** The voice conversation (talk.js) goes on when reading is over, by its end or a stop; one listener, null = none. */
+let endListener = null;
+
+export function onReadingEnd(fn) {
+    endListener = fn;
+}
+
 function finishReading() {
+    const was = speech.active;
     stopReading();
     speech.utterances = [];
     showSpeaking(null);
+    if (was && endListener) endListener();
+}
+
+/** Stops whatever is being read; the bar goes away. */
+export function stopReadAloud() {
+    finishReading();
 }
 
 /** The cloud voice pauses its audio (its handlers stay valid); the browser's voice cancels and remembers the part
@@ -283,7 +298,7 @@ export function readAloud(e, chatId) {
     speech.botId = e.botId || botIdOf(chatId);
     speech.cloud = cloudVoice();
     if (!speech.cloud && !('speechSynthesis' in window)) {
-        alert(t('speak.unsupported'));
+        void alertDialog(t('speak.unsupported'));
         return;
     }
     const parts = speech.cloud ? chunks(text, 220, 700) : chunks(text, 220, 220);
@@ -463,6 +478,11 @@ export function autoReadOn() {
 /** In the tap that sends a voice message: unlocks both voices unless something is being read right now. */
 export function primeReadAloud() {
     if (!autoReadOn() || speech.active) return;
+    unlockVoices();
+}
+
+/** Unlocks both voices inside a tap: iOS lets a sound start on its own only after one did in a tap. */
+export function unlockVoices() {
     unlockAudio();
     if ('speechSynthesis' in window) {
         const u = new SpeechSynthesisUtterance(' ');

@@ -1,5 +1,5 @@
-// The bot editor marks what saving needs: a star on the name, the folder and the repository (one of the two is enough,
-// a note says so), and the folder and repository inputs carry aria-required.
+// The bot editor marks what saving needs: a star on the name only. Folder and repository may stay empty, a note says
+// that the bot then gets a folder of its own.
 import { bot } from './harness.mjs';
 
 export default async function ({ start, check }) {
@@ -14,8 +14,8 @@ export default async function ({ start, check }) {
         const span = document.getElementById(id).closest('label').querySelector(':scope > span[data-i18n]');
         return [id, getComputedStyle(span, '::after').content];
     })));
-    check('a star on name, folder and repository, none on the machine', stars['editor-name'] === '" *"' && stars['editor-folder'] === '" *"' && stars['editor-repo'] === '" *"' && stars['editor-machine'] === 'none', stars);
-    check('folder and repository are aria-required', (await p.getAttribute('#editor-folder', 'aria-required')) === 'true' && (await p.getAttribute('#editor-repo', 'aria-required')) === 'true');
-    check('a note says one of folder and repository is enough', await p.isVisible('[data-i18n="editor.requiredNote"]') && (await p.textContent('[data-i18n="editor.requiredNote"]')).includes('a folder or a repository is enough'));
+    check('a star on the name only', stars['editor-name'] === '" *"' && stars['editor-folder'] === 'none' && stars['editor-repo'] === 'none' && stars['editor-machine'] === 'none', stars);
+    check('folder and repository are not aria-required', (await p.getAttribute('#editor-folder', 'aria-required')) === null && (await p.getAttribute('#editor-repo', 'aria-required')) === null);
+    check('a note says both may stay empty', await p.isVisible('[data-i18n="editor.requiredNote"]') && (await p.textContent('[data-i18n="editor.requiredNote"]')).includes('a folder of its own'));
     await h.close();
 }

@@ -7,7 +7,7 @@ import path from 'node:path';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-folders-'));
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-folders-data-'));
 process.env.ALLOWED_ROOTS = root;
-const { botRoot, cloneName, cloneRepository, inspectFolder, listFolder, placeOf, planMove, prepareMove, proposeFolder } = await import('./folders.ts');
+const { botRoot, cloneName, cloneRepository, createFolder, inspectFolder, listFolder, placeOf, planMove, prepareMove, proposeFolder } = await import('./folders.ts');
 const { saveMachineSettings } = await import('./machine-settings.ts');
 
 let failures = 0;
@@ -114,6 +114,19 @@ for (const bad of [{ path: '../outside' }, { path: 'C:/elsewhere' }, { path: '/e
     check(`move: a place leading out refused (${JSON.stringify(bad)})`, (await refused(() => planMove(bad))) !== '');
 }
 check('propose: into the folder for bots', (await proposeFolder('https://git.example.com/team/blog.git')).folder === slash(path.join(bots, 'blog')));
+
+// A folder of its own (a bot without a project) and a new folder from the picker
+const own = createFolder('Research Bot');
+check('create: below the folder for bots, the name as typed', own === slash(path.join(bots, 'Research Bot')) && fs.statSync(own).isDirectory(), own);
+check('create: an empty folder of that name is used', createFolder('Research Bot') === own);
+fs.writeFileSync(path.join(own, 'notes.md'), 'x');
+check('create: one with content is refused', (await refused(() => createFolder('Research Bot'))).includes('Research Bot'));
+check('create: with nextFree the next free name', createFolder('Research Bot', undefined, true) === slash(path.join(bots, 'Research Bot-2')));
+check('create: what no file system takes is dropped', createFolder('a/b:c?') === slash(path.join(bots, 'a b c')), createFolder('a/b:c?'));
+check('create: below a given folder', createFolder('drafts', slash(own)) === slash(path.join(own, 'drafts')));
+for (const bad of ['..', '   ', '...']) check(`create: no name refused (${JSON.stringify(bad)})`, (await refused(() => createFolder(bad))) !== '');
+check('create: below a folder outside the allowed folders refused', (await refused(() => createFolder('x', os.homedir()))) !== '');
+check('create: below a missing folder refused', (await refused(() => createFolder('x', path.join(bots, 'gone')))) !== '');
 
 for (const d of [root, source, process.env.DATA_DIR!]) fs.rmSync(d, { recursive: true, force: true });
 if (failures) process.exit(1);

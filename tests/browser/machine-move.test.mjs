@@ -3,7 +3,7 @@
 // folder or repository field. The work not on the git server goes along on request, asked from the previous machine
 // once the new one took the bot. A refused place or a backend before bot_move falls back to the small move dialog; a
 // sleeping machine is woken and the move goes on once it is awake.
-import { bot } from './harness.mjs';
+import { bot, onDialog } from './harness.mjs';
 
 const REMOTE = 'https://git.example.com/team/skool.git';
 const PLACE = { path: 'apps/skool', repo: REMOTE };
@@ -34,7 +34,7 @@ export default async function ({ start, check }) {
     const editorOpen = () => p.locator('#editor').isVisible();
     const dialogs = [];
     let decline = false;
-    p.on('dialog', (d) => { dialogs.push(d.message()); return decline ? d.dismiss() : d.accept(); });
+    await onDialog(p, (d) => { dialogs.push(d.message()); return decline ? d.dismiss() : d.accept(); });
 
     await h.openChat('Skool Sven');
     await page();

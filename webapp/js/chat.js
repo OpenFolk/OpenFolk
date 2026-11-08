@@ -296,6 +296,8 @@ export function renderChatHeader(p) {
             : g ? g.members.map((m) => senderName(m)).join(', ')
                 : `${isConversation(id) ? b.name : shortFolder(b.folder)}`
                     + (state.context[id] ? ` · ${t('chat.context', { tokens: tokensShort(state.context[id]) })}` : '');
+    p.el.chatSettings.hidden = false;
+    p.el.chatSettings.title = p.el.chatSettings.ariaLabel = t(g ? 'header.groupSettings' : 'header.botSettings');
     // the model stays in sight while the line below shows what the bot is doing
     p.el.chatModel.hidden = !b;
     if (b) p.el.chatModel.textContent = modelDisplay(modelOf(id));
@@ -318,6 +320,8 @@ function renderPersonHeader(p) {
     p.el.chatSub.textContent = who.gone ? t('people.unreachableShort') : t('people.badge');
     p.el.chatModel.hidden = true;
     p.el.chatMachine.hidden = true;
+    // a person has no settings page: their menu sits behind the name
+    p.el.chatSettings.hidden = true;
     p.el.btnStop.hidden = true;
     p.el.text.placeholder = t('people.placeholder', { name: who.name });
     renderSleepHint(p);

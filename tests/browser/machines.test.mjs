@@ -1,5 +1,7 @@
 // Machine list: if a machine runs according to the wake service but its backend does not come back, the app says so
 // (also after a reload, because the relay sends the time along), after a planned shutdown as "stuck".
+import { onceDialog } from './harness.mjs';
+
 
 export default async function ({ start, check }) {
     const h = await start({ online: ['desk', 'workstation'] });
@@ -46,7 +48,7 @@ export default async function ({ start, check }) {
     await h.wait(100);
     check('shutdown not set up: no button', !(await buttons('desk')).includes('shut down'), await buttons('desk'));
     let question = '';
-    p.once('dialog', (d) => { question = d.message(); return d.dismiss(); });
+    await onceDialog(p, (d) => { question = d.message(); return d.dismiss(); });
     await p.evaluate(() => {
         const z = [...document.querySelectorAll('.machine-row')].find((e) => e.querySelector('strong').textContent.toLowerCase() === 'workstation');
         [...z.querySelectorAll('button')].find((b) => b.textContent === 'shut down').click();
@@ -59,7 +61,7 @@ export default async function ({ start, check }) {
     await h.push({ type: 'machine_capabilities', machine: 'workstation', shutdown: true, shutdownSeconds: 120, cancelShutdown: true, autologon: false, restart: true });
     await h.wait(100);
     check('restart reported: button', (await buttons('workstation')).includes('restart'), await buttons('workstation'));
-    p.once('dialog', (d) => { question = d.message(); return d.accept(); });
+    await onceDialog(p, (d) => { question = d.message(); return d.accept(); });
     await p.evaluate(() => {
         const z = [...document.querySelectorAll('.machine-row')].find((e) => e.querySelector('strong').textContent.toLowerCase() === 'workstation');
         [...z.querySelectorAll('button')].find((b) => b.textContent === 'restart').click();

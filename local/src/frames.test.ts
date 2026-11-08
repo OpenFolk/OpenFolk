@@ -27,6 +27,8 @@ accepted('fact', { type: 'knowledge_save', botId: 'cloud', location: { scope: 'a
 accepted('answer to a question', { type: 'approval_reply', id: 'q1', allow: true, answers: { 'Which?': 'A, B' } });
 accepted('check a folder', { type: 'folder_check', folder: '/work/website' });
 accepted('list the allowed roots', { type: 'folder_list', folder: '' });
+accepted('create a folder in the folder for bots', { type: 'folder_create', name: 'Research', nextFree: true });
+accepted('create a folder below another', { type: 'folder_create', name: 'notes', parent: '/work' });
 accepted('clone a repository', { type: 'folder_clone', url: 'https://git.example.com/team/website.git' });
 accepted('ask where a moving bot would go', { type: 'bot_move', botId: 'skool', dryRun: true, machine: 'workstation' });
 rejected('move without a bot', { type: 'bot_move', botId: '' }, 'botId');
@@ -44,6 +46,7 @@ accepted('sign-in to Claude in a terminal on the machine', { type: 'claude_sign_
 accepted('Web Push subscription', { type: 'push_subscribe', subscription: { endpoint: 'https://push.example/x', expirationTime: null, keys: { p256dh: 'BP', auth: 'au' } } });
 accepted('iOS device token', { type: 'push_subscribe', subscription: { channel: 'apns', token: 'a1b2c3d4e5f6', app: 'io.openfolk.app' } }); // gitleaks:allow
 rejected('clone without an address', { type: 'folder_clone', url: '' }, 'url');
+rejected('create a folder without a name', { type: 'folder_create', name: '' }, 'name');
 accepted('Android FCM token', { type: 'push_subscribe', subscription: { channel: 'fcm', token: 'fcm-token-123456' } });
 rejected('unknown push channel', { type: 'push_subscribe', subscription: { channel: 'pigeon', token: 'x'.repeat(20) } }, 'subscription');
 

@@ -3,12 +3,12 @@ import { locale, t, tn } from './i18n.js';
 import { el, node, state, closest } from './core.js';
 import { CHAT_DRAG, activePane, paneFor, visibleChats } from './panes.js';
 import { bot, clockTime, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, openApprovals, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
-import { allChats, baseChats, collapsed, conversationsOf, isFavorite, isMuted, toggleConversations, toggleFavorite } from './connection.js';
+import { allChats, baseChats, categoryOf, collapsed, conversationsOf, isFavorite, isMuted, sortedCategories, toggleCollapsed, toggleConversations, toggleFavorite } from './connection.js';
 import { loadingBar, openBeside, openChat, swipeBack } from './chat.js';
 import { isUnread, toggleUnread } from './chat-features.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
-import { ICONS, archiveConversation, chatMenuAction, fillChatMenu, gitOpenOf, modelDisplay, openGitPage } from './menus.js';
+import { ICONS, archiveConversation, chatMenuAction, deleteCategory, fillChatMenu, gitOpenOf, menuButton, modelDisplay, openGitPage, renameCategory } from './menus.js';
 import { setBadge } from './platform.js';
 import { openEditor } from './editors.js';
 import { renderWelcome } from './welcome.js';
@@ -109,8 +109,10 @@ export function renderChatList() {
         return;
     }
     // Order: finished chats with something unread (not muted), then running or waiting ones, then favorites, then the
-    // rest (each newest message first); a bot counts as running or unread if one of its conversations is, and takes
-    // them all along
+    // folders by name and the rest (each newest message first); a bot counts as running or unread if one of its
+    // conversations is, and takes them all along. A folder is listed even while nothing is in it.
+    const cats = sortedCategories();
+    const REST = 3 + cats.length;
     const section = (id) => {
         const b = isGroup(id) ? null : bot(id);
         const chats = [id, ...(b ? conversationsOf(b) : [])];
@@ -120,87 +122,95 @@ export function renderChatList() {
         });
         if (running) return 1;
         if (!isMuted(id) && chats.some(isUnread)) return 0;
-        return isFavorite(id) ? 2 : 3;
+        if (isFavorite(id)) return 2;
+        const k = cats.findIndex((c) => c.id === categoryOf(id));
+        return k >= 0 ? 3 + k : REST;
     };
     const sorted = [
         ...ids.map((id, i) => ({ id, i, s: section(id), ts: latest(id), foreign: null })),
-        ...foreign.map((r, i) => ({ id: r.id, i: ids.length + i, s: r.section, ts: r.ts, foreign: r })),
+        ...foreign.map((r, i) => ({ id: r.id, i: ids.length + i, s: r.section === 3 ? REST : r.section, ts: r.ts, foreign: r })),
     ].sort((x, y) => x.s - y.s || y.ts.localeCompare(x.ts) || x.i - y.i);
-    const titles = [t('list.unreadDone'), t('list.running'), t('list.favorites'), t('list.all')];
-    const several = new Set(sorted.map((x) => x.s)).size > 1;
-    let lastSection = -1;
-    for (const { id, s, foreign: other } of sorted) {
-        if (several && s !== lastSection) {
-            el.chatList.appendChild(node('li', 'section', titles[s]));
-            lastSection = s;
+    const titles = [t('list.unreadDone'), t('list.running'), t('list.favorites'), ...cats.map((c) => c.name), cats.length ? t('list.unfiled') : t('list.all')];
+    const several = cats.length > 0 || new Set(sorted.map((x) => x.s)).size > 1;
+    const rows = {};
+    for (const x of sorted) (rows[x.s] = rows[x.s] || []).push(x);
+    for (let s = 0; s < titles.length; s++) {
+        const cat = cats[s - 3];
+        const inSection = rows[s] || [];
+        if (cat) el.chatList.appendChild(categoryHeading(cat, inSection.length));
+        else if (several && inSection.length) el.chatList.appendChild(node('li', 'section', titles[s]));
+        const folded = Boolean(cat) && collapsed.has('c:' + cat.id);
+        for (const { id, foreign: other } of inSection) {
+            // a folded folder: only chats open in a pane right now stay visible
+            if (folded && !paneFor(id) && !(bot(id) && conversationsOf(bot(id)).some(paneFor))) continue;
+            if (other) {
+                el.chatList.appendChild(foreignRow(other));
+                continue;
+            }
+            if (isPerson(id)) {
+                el.chatList.appendChild(personRow(id));
+                continue;
+            }
+            const g = isGroup(id) ? group(id) : null;
+            const b = g ? null : bot(id);
+            const li = node('li');
+            li.dataset.chat = id;
+            markOpen(li, id);
+            const av = node('div', 'avatar' + (g ? ' group' : ''));
+            fillAvatar(av, g || b, id);
+            const info = node('div', 'info');
+            const name = node('div', 'name', (g || b).name);
+            if (b && (b.area || b.role)) name.appendChild(node('small', '', ' · ' + (b.area || b.role)));
+            const { state: st, activity } = chatStatus(id);
+            const open = openApprovals(id).length;
+            const where = b ? responsibleMachine(b) : null;
+            const sleeping = b && !where && st === 'idle';
+            const behind = st === 'idle' ? backgroundOf(id) : [];
+            const last = node('div', 'last',
+                st === 'waiting' ? '⏳ ' + t('status.waitingForYou') : st === 'thinking' ? activity
+                    : behind.length ? backgroundText(behind)
+                    : sleeping ? '💤 ' + (b.machine ? t('list.sleepingMachineOff', { machine: upper(b.machine) }) : t('list.sleepingNoMachine'))
+                        : (state.last[id] || (g ? tn('list.bots', g.members.length) : shortFolder(b.folder))));
+            if (sleeping) last.classList.add('sleeping');
+            if (st === 'thinking' || behind.length) last.classList.add('working');
+            if (st === 'waiting') last.classList.add('waiting');
+            info.append(name, last);
+            const meta = node('div', 'meta');
+            timeBadge(meta, latest(id));
+            const tags = node('div', 'tags');
+            if (b) tags.appendChild(modelBadge(id));
+            if (where && state.online.length > 1) tags.appendChild(node('span', 'machine-badge', upper(where)));
+            if (tags.firstChild) meta.appendChild(tags);
+            // side by side in one line, so git, queue and conversations do not make the row higher
+            const icons = node('div', 'meta-icons');
+            const git = b ? gitOpenOf(b) : [];
+            if (git.length) icons.appendChild(gitBadge(b, git));
+            if (isMuted(id)) icons.appendChild(node('span', 'muted-badge', '🔕'));
+            if (open) icons.appendChild(node('span', 'badge', String(open)));
+            else icons.appendChild(node('i', 'dot ' + (st === 'idle' && isUnread(id) ? 'new' : st)));
+            if (isUnread(id)) li.classList.add('unread');
+            queueBadge(icons, id);
+            meta.appendChild(icons);
+            const subs = b ? byTime(conversationsOf(b)) : [];
+            const closed = subs.length > 0 && collapsed.has(id);
+            if (subs.length) {
+                // collapsed: dot on the button when something runs or something new waits in a hidden conversation
+                const important = closed && subs.some((c) => chatStatus(c).state !== 'idle' || backgroundOf(c).length || isUnread(c));
+                const button = node('button', 'collapse' + (closed ? ' closed' : '') + (important ? ' important' : ''));
+                button.type = 'button';
+                button.title = closed ? tn('list.showConversations', subs.length) : t('list.hideConversations');
+                button.setAttribute('aria-label', button.title);
+                button.setAttribute('aria-expanded', String(!closed));
+                button.innerHTML = `<span>${subs.length}</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>`;
+                button.addEventListener('click', (ev) => { ev.stopPropagation(); toggleConversations(id); });
+                icons.appendChild(button);
+            }
+            li.append(av, info, meta);
+            openOnClick(li, id);
+            el.chatList.appendChild(li);
+            // collapsed: only conversations that are open in a pane right now stay visible
+            for (const cid of subs) if (!closed || paneFor(cid)) el.chatList.appendChild(conversationRow(cid));
         }
-        if (other) {
-            el.chatList.appendChild(foreignRow(other));
-            continue;
-        }
-        if (isPerson(id)) {
-            el.chatList.appendChild(personRow(id));
-            continue;
-        }
-        const g = isGroup(id) ? group(id) : null;
-        const b = g ? null : bot(id);
-        const li = node('li');
-        li.dataset.chat = id;
-        markOpen(li, id);
-        const av = node('div', 'avatar' + (g ? ' group' : ''));
-        fillAvatar(av, g || b, id);
-        const info = node('div', 'info');
-        const name = node('div', 'name', (g || b).name);
-        if (b && (b.area || b.role)) name.appendChild(node('small', '', ' · ' + (b.area || b.role)));
-        const { state: st, activity } = chatStatus(id);
-        const open = openApprovals(id).length;
-        const where = b ? responsibleMachine(b) : null;
-        const sleeping = b && !where && st === 'idle';
-        const behind = st === 'idle' ? backgroundOf(id) : [];
-        const last = node('div', 'last',
-            st === 'waiting' ? '⏳ ' + t('status.waitingForYou') : st === 'thinking' ? activity
-                : behind.length ? backgroundText(behind)
-                : sleeping ? '💤 ' + (b.machine ? t('list.sleepingMachineOff', { machine: upper(b.machine) }) : t('list.sleepingNoMachine'))
-                    : (state.last[id] || (g ? tn('list.bots', g.members.length) : shortFolder(b.folder))));
-        if (sleeping) last.classList.add('sleeping');
-        if (st === 'thinking' || behind.length) last.classList.add('working');
-        if (st === 'waiting') last.classList.add('waiting');
-        info.append(name, last);
-        const meta = node('div', 'meta');
-        timeBadge(meta, latest(id));
-        const tags = node('div', 'tags');
-        if (b) tags.appendChild(modelBadge(id));
-        if (where && state.online.length > 1) tags.appendChild(node('span', 'machine-badge', upper(where)));
-        if (tags.firstChild) meta.appendChild(tags);
-        // side by side in one line, so git, queue and conversations do not make the row higher
-        const icons = node('div', 'meta-icons');
-        const git = b ? gitOpenOf(b) : [];
-        if (git.length) icons.appendChild(gitBadge(b, git));
-        if (isMuted(id)) icons.appendChild(node('span', 'muted-badge', '🔕'));
-        if (open) icons.appendChild(node('span', 'badge', String(open)));
-        else icons.appendChild(node('i', 'dot ' + (st === 'idle' && isUnread(id) ? 'new' : st)));
-        if (isUnread(id)) li.classList.add('unread');
-        queueBadge(icons, id);
-        meta.appendChild(icons);
-        const subs = b ? byTime(conversationsOf(b)) : [];
-        const closed = subs.length > 0 && collapsed.has(id);
-        if (subs.length) {
-            // collapsed: dot on the button when something runs or something new waits in a hidden conversation
-            const important = closed && subs.some((c) => chatStatus(c).state !== 'idle' || backgroundOf(c).length || isUnread(c));
-            const button = node('button', 'collapse' + (closed ? ' closed' : '') + (important ? ' important' : ''));
-            button.type = 'button';
-            button.title = closed ? tn('list.showConversations', subs.length) : t('list.hideConversations');
-            button.setAttribute('aria-label', button.title);
-            button.setAttribute('aria-expanded', String(!closed));
-            button.innerHTML = `<span>${subs.length}</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>`;
-            button.addEventListener('click', (ev) => { ev.stopPropagation(); toggleConversations(id); });
-            icons.appendChild(button);
-        }
-        li.append(av, info, meta);
-        openOnClick(li, id);
-        el.chatList.appendChild(li);
-        // collapsed: only conversations that are open in a pane right now stay visible
-        for (const cid of subs) if (!closed || paneFor(cid)) el.chatList.appendChild(conversationRow(cid));
     }
     setBadge(allChats().filter(isUnread).length + otherUnreadCount());
 }
@@ -386,14 +396,14 @@ let rowShow = null;
 
 /**
  * Puts content into the menu and places it at (x, y), kept inside the window. On the phone the menu is a page of its own
- * instead (chat.css), with the chat's picture and name and a back arrow at the top.
+ * instead (chat.css), with `head` (the chat's picture and name, a folder's name) and a back arrow at the top.
  */
-function rowMenuAt(chatId, x, y) {
+function rowMenuAt(head, x, y) {
     return (...buttons) => {
         delete rowMenu.dataset.view;
         const page = window.innerWidth <= 760;
         rowMenu.classList.toggle('menu-page', page);
-        rowMenu.replaceChildren(...(page ? [rowHead(chatId)] : []), ...buttons);
+        rowMenu.replaceChildren(...(page ? [head()] : []), ...buttons);
         rowMenu.hidden = false;
         if (page) { rowMenu.style.left = rowMenu.style.top = ''; return; }
         const r = rowMenu.getBoundingClientRect();
@@ -440,10 +450,59 @@ function rowHead(chatId) {
 
 export function openRowMenu(chatId, x, y) {
     if (!bot(chatId) && !group(chatId) && !isPerson(chatId)) return;
+    delete rowMenu.dataset.category;
     rowMenu.dataset.chat = chatId;
     fillChatMenu(rowMenu, chatId);
-    rowShow = rowMenuAt(chatId, x, y);
+    rowShow = rowMenuAt(() => rowHead(chatId), x, y);
     rowShow(...rowMenu.childNodes);
+}
+
+// ---------------------------------------------------------- Folders of the list
+// A folder is a heading the user made (menus.js: new, rename, delete): a tap folds it, a long press opens its menu.
+
+/** The heading of a folder; folded it shows how many chats it hides. */
+function categoryHeading(c, count) {
+    const closed = collapsed.has('c:' + c.id);
+    const li = node('li', 'section category' + (closed ? ' closed' : ''));
+    li.dataset.category = c.id;
+    li.setAttribute('role', 'button');
+    li.setAttribute('aria-expanded', String(!closed));
+    li.title = closed ? t('list.showFolder') : t('list.hideFolder');
+    li.innerHTML = '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+    li.appendChild(node('span', 'name', c.name));
+    if (closed && count) li.appendChild(node('span', 'count', String(count)));
+    li.addEventListener('click', () => toggleCollapsed('c:' + c.id));
+    return li;
+}
+
+/** Head of a folder's menu as a page: back, folder icon, name. */
+function categoryHead(id) {
+    const c = state.categories.find((x) => x.id === id);
+    const head = node('div', 'menu-head');
+    const back = node('button', 'menu-back');
+    back.type = 'button';
+    back.title = t('common.back');
+    back.setAttribute('aria-label', t('common.back'));
+    back.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.back}</svg>`;
+    back.addEventListener('click', (ev) => { ev.stopPropagation(); rowMenu.hidden = true; });
+    const avatar = node('div', 'avatar category-avatar');
+    avatar.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.folder}</svg>`;
+    const title = node('div', 'title');
+    title.append(node('strong', '', c ? c.name : ''));
+    head.append(back, avatar, title);
+    return head;
+}
+
+function openCategoryMenu(id, x, y) {
+    if (!state.categories.some((c) => c.id === id)) return;
+    delete rowMenu.dataset.chat;
+    rowMenu.dataset.category = id;
+    const rename = menuButton('pencil', t('category.rename'));
+    rename.dataset.action = 'rename';
+    const remove = menuButton('delete', t('category.delete'), 'danger');
+    remove.dataset.action = 'delete';
+    rowShow = rowMenuAt(() => categoryHead(id), x, y);
+    rowShow(rename, remove);
 }
 
 export function setupListLongPress() {
@@ -461,10 +520,16 @@ export function setupListLongPress() {
         ev.stopPropagation();
         // archive and open changes put themselves into the menu again
         rowMenu.hidden = true;
+        if (rowMenu.dataset.category) {
+            if (action.dataset.action === 'rename') renameCategory(rowMenu.dataset.category);
+            else deleteCategory(rowMenu.dataset.category);
+            return;
+        }
         chatMenuAction(rowMenu.dataset.chat, action.dataset.action, rowMenu, rowShow);
     });
     let g = null;
-    const rowOf = (ev) => (ev.target.closest && ev.target.closest('li[data-chat]')) || null;
+    const rowOf = (ev) => (ev.target.closest && ev.target.closest('li[data-chat], li.section[data-category]')) || null;
+    const openMenuFor = (li, x, y) => (li.dataset.category ? openCategoryMenu(li.dataset.category, x, y) : openRowMenu(li.dataset.chat, x, y));
     el.chatList.addEventListener('touchstart', (ev) => {
         if (g) clearTimeout(g.timer);
         g = null;
@@ -475,7 +540,7 @@ export function setupListLongPress() {
         g.timer = setTimeout(() => {
             g.open = true;
             if (navigator.vibrate) navigator.vibrate(15);
-            openRowMenu(li.dataset.chat, g.x, g.y);
+            openMenuFor(li, g.x, g.y);
         }, LONG_PRESS_MS);
     }, { passive: true });
     el.chatList.addEventListener('touchmove', (ev) => {
@@ -499,7 +564,7 @@ export function setupListLongPress() {
         const li = rowOf(ev);
         if (!li) return;
         ev.preventDefault();
-        if (pointer !== 'touch') openRowMenu(li.dataset.chat, ev.clientX, ev.clientY);
+        if (pointer !== 'touch') openMenuFor(li, ev.clientX, ev.clientY);
     });
     document.addEventListener('click', (ev) => { if (!rowMenu.contains(ev.target)) rowMenu.hidden = true; });
     el.chatList.addEventListener('scroll', () => { rowMenu.hidden = true; });

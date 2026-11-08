@@ -2,7 +2,8 @@ name: Backend image
 
 # Publishes the backend image (a machine that never sleeps) to the GitHub Container Registry, with the same
 # tags as the relay image: "edge" and the commit SHA from main, "latest" plus the version from tags like v1.2.3.
-# Pull requests only build.
+# On top of it the variant with voice messages (local/Dockerfile.voice), every tag with "-voice".
+# Pull requests only build the backend image.
 on:
   push:
     branches: [main]
@@ -43,7 +44,8 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
           flavor: |
             latest=auto
-      - uses: docker/build-push-action@v6
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: local/Dockerfile
@@ -53,3 +55,29 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # The variant with voice messages, built on the image just pushed (by digest, so both are the same build)
+      - id: meta-voice
+        if: github.event_name != 'pull_request'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=edge,branch=main
+            type=sha
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=auto
+            suffix=-voice,onlatest=true
+      - uses: docker/build-push-action@v6
+        if: github.event_name != 'pull_request'
+        with:
+          context: .
+          file: local/Dockerfile.voice
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: BASE=${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+          tags: ${{ steps.meta-voice.outputs.tags }}
+          labels: ${{ steps.meta-voice.outputs.labels }}
+          cache-from: type=gha,scope=voice
+          cache-to: type=gha,mode=max,scope=voice

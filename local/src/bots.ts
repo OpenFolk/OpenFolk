@@ -6,7 +6,7 @@ import { t } from './i18n.ts';
 import { personChat } from './people.ts';
 import { rememberable } from './policy.ts';
 import { readJson, readJsonCached, setTombstone, slug, writeJson } from './store.ts';
-import { BOT_VOICES, botIdOf, type ApprovalPolicy, type Bot, type BotInput, type BotPlace, type BotVoice, type Group, type GroupInput } from '../../shared/protocol.ts';
+import { BOT_VOICES, botIdOf, type ApprovalPolicy, type Bot, type BotInput, type BotPlace, type BotVoice, type Category, type CategoryInput, type Group, type GroupInput } from '../../shared/protocol.ts';
 
 const POLICIES: ApprovalPolicy[] = ['never', 'risky', 'write'];
 
@@ -132,6 +132,8 @@ export function saveBot(input: BotInput): Bot {
         approval: POLICIES.includes(input.approval) ? input.approval : 'risky',
         // '' = guess from the name; an app without the field leaves it as it is
         voice: input.voice === undefined ? existing?.voice : BOT_VOICES.includes(input.voice as BotVoice) ? input.voice as BotVoice : undefined,
+        // '' = no folder; an app without the field leaves it as it is
+        category: input.category === undefined ? existing?.category : knownCategory(input.category),
         // The editor can only take tools off the list; they come onto it from an approval card (allowTool)
         allowedTools: input.allowedTools === undefined ? existing?.allowedTools : toolList(input.allowedTools.filter((tool) => existing?.allowedTools?.includes(tool))),
         canMessage: input.canMessage === undefined ? existing?.canMessage
@@ -319,6 +321,7 @@ export function saveGroup(input: GroupInput): Group {
         members,
         favorite: existing?.favorite || undefined,
         muted: existing?.muted || undefined,
+        category: input.category === undefined ? existing?.category : knownCategory(input.category),
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
     };
@@ -385,4 +388,71 @@ export function saveGroups(groups: Group[]): void {
 export function deleteGroup(id: string): void {
     writeJson('groups.json', loadGroups().filter((g) => g.id !== id));
     setTombstone(`group:${id}`);
+}
+
+// ---- Categories: the folders of the chat list ----
+
+export function loadCategories(): Category[] {
+    return readJson<Partial<Category>[]>('categories.json', []).map((c) => ({ updatedAt: c.createdAt ?? '', ...c }) as Category);
+}
+
+export function saveCategories(categories: Category[]): void {
+    writeJson('categories.json', categories);
+}
+
+/** A folder id that exists; anything else means none. */
+function knownCategory(id: string | undefined): string | undefined {
+    return id && loadCategories().some((c) => c.id === id) ? id : undefined;
+}
+
+/** Creates (empty id) or renames a folder; `chatId`: a bot or group that goes into it right away. */
+export function saveCategory(input: CategoryInput, chatId?: string): Category {
+    const categories = loadCategories();
+    let id = input.id;
+    if (!id) {
+        const base = slug(input.name) || 'folder';
+        id = base;
+        for (let i = 2; categories.some((c) => c.id === id); i++) id = `${base}-${i}`;
+    }
+    const existing = categories.find((c) => c.id === id);
+    if (input.id && !existing) throw new Error(t('bots.categoryNotFound'));
+    const now = new Date().toISOString();
+    const category: Category = { id, name: input.name.trim() || id, createdAt: existing?.createdAt ?? now, updatedAt: now };
+    if (existing) categories[categories.indexOf(existing)] = category;
+    else categories.push(category);
+    saveCategories(categories);
+    if (chatId) setCategory(chatId, id);
+    return category;
+}
+
+/** Removes a folder; the bots and groups in it stay, without one (their change syncs with them). */
+export function deleteCategory(id: string): void {
+    saveCategories(loadCategories().filter((c) => c.id !== id));
+    setTombstone(`category:${id}`);
+    const now = new Date().toISOString();
+    const bots = loadBots();
+    if (bots.some((b) => b.category === id)) saveBots(bots.map((b) => (b.category === id ? { ...b, category: undefined, updatedAt: now } : b)));
+    const groups = loadGroups();
+    if (groups.some((g) => g.category === id)) saveGroups(groups.map((g) => (g.category === id ? { ...g, category: undefined, updatedAt: now } : g)));
+}
+
+/** Puts a bot or group (chatId 'g:<id>') into a folder; '' takes it out. */
+export function setCategory(chatId: string, categoryId: string): void {
+    const value = categoryId || undefined;
+    if (value && !loadCategories().some((c) => c.id === value)) throw new Error(t('bots.categoryNotFound'));
+    const now = new Date().toISOString();
+    if (chatId.startsWith('g:')) {
+        const groups = loadGroups();
+        const g = groups.find((x) => x.id === chatId.slice(2));
+        if (!g) throw new Error(t('bots.groupNotFound'));
+        g.category = value;
+        g.updatedAt = now;
+        saveGroups(groups);
+        return;
+    }
+    const bots = loadBots();
+    const b = botOrThrow(bots, botIdOf(chatId));
+    b.category = value;
+    b.updatedAt = now;
+    saveBots(bots);
 }

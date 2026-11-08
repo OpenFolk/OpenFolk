@@ -5,6 +5,49 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-08
+
+### Added
+- Folders in the chat list: "+" → "New folder"; a bot or group goes into one from its menu ("Folder") or its settings.
+  A tap on the heading folds the folder, a long press renames or deletes it. Running bots and unread answers sit at the
+  top meanwhile; folders sync between the machines like bots.
+- A set of 24 ready-made profile pictures: "AI avatar" in the bot editor opens it first, the image model is the last
+  entry. Drawn by `npm run avatar-set` into `webapp/avatars/`.
+- `FIRST_DEVICE_CODE` for a backend in a container: the code for the main account's first device can be set
+  beforehand and handed to someone who starts with nothing but a phone. It stays out of the log; the first steps in a
+  container now lead with the API key and the device codes, which need no computer.
+- A bar above code blocks in answers with the language, "Copy" and line wrap (#55, by @SvenvanB).
+- A gear in the chat header opens the bot's page or the group's editor, like a tap on the title (#50, by @SvenvanB).
+- Bots without a project folder: with folder and repository left empty, the bot gets a folder named after it in its
+  machine's folder for bots (#37). The folder picker creates a new folder below the one it shows (#35). Both go
+  through the new frame `folder_create`; an older backend says to enter a folder.
+- The backend image with voice messages: every tag of `ghcr.io/openfolk/openfolk-local` also as `-voice`, with Python
+  and faster-whisper on the CPU (`local/Dockerfile.voice`, #41).
+- `docs/running.md` says in what order to update relay, backends and apps, and how a desktop window in the mode
+  "relay address" signs in again after the move to `openfolk://app` (#40).
+- Voice conversation: the button next to the microphone opens a page where you talk with a bot hands-free. The
+  recording goes out after a pause, the answer is read aloud (what the bot says before a tool runs right away) and
+  the microphone opens again; a tap on the picture sends at once or stops the voice. The bot is asked to answer
+  briefly.
+- With "OpenAI Realtime" in the settings and an OpenAI key, the voice conversation runs over `gpt-realtime-2.1` (or
+  mini) like ChatGPT's: interrupting works, OpenAI speaks the bot's answer. The backend opens the connection with the
+  stored key; this needs backends of this version.
+
+### Changed
+- The code for a first device works once only: after a device of the main account has talked to the backend it opens
+  nothing more, even while no device is signed in at the relay.
+- Questions and notices are HTML dialogs of the app instead of the browser's `confirm()` and `alert()` (#48, by @SvenvanB).
+- Deleting a bot or a group asks for its name in a "danger zone" that lists what goes and what stays (#49, by @SvenvanB).
+- From the bot's page, the editor opens in the side panel in place of the page, which is drawn again after saving
+  (#56, by @SvenvanB).
+- Answers of a bot fill the width of their column (#54, by @SvenvanB).
+- The switch for reading answers aloud sits next to the voice it belongs to (#53, by @SvenvanB).
+- The sign-in and the pairing name their secrets apart: relay password, key and pairing link (#52, by @SvenvanB).
+
+### Fixed
+- The "Key needed" dialog takes the full pairing link, as its text says, not only the key (#47 by @SvenvanB, fixes #42).
+- The top of the sign-in page stays reachable in a low window (#51, by @SvenvanB).
+
 ## [0.3.0] - 2026-11-06
 
 ### Added
@@ -271,7 +314,8 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.1.2...v0.2.0

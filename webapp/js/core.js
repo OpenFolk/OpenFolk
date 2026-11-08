@@ -39,7 +39,7 @@ export const el = {
     aiForm: $('settings-ai-form'), aiProvider: /** @type {HTMLSelectElement} */ ($('settings-ai-provider')), aiKey: /** @type {HTMLInputElement} */ ($('settings-ai-key')),
     aiSave: /** @type {HTMLButtonElement} */ ($('settings-ai-save')), aiCancel: /** @type {HTMLButtonElement} */ ($('settings-ai-cancel')),
     settingsAvatarModel: /** @type {HTMLSelectElement} */ ($('settings-avatar-model')), settingsVoiceLanguage: /** @type {HTMLSelectElement} */ ($('settings-voice-language')),
-    settingsPushPreview: /** @type {HTMLSelectElement} */ ($('settings-push-preview')), settingsReadAloud: /** @type {HTMLSelectElement} */ ($('settings-read-aloud')), settingsGitPull: /** @type {HTMLInputElement} */ ($('settings-git-pull')),
+    settingsPushPreview: /** @type {HTMLSelectElement} */ ($('settings-push-preview')), settingsReadAloud: /** @type {HTMLSelectElement} */ ($('settings-read-aloud')), settingsTalkMode: /** @type {HTMLSelectElement} */ ($('settings-talk-mode')), settingsGitPull: /** @type {HTMLInputElement} */ ($('settings-git-pull')),
     keyDialog: $('key-dialog'), keyForm: /** @type {HTMLFormElement} */ ($('key-form')), keyInput: /** @type {HTMLInputElement} */ ($('key-input')), keyText: $('key-text'), keyError: $('key-error'),
     settingsDialog: $('settings-dialog'), settingsDialogTitle: $('settings-dialog-title'), settingsDialogBody: $('settings-dialog-body'), settingsDialogActions: $('settings-dialog-actions'),
     textDialog: $('text-dialog'), textForm: /** @type {HTMLFormElement} */ ($('text-form')), textInput: /** @type {HTMLInputElement} */ ($('text-input')),
@@ -52,16 +52,17 @@ export const el = {
     speechBarPlay: $('speech-bar-play'), speechBarSeek: /** @type {HTMLInputElement} */ ($('speech-bar-seek')), speechBarElapsed: $('speech-bar-elapsed'), speechBarTotal: $('speech-bar-total'),
     editor: $('editor'), editorForm: /** @type {HTMLFormElement} */ ($('editor-form')), editorTitle: $('editor-title'), editorTemplateField: $('editor-template-field'),
     editorTemplate: /** @type {HTMLSelectElement} */ ($('editor-template')), editorAvatar: $('editor-avatar'), editorImage: /** @type {HTMLInputElement} */ ($('editor-image')), editorImageRemove: /** @type {HTMLButtonElement} */ ($('editor-image-remove')),
-    editorAvatarAi: /** @type {HTMLButtonElement} */ ($('editor-avatar-ai')), editorNameSuggest: /** @type {HTMLButtonElement} */ ($('editor-name-suggest')), editorNameSuggestions: $('editor-name-suggestions'),
+    editorAvatarAi: /** @type {HTMLButtonElement} */ ($('editor-avatar-ai')), avatarPicker: $('avatar-picker'), avatarGrid: $('avatar-grid'), avatarError: $('avatar-error'), avatarGenerate: /** @type {HTMLButtonElement} */ ($('avatar-generate')), editorNameSuggest: /** @type {HTMLButtonElement} */ ($('editor-name-suggest')), editorNameSuggestions: $('editor-name-suggestions'),
     editorRoleSuggest: /** @type {HTMLButtonElement} */ ($('editor-role-suggest')),
     editorName: /** @type {HTMLInputElement} */ ($('editor-name')), editorArea: /** @type {HTMLInputElement} */ ($('editor-area')), editorRole: /** @type {HTMLInputElement} */ ($('editor-role')), editorFolder: /** @type {HTMLInputElement} */ ($('editor-folder')), editorRepo: /** @type {HTMLInputElement} */ ($('editor-repo')), editorModel: /** @type {HTMLSelectElement} */ ($('editor-model')),
-    editorModelCustom: /** @type {HTMLInputElement} */ ($('editor-model-custom')), editorApproval: /** @type {HTMLSelectElement} */ ($('editor-approval')), editorTone: /** @type {HTMLTextAreaElement} */ ($('editor-tone')), editorVoice: /** @type {HTMLSelectElement} */ ($('editor-voice')),
+    editorModelCustom: /** @type {HTMLInputElement} */ ($('editor-model-custom')), editorApproval: /** @type {HTMLSelectElement} */ ($('editor-approval')), editorTone: /** @type {HTMLTextAreaElement} */ ($('editor-tone')), editorVoice: /** @type {HTMLSelectElement} */ ($('editor-voice')), editorCategory: /** @type {HTMLSelectElement} */ ($('editor-category')),
     editorContact: /** @type {HTMLSelectElement} */ ($('editor-contact')), editorContactBlock: $('editor-contact-block'),
     editorCanMessage: /** @type {HTMLSelectElement} */ ($('editor-can-message')), editorCanMessageBots: $('editor-can-message-bots'), editorAllowedTools: $('editor-allowed-tools'), editorError: $('editor-error'),
     editorMachine: /** @type {HTMLSelectElement} */ ($('editor-machine')), editorFolderHint: $('editor-folder-hint'), editorFolderBrowse: /** @type {HTMLButtonElement} */ ($('editor-folder-browse')),
     folderPicker: $('folder-picker'), pickerPath: $('picker-path'), pickerList: $('picker-list'), pickerError: $('picker-error'), pickerChoose: /** @type {HTMLButtonElement} */ ($('picker-choose')),
+    pickerNewName: /** @type {HTMLInputElement} */ ($('picker-new-name')), pickerCreate: /** @type {HTMLButtonElement} */ ($('picker-create')),
     gEditor: $('group-editor'), gForm: /** @type {HTMLFormElement} */ ($('group-form')), gTitle: $('group-title'), gAvatar: $('group-avatar'), gImage: /** @type {HTMLInputElement} */ ($('group-image')),
-    gName: /** @type {HTMLInputElement} */ ($('group-name')), gMembers: $('group-members'), gError: $('group-error'),
+    gName: /** @type {HTMLInputElement} */ ($('group-name')), gCategory: /** @type {HTMLSelectElement} */ ($('group-category')), gMembers: $('group-members'), gError: $('group-error'),
     info: $('info'), infoAvatar: $('info-avatar'), infoName: $('info-name'), infoArea: $('info-area'), infoRole: $('info-role'), infoFacts: $('info-facts'),
     infoRoutines: $('info-routines'), infoRoutineNew: /** @type {HTMLButtonElement} */ ($('info-routine-new')), infoKnowledgeTabs: $('info-knowledge-tabs'),
     infoKnowledgeHint: $('info-knowledge-hint'), infoKnowledge: $('info-knowledge'), infoKnowledgeNew: /** @type {HTMLButtonElement} */ ($('info-knowledge-new')),
@@ -78,6 +79,8 @@ export const el = {
     tabBar: $('tab-bar'), tabRepos: $('tab-repos'), tabReposBadge: $('tab-repos-badge'),
     gitPage: $('git-page'), gitPageContent: $('git-page-content'), gitBack: /** @type {HTMLButtonElement} */ ($('git-back')), gitTitle: $('git-title'), gitSub: $('git-sub'),
     vscode: $('vscode'), vsBack: /** @type {HTMLButtonElement} */ ($('vs-back')), vsTitle: $('vs-title'), vsSub: $('vs-sub'), vsList: $('vs-list'), vsShow: $('vs-show'), vsTerminal: $('vs-terminal'),
+    talk: $('talk'), talkAvatar: $('talk-avatar'), talkAvatarButton: /** @type {HTMLButtonElement} */ ($('talk-avatar-button')), talkName: $('talk-name'), talkPhase: $('talk-phase'),
+    talkHeard: $('talk-heard'), talkAnswer: $('talk-answer'), talkError: $('talk-error'), talkMic: /** @type {HTMLButtonElement} */ ($('talk-mic')), talkEnd: /** @type {HTMLButtonElement} */ ($('talk-end')),
     vsHistory: $('vs-history'), vsError: $('vs-error'), vsFooter: $('vs-footer'), vsHint: $('vs-hint'), vsAdopt: /** @type {HTMLButtonElement} */ ($('vs-adopt')),
 };
 
@@ -141,7 +144,7 @@ export const state = {
     shutdownPlanned: {},     // host -> true if it was about to shut down when it disconnected
     autologon: {},           // host -> { on, password } according to its backend (automatic Windows sign-in)
     capabilities: {},        // host -> { shutdown, shutdownSeconds, cancelShutdown, autologon, restart } from its settings
-    bots: [], groups: [], states: {}, activity: {}, activeChats: {}, approvals: {}, routines: [],
+    bots: [], groups: [], categories: [], states: {}, activity: {}, activeChats: {}, approvals: {}, routines: [],
     people: [],              // whom this account can chat with [{ id, name, admin, reach }], from the backends
     personChats: [],         // favorite, mute and deletion of the person chats [{ id, favorite, muted, cleared, updatedAt }]
     usage: null, pushKey: '',
@@ -169,6 +172,11 @@ export const state = {
 
 marked.setOptions({ breaks: true, gfm: true });
 // Links in messages always open in a new tab, without access of the target page to this window
+// The fence's language (class="language-js") goes as lang="js", for the bar above a code block (code-blocks.js)
+DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+    const language = data.attrName === 'class' && node.tagName === 'CODE' && /^language-([\w+#.-]{1,20})$/.exec(data.attrValue);
+    if (language) node.setAttribute('lang', language[1]);
+});
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     if (node.tagName === 'A' && node.hasAttribute('href')) {
         node.setAttribute('target', '_blank');

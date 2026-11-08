@@ -8,7 +8,8 @@ import { e2eEnabled } from './e2e.ts';
 import { setLanguageSource } from './i18n.ts';
 import { currentAccount, readJson, writeJson } from './store.ts';
 import {
-    AVATAR_MODELS, LANGUAGES, PUSH_PREVIEWS, READ_ALOUD_VOICES, SHARED_API_KEYS, type AvatarModel, type Language, type PushPreview, type ReadAloudVoice, type SharedApiKey,
+    AVATAR_MODELS, LANGUAGES, PUSH_PREVIEWS, READ_ALOUD_VOICES, SHARED_API_KEYS, TALK_MODES, type AvatarModel, type Language, type PushPreview, type ReadAloudVoice, type SharedApiKey,
+    type TalkMode,
     type SharedSettings, type SharedSettingsInput, type Snapshot,
 } from '../../shared/protocol.ts';
 
@@ -30,6 +31,7 @@ function clean(s: Partial<SharedSettings>): SharedSettings {
     if (typeof s.gitAutoPull === 'boolean') r.gitAutoPull = s.gitAutoPull;
     if (oneOf(PUSH_PREVIEWS, s.pushPreview)) r.pushPreview = s.pushPreview;
     if (oneOf(READ_ALOUD_VOICES, s.readAloud)) r.readAloud = s.readAloud;
+    if (oneOf(TALK_MODES, s.talkMode)) r.talkMode = s.talkMode;
     return r;
 }
 
@@ -78,6 +80,7 @@ export function settingsForBrowser(): SharedSettings {
 
 export const avatarModel = (): AvatarModel => loadSettings().avatarModel ?? 'gemini-3.1-flash-image';
 export const voiceLanguage = (): '' | Language => loadSettings().voiceLanguage ?? '';
+export const talkMode = (): TalkMode => loadSettings().talkMode ?? 'app';
 export const gitAutoPull = (): boolean => loadSettings().gitAutoPull ?? true;
 export const pushPreview = (): PushPreview => loadSettings().pushPreview ?? 'title';
 export const readAloudVoice = (): ReadAloudVoice => loadSettings().readAloud ?? 'auto';

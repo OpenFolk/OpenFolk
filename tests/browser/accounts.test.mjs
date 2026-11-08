@@ -1,5 +1,6 @@
 // Accounts: a device signed in to several, switching in the sidebar, adding one by invitation link or password,
 // and managing them (an admin creates one and gets the invitation from a backend).
+import { onDialog } from './harness.mjs';
 
 const KEY = Buffer.alloc(32, 7).toString('base64url');
 const MAIN = { id: 'main', name: 'Alex', admin: true };
@@ -88,7 +89,7 @@ export default async function ({ start, check }) {
         path: '#pair=used', before: knows([{ ...MAIN, device: 'test' }]),
         auth: (f) => (f.pair ? { type: 'auth', ok: false, code: 'pairing_invalid', message: 'This pairing link is no longer valid.' } : byDevice({ test: MAIN })(f)),
     });
-    stale.page.on('dialog', (d) => d.accept());
+    await onDialog(stale.page, (d) => d.accept());
     await stale.wait(400);
     check('stale invitation: back in the account so far, no login', stale.sent.findLast((f) => f.type === 'auth')?.device === 'test' && await stale.page.isHidden('#login'));
     await stale.close();
@@ -126,7 +127,7 @@ export default async function ({ start, check }) {
     await add.wait(200);
     check('both in the list, the first one with switch and remove', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Alex *: Switch,Remove', 'Kunde *: ']), await signedIn());
     check('… and the setting for one list offered', await a.isVisible('#settings-all-accounts'));
-    a.on('dialog', (d) => void d.accept());
+    await onDialog(a, (d) => void d.accept());
     await a.locator('#accounts-list li', { hasText: 'Alex' }).locator('button.danger').click();
     await add.wait(100);
     check('removed: only this device forgets it', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Kunde *: '])

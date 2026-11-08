@@ -1,0 +1,22 @@
+# Backend image with voice messages (tags ending in "-voice"): the backend image plus Python and faster-whisper, so
+# the bots of a container transcribe voice messages. Built on top of the published image, so it can be rebuilt on
+# any of its tags; the build context is the repo root like for local/Dockerfile.
+#
+#   docker build -f local/Dockerfile.voice --build-arg BASE=ghcr.io/openfolk/openfolk-local:latest -t openfolk-local-voice .
+#
+# The transcription runs on the CPU (int8; the model "small" unless the machine settings choose another). The speech
+# model is downloaded with the first voice message into /home/node, which is a volume: about 0.5 GB for "small".
+ARG BASE=ghcr.io/openfolk/openfolk-local:latest
+FROM ${BASE}
+
+# Debian's Python in an environment of its own under /opt, with the list "Set up voice messages" installs on a PC.
+# Wheels only: a package without one for this platform fails here instead of compiling for an hour. pip's cache is
+# cleaned in the same layer.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-venv \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m venv /opt/whisper \
+    && /opt/whisper/bin/pip install --no-cache-dir --disable-pip-version-check --only-binary=:all: -r local/tools/requirements-voice.txt
+
+# voice-setup.ts takes this Python before every other way; "Set up voice messages" in the app stays off in a container
+ENV WHISPER_PYTHON=/opt/whisper/bin/python3

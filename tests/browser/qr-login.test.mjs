@@ -122,7 +122,7 @@ export default async function ({ start, check }) {
     const dialogs = [];
     const approver = await start({
         secure: true, path: `#approve=req-1&pk=${pk}`,
-        before: () => { window.confirm = (m) => { (window.__dialogs ||= []).push(m); return true; }; window.alert = (m) => { (window.__dialogs ||= []).push(m); }; },
+        recordDialogs: true,
         onSend: (f, push, state, reply) => {
             if (f.type === 'pair_request') return reply({ type: 'pair_request', id: f.id, name: 'Chrome on Windows', ip: '203.0.113.7', since: new Date().toISOString() });
             if (f.type === 'pair_link') return reply({ type: 'pair_link', machine: 'desk', url: `https://elsewhere.example/#pair=tok-qr&e2e=${KEY}`, expiresAt: new Date().toISOString(), svg: '', e2e: true });
@@ -157,7 +157,7 @@ export default async function ({ start, check }) {
     let machineBox = null;
     const phone = await start({
         secure: true, path: new URL(machineJoin.code.link).hash,
-        before: () => { window.confirm = (m) => { (window.__dialogs ||= []).push(m); return true; }; window.alert = (m) => { (window.__dialogs ||= []).push(m); }; },
+        recordDialogs: true,
         onSend: (f, push, state, reply) => {
             if (f.type === 'pair_request') return reply({ type: 'pair_request', id: f.id, name: 'LAPTOP (OpenFolk desktop)', ip: '203.0.113.9', since: new Date().toISOString() });
             if (f.type === 'machine_join_link') return reply({ type: 'machine_join_link', machine: 'desk', url: `https://relay.example/#join=tok-join&e2e=${KEY}`, command: 'npm run join -- "…"', expiresAt: new Date().toISOString(), e2e: true });
@@ -237,7 +237,7 @@ export default async function ({ start, check }) {
     await esc.close();
 
     // ---- the app scans a signed-in device's pairing code on its start page
-    const app = await start({ secure: true, device: null, before: fakeCapacitor });
+    const app = await start({ secure: true, device: null, before: fakeCapacitor, recordDialogs: true });
     const p = app.page;
     check('app: scanner button on the start page', await p.isVisible('#login-scan'));
     await p.evaluate((k) => { window.__scanResult = `https://relay.example.com/#pair=app-qr&e2e=${k}`; }, KEY);
@@ -250,14 +250,14 @@ export default async function ({ start, check }) {
     // ---- and, signed in, scans a new device's code in the devices block
     await p.click('[data-tab=settings]');
     check('app: scanner button in the devices block', await p.isVisible('#devices-scan'));
-    await p.evaluate(() => { window.__scanResult = 'https://relay.example.com/#approve=req-5&pk=abc'; window.confirm = () => false; });
+    await p.evaluate(() => { window.__scanResult = 'https://relay.example.com/#approve=req-5&pk=abc'; window.__dialogAnswer = false; });
     await p.click('#devices-scan');
     await app.wait(300);
     check('app: scanned code is looked up at the relay', app.sent.some((f) => f.type === 'pair_request' && f.id === 'req-5'));
-    await p.evaluate(() => { window.__scanResult = 'https://example.com/nothing'; window.__alerts = []; window.alert = (m) => window.__alerts.push(m); });
+    await p.evaluate(() => { window.__scanResult = 'https://example.com/nothing'; window.__dialogs = []; window.__dialogAnswer = true; });
     await p.click('#devices-scan');
     await app.wait(200);
-    check('app: other codes are refused with a hint', await p.evaluate(() => window.__alerts.length === 1 && /not the sign-in code/.test(window.__alerts[0])));
+    check('app: other codes are refused with a hint', await p.evaluate(() => window.__dialogs.length === 1 && /not the sign-in code/.test(window.__dialogs[0])));
     check('no page errors', fresh.errors.length + approver.errors.length + app.errors.length === 0, [...fresh.errors, ...approver.errors, ...app.errors]);
     await app.close();
 }

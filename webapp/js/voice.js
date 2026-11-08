@@ -6,6 +6,7 @@ import { bot, responsibleMachine, send, showImageLarge, upper } from './e2e.js';
 import { scroll, setReply } from './chat-features.js';
 import { approvalsToBottom, composerButtons, showEvent, textHeight } from './queue.js';
 import { expectAnswer } from './read-aloud.js';
+import { alertDialog } from './dialogs.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -35,7 +36,7 @@ export async function startRecording(p) {
     try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     } catch (e) {
-        alert(t('voice.noMicrophone', { error: e.message }));
+        void alertDialog(t('voice.noMicrophone', { error: e.message }));
         return;
     }
     // the pane may have switched chats while the browser asked for the microphone
@@ -103,10 +104,12 @@ export function pauseRecording() {
     rec.pane.el.recPause.title = rec.pausedSince ? t('voice.resume') : t('voice.pause');
 }
 
-/** Ends the recording; with `submit` it goes out as a voice message, otherwise it is discarded. */
-export async function stopRecording(submit) {
+/** Ends the recording; with `submit` it goes out as a voice message, otherwise it is discarded. `spoken`: from the
+ *  voice conversation (talk.js), which reads the answer itself and asks the bot for a short one. Resolves to whether it
+ *  went out. */
+export async function stopRecording(submit, spoken = false) {
     const recorder = rec.recorder;
-    if (!recorder) return;
+    if (!recorder) return false;
     const length = recordingDuration();
     clearInterval(rec.timer);
     const stopped = new Promise((r) => { recorder.onstop = r; });
@@ -121,10 +124,10 @@ export async function stopRecording(submit) {
     Object.assign(rec, { pane: null, chatId: null, recorder: null, stream: null, ctx: null, analyser: null, chunks: [], start: 0, pausedSince: 0, paused: 0, timer: null });
     for (const x of panes) composerButtons(x);
     // discarded, or its pane has closed or switched chats meanwhile
-    if (!submit || !panes.includes(p) || p.chatId !== chatId) return;
+    if (!submit || !panes.includes(p) || p.chatId !== chatId) return false;
     if (length < 600 || chunks.length === 0) {
         showEvent(t('voice.tooShort'), true, chatId);
-        return;
+        return false;
     }
     const blob = new Blob(chunks, { type: mime });
     const ext = mime === 'audio/mp4' ? 'm4a' : mime === 'audio/ogg' ? 'ogg' : 'webm';
@@ -137,6 +140,7 @@ export async function stopRecording(submit) {
         type: 'send', chatId, text: p.el.text.value.trim(),
         attachments: [{ name: `voice-message-${stamp}.${ext}`, type: mime, data, durationMs: Math.round(length) }, ...more],
         replyTo: p.replyTo || undefined,
+        spoken: spoken || undefined,
     }, b ? responsibleMachine(b) : undefined);
     setReply(p, null);
     p.uploads = [];
@@ -144,7 +148,8 @@ export async function stopRecording(submit) {
     p.el.text.value = '';
     textHeight(p);
     showVoicePending(chatId, length);
-    expectAnswer(chatId);
+    if (!spoken) expectAnswer(chatId);
+    return true;
 }
 
 /** Placeholder until the transcript comes back from the machine. */

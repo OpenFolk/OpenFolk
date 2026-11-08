@@ -45,6 +45,8 @@ services:
       # No message after :? on purpose: Coolify would fill the field with it instead of leaving it empty
       APP_URL: ${APP_URL:?}
       MACHINE_NAME: ${MACHINE_NAME:-cloud}
+      # Optional: the code for the first device, set beforehand instead of read from the log
+      FIRST_DEVICE_CODE: ${FIRST_DEVICE_CODE:-}
       DATA_DIR: /data
       ALLOWED_ROOTS: /work
       AUTOLOGON_METHOD: none

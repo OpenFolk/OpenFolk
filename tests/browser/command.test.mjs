@@ -1,6 +1,6 @@
 // Commands in answers: ▶ after single-line code of a known tool; a tap sends the command after asking
 // as a message to the bot (in groups with @). No ▶ for other code or multi-line blocks.
-import { bot } from './harness.mjs';
+import { bot, onDialog } from './harness.mjs';
 
 const TEXT = 'Restart the backend: `npm run restart -w local -- seen`. File: `local/src/x.ts`.\n\n'
     + '```\nphp bin/autodeploy.php --env=prod\n```\n\n```\nnpm install\nnpm test\n```';
@@ -15,7 +15,7 @@ export default async function ({ start, check }) {
     const p = h.page;
     let accept = false;
     let dialog = null;
-    p.on('dialog', (d) => { dialog = d.message(); return accept ? d.accept() : d.dismiss(); });
+    await onDialog(p, (d) => { dialog = d.message(); return accept ? d.accept() : d.dismiss(); });
     const buttons = () => p.locator('[data-el=messages] .command-run').evaluateAll((ks) => ks.map((k) => k.getAttribute('aria-label').replace('Let it run: ', '')));
     const jobs = () => h.sent.filter((f) => f.type === 'send');
 

@@ -35,6 +35,7 @@
         <label>
             <span data-i18n="login.password"></span>
             <input type="password" id="login-token" autocomplete="current-password">
+            <small data-i18n="login.passwordHint"></small>
         </label>
         <!-- Only when the relay asks for a second factor (its /health, or a refused sign-in) -->
         <label id="login-totp-field" hidden>
@@ -152,6 +153,10 @@
                         <strong data-el="chat-name"></strong>
                         <span data-el="chat-sub"></span>
                     </button>
+                    <!-- The same as a tap on the title: the bot's page (a group: its editor) -->
+                    <button type="button" class="round chat-settings" data-el="chat-settings">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+                    </button>
                     <!-- Model and machine of a bot: a tap opens the switch right below the header -->
                     <button type="button" class="model-badge" data-el="chat-model" data-i18n-title="header.switchModel" hidden></button>
                     <button type="button" class="machine-badge" data-el="chat-machine" data-i18n-title="header.switchMachine" hidden></button>
@@ -215,6 +220,9 @@
                     </button>
                     <button type="button" class="round send" data-el="btn-mic" data-i18n-title="composer.record" data-i18n-aria-label="composer.record" hidden>
                         <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                    </button>
+                    <button type="button" class="round" data-el="btn-talk" data-i18n-title="composer.talk" data-i18n-aria-label="composer.talk" hidden>
+                        <svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>
                     </button>
                     <div class="recording" data-el="recording" hidden>
                         <button type="button" class="round" data-el="rec-discard" data-i18n-title="composer.discard" data-i18n-aria-label="composer.discardLabel">
@@ -316,8 +324,6 @@
                 </select>
             </label>
             <p class="hint" data-i18n="settings.languageHint"></p>
-            <label class="check"><input type="checkbox" id="settings-auto-read"> <span data-i18n="settings.autoRead"></span></label>
-            <p class="hint" data-i18n="settings.autoReadHint"></p>
             <!-- AI services: the API keys as a list with "add", then what they are used for. Shared by all machines of
                  the account; needs a machine that is awake -->
             <div id="settings-ai" class="settings-block">
@@ -358,6 +364,16 @@
                     </select>
                 </label>
                 <p class="hint" data-i18n="settings.readAloudHint"></p>
+                <label class="check"><input type="checkbox" id="settings-auto-read"> <span data-i18n="settings.autoRead"></span></label>
+                <p class="hint" data-i18n="settings.autoReadHint"></p>
+                <label><span data-i18n="settings.talkMode"></span>
+                    <select id="settings-talk-mode">
+                        <option value="app" data-i18n="settings.talkModeApp"></option>
+                        <option value="openai" data-i18n="settings.talkModeOpenai"></option>
+                        <option value="openai-mini" data-i18n="settings.talkModeOpenaiMini"></option>
+                    </select>
+                </label>
+                <p class="hint" data-i18n="settings.talkModeHint"></p>
             </div>
             <!-- Shared by all machines of the account; needs a machine that is awake -->
             <div id="settings-bots">
@@ -559,11 +575,11 @@
         </label>
         <!-- Folder and repository: each fills the other where it can (the folder's origin, the folder a clone goes to) -->
         <p class="hint on-move" data-i18n="editor.requiredNote"></p>
-        <label class="on-move required"><span data-i18n="editor.folder"></span>
-            <span class="with-button"><input id="editor-folder" aria-required="true" data-i18n-placeholder="editor.folderPlaceholder" spellcheck="false" autocapitalize="off"><button type="button" class="btn small" id="editor-folder-browse" data-i18n="editor.browse" data-i18n-title="editor.browseTitle"></button></span>
+        <label class="on-move"><span data-i18n="editor.folder"></span>
+            <span class="with-button"><input id="editor-folder" data-i18n-placeholder="editor.folderPlaceholder" spellcheck="false" autocapitalize="off"><button type="button" class="btn small" id="editor-folder-browse" data-i18n="editor.browse" data-i18n-title="editor.browseTitle"></button></span>
         </label>
-        <label class="on-move required"><span data-i18n="editor.repo"></span>
-            <input id="editor-repo" aria-required="true" data-i18n-placeholder="editor.repoPlaceholder" spellcheck="false" autocapitalize="off">
+        <label class="on-move"><span data-i18n="editor.repo"></span>
+            <input id="editor-repo" data-i18n-placeholder="editor.repoPlaceholder" spellcheck="false" autocapitalize="off">
         </label>
         <p class="hint on-move" id="editor-folder-hint"></p>
         <div class="two-columns">
@@ -598,6 +614,7 @@
                 <option value="male" data-i18n="editor.voiceMale"></option>
             </select>
         </label>
+        <label><span data-i18n="editor.category"></span><select id="editor-category"></select></label>
         <label><span data-i18n="editor.tone"></span><textarea id="editor-tone" rows="4" data-i18n-placeholder="editor.tonePlaceholder"></textarea></label>
         <p class="hint" data-i18n="editor.riskyHint"></p>
         <label><span data-i18n="editor.canMessage"></span>
@@ -634,6 +651,7 @@
             <label class="btn"><span data-i18n="editor.chooseImage"></span><input type="file" id="group-image" accept="image/*" hidden></label>
         </div>
         <label><span data-i18n="editor.name"></span><input id="group-name" required maxlength="40" data-i18n-placeholder="group.namePlaceholder"></label>
+        <label><span data-i18n="editor.category"></span><select id="group-category"></select></label>
         <fieldset class="choice" id="group-members"><legend data-i18n="group.members"></legend></fieldset>
         <div class="menu menu-inline" id="group-actions" hidden></div>
         <p class="error" id="group-error" hidden></p>
@@ -751,12 +769,31 @@
 </div>
 
 <!-- The bot editor's folder picker: the subfolders come from the bot's machine, not from this device -->
+<!-- The set of ready-made profile pictures (webapp/avatars, drawn by scripts/avatar-set.mjs); "AI avatar" opens it, the
+     image model is the last entry -->
+<div id="avatar-picker" class="overlay page" hidden>
+    <div class="dialog">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 data-i18n="avatars.title"></h2>
+        <p class="hint" data-i18n="avatars.hint"></p>
+        <div id="avatar-grid"></div>
+        <p class="error" id="avatar-error" hidden></p>
+        <div class="actions">
+            <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
+            <button type="button" class="primary" id="avatar-generate" data-i18n="avatars.generate" data-i18n-title="editor.aiAvatarTitle"></button>
+        </div>
+    </div>
+</div>
+
 <div id="folder-picker" class="overlay page" hidden>
     <div class="dialog">
         <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
         <h2 data-i18n="picker.title"></h2>
         <p class="hint" id="picker-path"></p>
         <div class="menu menu-inline" id="picker-list"></div>
+        <label class="picker-new"><span data-i18n="picker.newFolder"></span>
+            <span class="with-button"><input id="picker-new-name" maxlength="120" data-i18n-placeholder="picker.newNamePlaceholder" spellcheck="false" autocapitalize="off"><button type="button" class="btn small" id="picker-create" data-i18n="picker.create"></button></span>
+        </label>
         <p class="error" id="picker-error" hidden></p>
         <div class="actions">
             <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
@@ -789,6 +826,28 @@
             <button type="submit" class="primary" id="text-submit"></button>
         </div>
     </form>
+</div>
+<!-- The voice conversation (talk.js): a page over the chat; data-phase drives the ring around the picture -->
+<div id="talk" class="overlay page" hidden data-phase="off">
+    <section class="dialog talk-dialog">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <div class="talk-body">
+            <button type="button" class="talk-avatar" id="talk-avatar-button" data-i18n-title="talk.tap" data-i18n-aria-label="talk.tap"><div class="avatar" id="talk-avatar"></div></button>
+            <h2 id="talk-name"></h2>
+            <p class="talk-phase" id="talk-phase" aria-live="polite"></p>
+            <p class="talk-heard" id="talk-heard"></p>
+            <p class="talk-answer" id="talk-answer"></p>
+            <p class="talk-error" id="talk-error" hidden></p>
+        </div>
+        <div class="talk-actions">
+            <button type="button" class="round talk-mic" id="talk-mic" data-i18n-title="talk.micOff" data-i18n-aria-label="talk.micOff">
+                <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path class="slash" d="M4 4l16 16"/></svg>
+            </button>
+            <button type="button" class="round talk-end" id="talk-end" data-i18n-title="talk.end" data-i18n-aria-label="talk.end">
+                <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+        </div>
+    </section>
 </div>
 
 <script src="vendor/marked.umd.js"></script>

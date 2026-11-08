@@ -2,7 +2,7 @@
 // pairing link that opens only with the device's key and the right code, and the guard against floods.
 //   node local/src/first-device.test.ts
 import { webcrypto } from 'node:crypto';
-import { answerFirstDevice, newFirstDeviceCode, normalizeCode, openFirstDevice, sealFirstDevice } from './first-device.ts';
+import { answerFirstDevice, chooseFirstDeviceCode, newFirstDeviceCode, normalizeCode, openFirstDevice, sealFirstDevice } from './first-device.ts';
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown) => {
@@ -14,6 +14,13 @@ const code = newFirstDeviceCode();
 check('code: four groups of four, Crockford base32', /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/.test(code), code);
 check('codes differ', newFirstDeviceCode() !== code);
 check('typed loosely: case, spaces, dashes, O and I/L', normalizeCode(' abcd-efgh jkmn-po1l ') === 'ABCDEFGHJKMNP011');
+
+const fromEnv = chooseFirstDeviceCode(true, ' ABCD-EFGH-JKMN-PQRS ');
+check('FIRST_DEVICE_CODE in a container: taken as given', fromEnv.source === 'env' && fromEnv.code === 'ABCD-EFGH-JKMN-PQRS', fromEnv);
+const short = chooseFirstDeviceCode(true, 'ABCD-EFGH');
+check('too short: ignored, a new code instead', short.source === 'invalid' && short.code !== 'ABCD-EFGH' && normalizeCode(short.code).length === 16, short);
+check('no variable in a container: a new code for the log', chooseFirstDeviceCode(true, undefined).source === 'log');
+check('outside a container: no code, the variable does nothing', chooseFirstDeviceCode(false, 'ABCD-EFGH-JKMN-PQRS').code === '');
 
 const device = await webcrypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']) as webcrypto.CryptoKeyPair;
 const pk = Buffer.from(await webcrypto.subtle.exportKey('raw', device.publicKey)).toString('base64url');
@@ -30,9 +37,12 @@ check('does not open with another key (a relay that swapped it)', await fails(op
 check('no code on this backend: no answer, nothing minted', await answerFirstDevice('req-3', pk, async () => { throw new Error('minted'); }, '') === null);
 let minted = 0;
 const slowMint = () => new Promise<string>((r) => setTimeout(() => { minted++; r(text); }, 200));
-const [one, two] = await Promise.all([answerFirstDevice('req-4', pk, slowMint, code), answerFirstDevice('req-5', pk, slowMint, code)]);
+const unused = () => false;
+const [one, two] = await Promise.all([answerFirstDevice('req-4', pk, slowMint, code, unused), answerFirstDevice('req-5', pk, slowMint, code, unused)]);
 check('one request at a time: the second gets nothing', !!one && two === null && minted === 1, { one: !!one, two, minted });
-check('after it: the next one is answered', !!(await answerFirstDevice('req-6', pk, async () => text, code)));
+check('after it: the next one is answered', !!(await answerFirstDevice('req-6', pk, async () => text, code, unused)));
+check('once a device of the main account was here: used up, nothing minted',
+    await answerFirstDevice('req-7', pk, async () => { throw new Error('minted'); }, code, () => true) === null);
 
 console.log(failures ? `\n${failures} FAILED` : '\nall ok');
 process.exitCode = failures ? 1 : 0;

@@ -1,6 +1,7 @@
 /* OpenFolk web app: @ mentions, / commands, history rendering, unread, pinned messages, replies (quote). */
 import { t } from './i18n.js';
 import { SEEN_KEY, el, mdCached, node, state, storage, closest } from './core.js';
+import { codeBlocks } from './code-blocks.js';
 import { paneFor, paneOf, panes, visibleChats } from './panes.js';
 import { bot, botIdOf, clockTime, colorOf, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, person, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList } from './list.js';
@@ -9,6 +10,7 @@ import { attachmentBar, displayTime, getLive, isQueued, liveWrap, renderApproval
 import { renderVoicePending, voicePlayer } from './voice.js';
 import { menuButton } from './menus.js';
 import { isReading, readAloud, speakButton } from './read-aloud.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -306,6 +308,7 @@ export function renderEntry(p, e) {
             const content = node('div', 'content');
             content.innerHTML = mdCached(e.text);
             commandButtons(content, chatId, e.botId || (isGroup(chatId) ? null : botIdOf(chatId)));
+            codeBlocks(content);
             b.appendChild(content);
         }
         if (e.attachments && e.attachments.length) b.appendChild(attachmentBar(e.attachments));
@@ -342,12 +345,12 @@ function commandButtons(content, chatId, botId) {
     }
 }
 
-function runCommand(chatId, botId, command) {
+async function runCommand(chatId, botId, command) {
     const b = bot(botId);
     if (!b || !chatId) return;
     const where = responsibleMachine(b);
-    if (!where || !state.agentOnline) { alert(t('bot.sleepsNoMachine', { name: b.name }) + '.'); return; }
-    if (!confirm(t('command.confirm', { name: b.name, command, machine: upper(where) }))) return;
+    if (!where || !state.agentOnline) { void alertDialog(t('bot.sleepsNoMachine', { name: b.name }) + '.'); return; }
+    if (!(await confirmDialog(t('command.confirm', { name: b.name, command, machine: upper(where) })))) return;
     // in groups addressed to the bot that named the command
     const text = `${isGroup(chatId) ? `@${b.id} ` : ''}${t('command.request', { command: '`' + command + '`' })}`;
     send({ type: 'send', chatId, text }, isGroup(chatId) ? undefined : where);

@@ -143,6 +143,31 @@ export async function proposeFolder(url: string): Promise<{ folder: string; exis
     throw new Error(t('folders.exists', { folder: slashes(path.join(root, name)) }));
 }
 
+/**
+ * Creates the folder `name` below `parent`, without one below the folder for bots: for a bot that starts without a
+ * project of its own, and for a new folder from the editor's picker. The name is kept as typed, less what no file
+ * system takes; an empty folder of that name is used as it is. One with content is refused or, with `nextFree`, the
+ * next free name is taken (name-2 …), as for a repository.
+ */
+export function createFolder(name: string, parent?: string, nextFree = false): string {
+    const printable = [...name].map((c) => (c.charCodeAt(0) < 32 ? ' ' : c)).join('');
+    const clean = printable.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '');
+    if (!clean) throw new Error(t('folders.badName', { name: name.trim() }));
+    const base = parent?.trim() ? path.resolve(parent.trim()) : botRoot();
+    if (!base) throw new Error(t('folders.noRoot'));
+    if (!underAllowedRoot(base)) throw new FolderNotAllowed(base);
+    if (!isDir(base)) throw new Error(t('bots.folderMissing', { folder: slashes(base) }));
+    for (let i = 1; i <= 20; i++) {
+        const target = path.join(base, i === 1 ? clean : `${clean}-${i}`);
+        if (!fs.existsSync(target) || isEmptyDir(target)) {
+            fs.mkdirSync(target, { recursive: true });
+            return checkFolder(target);
+        }
+        if (!nextFree) throw new Error(t('folders.taken', { folder: slashes(target) }));
+    }
+    throw new Error(t('folders.taken', { folder: slashes(path.join(base, clean)) }));
+}
+
 const LIST_MAX = 500;
 
 /** `p` or the nearest of its parents that exists, '' if none does. */

@@ -14,7 +14,8 @@
 #   RELAY_SETUP_CODE  any 10 or more letters and digits, e.g. from: openssl rand -hex 8
 #                     The relay starts unclaimed and the backend claims it with this code on its first connection;
 #                     afterwards the code does nothing.
-# Optional: the backend's values from .env.sample (engines, push, git) and the relay's from relay/.env.sample, and
+# Optional: FIRST_DEVICE_CODE, the code for the first device set beforehand (at least 16 letters and digits), so it
+# can be handed on before the server runs; the backend's values from .env.sample (engines, push, git) and the relay's from relay/.env.sample, and
 # WORK_DIR, the host folder for the bots' folders (default ./work next to this file).
 services:
   relay:

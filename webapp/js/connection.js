@@ -13,7 +13,7 @@ import { bundled, connectionVia, needsRelayAddress, relayAddress, saveFile, sock
 import { closeDialog, gitError, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
 import { receiveVscodeHistory, receiveVscodeSessions, renderVscodeAdoptButton, showVscodeList, vs, vscodeError, vscodeShown } from './vscode.js';
 import {
-    continueMove, fillInfo, folderRequestUnknown, knowledgeError, moveRequestFailed, openInfo, pickerFailed, receiveCloned, receiveFolderChecked, receiveFolderListed, receiveFolderProposed, receiveMoved,
+    continueMove, fillInfo, folderRequestUnknown, knowledgeError, moveRequestFailed, openInfo, pickerFailed, receiveCloned, receiveFolderChecked, receiveFolderCreated, receiveFolderListed, receiveFolderProposed, receiveMoved, refreshInfo,
     receiveSuggestion, renderRoutines, suggestButton,
 } from './editors.js';
 import { checkPush, renderPushSettings } from './push.js';
@@ -27,6 +27,9 @@ import { signInTerminalAnswer } from './welcome.js';
 import { announceMove, relayClaimed, relayClaimFailed } from './relay-claim.js';
 import { approvalError, approvalLink, approvalWaiting, receivePairApproved, receivePairRequest, startApproval, startQrLogin, stopQrLogin } from './qr-login.js';
 import { answerDone, speechAudio } from './read-aloud.js';
+import { alertDialog } from './dialogs.js';
+import { talkAnswer, talkError, talkHeard, talkInterim } from './talk.js';
+import { talkAnswerSdp, talkRefused } from './talk-realtime.js';
 
 // ================================================================ Connection
 
@@ -223,7 +226,7 @@ async function handleIncoming(f) {
         // Once per page load: that machine's bots stay invisible until it has the key; more would let a relay nag
         if (f.machine && !plainWarned) {
             plainWarned = true;
-            alert(t('e2e.plainDropped', { machine: String(f.machine).toUpperCase() }));
+            void alertDialog(t('e2e.plainDropped', { machine: String(f.machine).toUpperCase() }));
         }
         return;
     }
@@ -276,7 +279,7 @@ function receive(f) {
                 // A link that no longer works on a device already signed in: say so and stay in the account
                 if (paired && storage.get(DEVICE_KEY)) {
                     state.rejected = false;
-                    alert(messageText(f) || t('login.failed'));
+                    void alertDialog(messageText(f) || t('login.failed'));
                     connect();
                     break;
                 }
@@ -382,7 +385,7 @@ function receive(f) {
             break;
         case 'machine_shutdown_result': {
             const r = f.machine || '?';
-            if (!f.ok) alert(t(f.cancel ? 'machine.cancelFailed' : f.restart ? 'machine.restartFailed' : 'machine.shutdownFailed', { machine: upper(r), error: f.message || t('error.unknown') }));
+            if (!f.ok) void alertDialog(t(f.cancel ? 'machine.cancelFailed' : f.restart ? 'machine.restartFailed' : 'machine.shutdownFailed', { machine: upper(r), error: f.message || t('error.unknown') }));
             else if (f.cancel) { delete state.shuttingDown[r]; delete state.restarting[r]; }
             else {
                 state.shuttingDown[r] = Date.parse(f.at) || Date.now() + 60000;
@@ -412,7 +415,7 @@ function receive(f) {
         }
         case 'machine_autologon_status': {
             const r = f.machine || '?';
-            if (!f.ok) alert(t('machine.autologonFailed', { machine: upper(r), error: f.message || t('error.unknown') }));
+            if (!f.ok) void alertDialog(t('machine.autologonFailed', { machine: upper(r), error: f.message || t('error.unknown') }));
             else state.autologon[r] = { on: f.on, password: f.password };
             autologonReported(r, f.ok);
             renderMachines();
@@ -420,7 +423,7 @@ function receive(f) {
         }
         case 'wake_result':
             if (f.ok) state.waking[f.host] = Date.now();
-            else alert(t('machine.wakeFailed', { machine: upper(f.host), error: messageText(f) || t('error.unknown') }));
+            else void alertDialog(t('machine.wakeFailed', { machine: upper(f.host), error: messageText(f) || t('error.unknown') }));
             renderMachines();
             renderHeaders();
             scheduleWakePoll();
@@ -428,6 +431,7 @@ function receive(f) {
         case 'bots':
             state.bots = f.bots;
             state.groups = f.groups;
+            state.categories = f.categories || [];
             Object.assign(state.context, f.context || {});
             if (f.machine) state.backgroundPerMachine[f.machine] = f.background || {};
             if (f.machine) {
@@ -439,6 +443,7 @@ function receive(f) {
             for (const id of allChats()) if (!(id in state.last)) send({ type: 'history', chatId: id, limit: 1 });
             renderChatList();
             renderGitTotal();
+            refreshInfo();
             if (state.openAfterBots && allChats().includes(state.openAfterBots)) {
                 openChat(state.openAfterBots);
                 state.openAfterBots = null;
@@ -487,7 +492,10 @@ function receive(f) {
             break;
         }
         case 'user':
-            if (f.entry.voice) removeVoicePending(f.chatId);
+            if (f.entry.voice) {
+                removeVoicePending(f.chatId);
+                talkHeard(f.chatId, f.entry);
+            }
             setLast(f.chatId, f.entry);
             noteIncoming(f.chatId, [f.entry]);
             if (!document.hidden && visibleChats().includes(f.chatId)) markSeen(f.chatId);
@@ -610,6 +618,7 @@ function receive(f) {
             const p = paneFor(f.chatId);
             if (p) {
                 finishLiveText(l);
+                talkInterim(f.chatId, f.botId, l.text);
                 const row = toolRow(f.tool);
                 l.rows.set(f.tool.id, row);
                 liveWrap(f.chatId, f.botId).appendChild(row);
@@ -650,6 +659,7 @@ function receive(f) {
                 delete chat[f.botId];
             }
             const e = f.entry;
+            talkAnswer(f.chatId, e);
             if (e.text || (e.tools && e.tools.length) || (e.attachments && e.attachments.length)) {
                 (state.history[f.chatId] = state.history[f.chatId] || []).push(e);
                 setLast(f.chatId, e);
@@ -740,7 +750,7 @@ function receive(f) {
                 vscodeError(f, message);
                 break;
             }
-            if (f.request === 'folder_check' || f.request === 'folder_clone' || f.request === 'folder_propose') {
+            if (f.request === 'folder_check' || f.request === 'folder_clone' || f.request === 'folder_propose' || f.request === 'folder_create') {
                 folderRequestUnknown(f.request, message);
                 break;
             }
@@ -753,7 +763,7 @@ function receive(f) {
                 break;
             }
             if (f.request === 'backend_restart') {
-                alert(message);
+                void alertDialog(message);
                 break;
             }
             // git_pull: a backend from before the button does not know it
@@ -770,7 +780,15 @@ function receive(f) {
                 for (const what of Object.keys(suggestButton)) if (suggestButton[what]().disabled) receiveSuggestion({ what, error: message });
                 break;
             }
-            if (f.chatId) removeVoicePending(f.chatId);
+            // an old backend does not know the voice conversation over OpenAI
+            if (f.request === 'talk_connect') {
+                talkRefused(message);
+                break;
+            }
+            if (f.chatId) {
+                removeVoicePending(f.chatId);
+                talkError(f.chatId, message);
+            }
             showEvent(message, true, f.chatId || null);
             break;
         }
@@ -791,6 +809,9 @@ function receive(f) {
             break;
         case 'folder_listed':
             receiveFolderListed(f);
+            break;
+        case 'folder_created':
+            receiveFolderCreated(f);
             break;
         case 'models':
             state.models = f.models || [];
@@ -821,6 +842,9 @@ function receive(f) {
             break;
         case 'speech':
             speechAudio(f);
+            break;
+        case 'talk_answer':
+            talkAnswerSdp(f);
             break;
         case 'file':
             if (playback.has(f.path)) startPlayback(f);
@@ -922,9 +946,35 @@ export function archivedOf(b) {
 export const collapsed = new Set((() => { try { return JSON.parse(storage.get(COLLAPSED_KEY) || '[]'); } catch { return []; } })());
 
 export function toggleConversations(botId) {
-    if (!collapsed.delete(botId)) collapsed.add(botId);
+    toggleCollapsed(botId);
+}
+
+/** Folds or unfolds an entry of the overview (a bot's conversations by its id, a folder by 'c:<id>'). */
+export function toggleCollapsed(key) {
+    if (!collapsed.delete(key)) collapsed.add(key);
     storage.set(COLLAPSED_KEY, JSON.stringify([...collapsed]));
     listTap.active = false; // the tap is handled; render right away instead of after the tap lock
+    renderChatList();
+}
+
+/** The folders of the chat list in the order shown: by name. */
+export function sortedCategories() {
+    return [...state.categories].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The folder of a bot or group in the list ('' = none, or one that no longer exists). */
+export function categoryOf(chatId) {
+    const o = flagsOf(chatId);
+    const id = o && o.category;
+    return id && state.categories.some((c) => c.id === id) ? id : '';
+}
+
+/** Into a folder ('' = out of it) in the list right away; the backend stores it and syncs it with the other machines. */
+export function setCategory(chatId, categoryId) {
+    const o = flagsOf(chatId);
+    if (!o) return;
+    o.category = categoryId || undefined;
+    send({ type: 'category_assign', chatId, categoryId });
     renderChatList();
 }
 

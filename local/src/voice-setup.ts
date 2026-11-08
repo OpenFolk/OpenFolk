@@ -2,8 +2,8 @@
 // (writable also where the backend runs from the desktop app's installation folder). Needs Python 3.9 or newer on
 // the machine; pip downloads the packages, on a machine with an NVIDIA graphics card also the CUDA libraries, and the
 // setup loads the speech model too, so the first voice message does not wait for a download of up to 1.6 GB.
-// WHISPER_PYTHON (an environment of one's own), the older local/tools/.venv and a Python of the system that has
-// faster-whisper already are used as they are.
+// WHISPER_PYTHON (an environment of one's own, also the "-voice" image's), the older local/tools/.venv and a Python
+// of the system that has faster-whisper already are used as they are.
 
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -50,7 +50,8 @@ const run = (file: string, args: string[], timeout = 60_000): Promise<{ ok: bool
 
 /** Where things stand; checks once whether faster-whisper loads in the environment found. */
 export async function voiceStatus(): Promise<VoiceSetup> {
-    if (process.env.OPENFOLK_CONTAINER === '1') return { state: 'unavailable' };
+    // A container sets nothing up; the "-voice" image brings its Python as WHISPER_PYTHON, which is checked like any other
+    if (process.env.OPENFOLK_CONTAINER === '1' && !process.env.WHISPER_PYTHON) return { state: 'unavailable' };
     if (state.state === 'installing' || checked) return state;
     checked = true;
     const python = voicePython() ?? (systemPython = await installedPython());

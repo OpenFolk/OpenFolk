@@ -1,5 +1,6 @@
 // Settings: reachable from the tabs; autologin per machine with a question to exactly this machine,
 // switching on only with a stored password, sleeping machines cannot be set; appearance selectable.
+import { onDialog } from './harness.mjs';
 
 export default async function ({ start, check }) {
     const h = await start({ online: ['desk', 'workstation'] });
@@ -33,7 +34,7 @@ export default async function ({ start, check }) {
 
     let dialog = null;
     let accept = false;
-    p.on('dialog', (d) => { dialog = d.message(); return accept ? d.accept() : d.dismiss(); });
+    await onDialog(p, (d) => { dialog = d.message(); return accept ? d.accept() : d.dismiss(); });
     const tap = (host) => p.evaluate((host) => {
         const li = [...document.querySelectorAll('#settings-machines li')].find((l) => l.querySelector('strong').textContent.toLowerCase() === host);
         li.querySelector('input').click();

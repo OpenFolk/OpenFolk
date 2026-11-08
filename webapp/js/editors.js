@@ -6,6 +6,8 @@ import { layoutPanes } from './panes.js';
 import { bot, clockTime, fillAvatar, group, isConversation, responsibleMachine, send, upper } from './e2e.js';
 import { shrinkImage } from './voice.js';
 import { chatMenuButtons, closeDialog, gitOpenOf, menuButton, renderInfoChat, showGitChanges } from './menus.js';
+import { sortedCategories } from './connection.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
 
 // ================================================================ Bot editor
 
@@ -16,6 +18,8 @@ import { chatMenuButtons, closeDialog, gitOpenOf, menuButton, renderInfoChat, sh
 export function openEditor(b, machine) {
     state.editorBot = b || null;
     moving = Boolean(b && machine);
+    // From the bot's page, the editor takes the place of that page in the side panel instead of opening over everything
+    el.editor.classList.toggle('side-edit', Boolean(b && !moving && !el.info.hidden && state.infoBot === b.id));
     el.editor.classList.toggle('moving', moving);
     el.editor.classList.toggle('page', !moving);
     state.editorAvatar = b ? b.avatar : '';
@@ -62,11 +66,20 @@ export function editorValues(v) {
     el.editorApproval.value = v.approval || 'risky';
     el.editorTone.value = v.tone || '';
     el.editorVoice.value = v.voice || '';
+    fillCategoryOptions(el.editorCategory, v.category);
     canMessageValues(v);
     contactValues(v);
     allowedToolValues(v);
     // A template keeps the machine already chosen; a new bot starts on the first machine awake
     machineOptions(v.machine || (v.id ? responsibleMachine(v) : '') || el.editorMachine.value || [...state.online].sort()[0] || '');
+}
+
+/** The folders of the list to choose from ('' = none); a folder that no longer exists counts as none. */
+export function fillCategoryOptions(select, current) {
+    const none = node('option', '', t('category.none'));
+    none.value = '';
+    select.replaceChildren(none, ...sortedCategories().map((c) => { const o = node('option', '', c.name); o.value = c.id; return o; }));
+    select.value = current && state.categories.some((c) => c.id === current) ? current : '';
 }
 
 /** Which bots this one may give jobs: all (no list), none (empty list) or the ones ticked. */
@@ -261,14 +274,19 @@ export function machineChanged() {
 
 // ---------------------------------------------------------------- Folder picker
 
-/** The folder the picker shows ('' = the allowed roots), the machine it lists and the folder still awaited. */
-const picker = { folder: '', machine: '', asked: null };
+/**
+ * The folder the picker shows ('' = the allowed roots), the machine it lists, the folder still awaited and the name
+ * of a new folder still being created.
+ */
+const picker = { folder: '', machine: '', asked: null, creating: null };
 
 export function openFolderPicker() {
     const machine = el.editorMachine.value;
     if (!state.online.includes(machine)) { showEditorError(t('editor.machineAsleep', { machine: upper(machine) })); return; }
     picker.machine = machine;
+    picker.creating = null;
     el.pickerPath.textContent = '';
+    el.pickerNewName.value = '';
     el.folderPicker.hidden = false;
     listPicker(el.editorFolder.value.trim());
 }
@@ -300,6 +318,41 @@ export function receiveFolderListed(f) {
     if (!f.folders.length) entries.push(node('p', 'empty-small', t('picker.empty')));
     el.pickerList.replaceChildren(...entries);
     el.pickerChoose.disabled = !f.folder;
+    // A new folder goes below the one shown, not next to the roots
+    el.pickerNewName.disabled = el.pickerCreate.disabled = !f.folder;
+}
+
+/** "New folder" in the picker: the machine creates it below the folder shown, and the picker goes into it. */
+export function createPickerFolder() {
+    const name = el.pickerNewName.value.trim();
+    if (!name || !picker.folder || picker.creating) return;
+    picker.creating = name;
+    el.pickerError.hidden = true;
+    el.pickerCreate.disabled = true;
+    send({ type: 'folder_create', name, parent: picker.folder }, picker.machine);
+}
+
+/** A folder created for a save (createOwnFolder) or from the picker (createPickerFolder). */
+export function receiveFolderCreated(f) {
+    if (creating && f.name === creating.name) {
+        setSaving(false);
+        if (el.editor.hidden) return;
+        if (!f.ok) { showEditorError(f.message || t('editor.noAnswer'), f.refused); return; }
+        el.editorFolder.value = f.folder;
+        filled.folder = false;
+        checkThenSave(f.folder);
+        return;
+    }
+    if (el.folderPicker.hidden || f.name !== picker.creating) return;
+    picker.creating = null;
+    el.pickerCreate.disabled = false;
+    if (!f.ok) {
+        el.pickerError.textContent = f.message || t('editor.noAnswer');
+        el.pickerError.hidden = false;
+        return;
+    }
+    el.pickerNewName.value = '';
+    listPicker(f.folder);
 }
 
 /** Also for a backend from before the picker, which does not know folder_list. */
@@ -321,9 +374,13 @@ export function chooseFolder() {
 /** The editor is the small move dialog (openEditor with a machine). */
 let moving = false;
 
-/** A save waiting for the bot's machine: `saving` to check the folder, `cloning` to clone the repository first. */
+/**
+ * A save waiting for the bot's machine: `saving` to check the folder, `cloning` to clone the repository first,
+ * `creating` to create the bot's own folder first.
+ */
 let saving = null;
 let cloning = null;
+let creating = null;
 
 function setSaving(on, label = t('editor.checkingFolder')) {
     const button = /** @type {HTMLButtonElement} */ (el.editorForm.querySelector('button[type="submit"]'));
@@ -331,6 +388,7 @@ function setSaving(on, label = t('editor.checkingFolder')) {
     button.textContent = on ? label : t(moving ? 'editor.move' : 'common.save');
     if (!on && saving) { clearTimeout(saving.timer); saving = null; }
     if (!on && cloning) { clearTimeout(cloning.timer); cloning = null; }
+    if (!on && creating) { clearTimeout(creating.timer); creating = null; }
 }
 
 /** Work to take along on this save: the bot's previous machine and its folder there (work-transfer.ts in the backend). */
@@ -348,7 +406,7 @@ function saveBot(folder, to) {
             id: b ? b.id : '',
             name: el.editorName.value.trim(), area: el.editorArea.value.trim(), role: el.editorRole.value.trim(), folder,
             model, tone: el.editorTone.value.trim(), avatar: state.editorAvatar, approval: el.editorApproval.value, machine: el.editorMachine.value,
-            voice: el.editorVoice.value, canMessage: canMessageInput(), allowedTools: allowedToolsInput(), contact: contactInput(),
+            voice: el.editorVoice.value, category: el.editorCategory.value, canMessage: canMessageInput(), allowedTools: allowedToolsInput(), contact: contactInput(),
         },
     }, to);
     setSaving(false);
@@ -358,23 +416,23 @@ function saveBot(folder, to) {
 /**
  * Saving a bot: only its machine can check the folder, so the folder goes there first and the bot is saved with the
  * folder as that machine stores it. Is the folder not there yet but a repository given, it is cloned into it (without
- * a folder: into a new one named after the repository). A bot whose machine sleeps can still be renamed and the like,
- * as long as machine and folder stay.
+ * a folder: into a new one named after the repository). Without both, the machine creates a folder named after the
+ * bot under its folder for bots. A bot whose machine sleeps can still be renamed and the like, as long as machine and
+ * folder stay.
  */
-export function submitEditor() {
+export async function submitEditor() {
     const b = state.editorBot;
     const machine = el.editorMachine.value;
     const asked = el.editorFolder.value.trim();
     const repo = el.editorRepo.value.trim();
     el.editorError.hidden = true;
-    if (!asked && !repo) { showEditorError(t('editor.folderOrRepo')); el.editorFolder.focus(); return; }
     if (repo && !isRepository(repo)) { showEditorError(t('editor.repoInvalid')); el.editorRepo.focus(); return; }
     // Its sessions follow the bot to the new machine; what is not on the git server yet goes along only on request
     takeWork = null;
     if (b && b.machine && b.machine !== machine) {
         const unpushed = unpushedOf(b);
         if (unpushed.length) {
-            if (!confirm(t('editor.takeWork', { name: b.name, from: upper(b.machine), to: upper(machine), repos: unpushed.map((r) => r.name).join(', ') }))) return;
+            if (!(await confirmDialog(t('editor.takeWork', { name: b.name, from: upper(b.machine), to: upper(machine), repos: unpushed.map((r) => r.name).join(', ') })))) return;
             takeWork = { botId: b.id, from: b.machine, folder: b.folder };
         }
     }
@@ -383,8 +441,16 @@ export function submitEditor() {
         showEditorError(t('editor.machineAsleep', { machine: upper(machine) }));
         return;
     }
+    if (!asked && !repo) { createOwnFolder(el.editorName.value.trim()); return; }
     if (!asked) { startClone(repo, ''); return; }
     checkThenSave(asked, repo);
+}
+
+/** Neither folder nor repository: a folder named after the bot under the machine's folder for bots, the next free name. */
+function createOwnFolder(name) {
+    setSaving(true, t('editor.creatingFolder'));
+    creating = { name, timer: setTimeout(() => receiveFolderCreated({ name, ok: false, message: t('editor.noAnswer') }), 20_000) };
+    send({ type: 'folder_create', name, nextFree: true }, el.editorMachine.value);
 }
 
 function startClone(url, folder) {
@@ -479,19 +545,25 @@ function moveByDialog(message, refused) {
     if (message) showEditorError(message, refused);
 }
 
-export function receiveMoved(f) {
+export async function receiveMoved(f) {
     if (!move || f.botId !== move.botId) return;
     const b = bot(f.botId);
     const host = move.host;
     if (!b) { move = null; return; }
     if (!f.ok) { moveByDialog(f.message, f.refused); return; }
     if (f.dryRun) {
+        const request = move;
         const question = { use: 'move.confirmUse', clone: 'move.confirmClone', create: 'move.confirmCreate' }[f.action] || 'move.confirmUse';
-        if (!confirm(t(question, { name: b.name, machine: upper(host), folder: f.folder, repo: b.place?.repo || '' }))) { move = null; return; }
+        const yes = await confirmDialog(t(question, { name: b.name, machine: upper(host), folder: f.folder, repo: b.place?.repo || '' }));
+        // answered late: another move may have taken its place meanwhile
+        if (move !== request) return;
+        if (!yes) { move = null; return; }
         // Its sessions follow the bot; what is not on the git server yet goes along only on request
         const unpushed = b.machine ? unpushedOf(b) : [];
         if (unpushed.length) {
-            if (!confirm(t('editor.takeWork', { name: b.name, from: upper(b.machine), to: upper(host), repos: unpushed.map((r) => r.name).join(', ') }))) { move = null; return; }
+            const take = await confirmDialog(t('editor.takeWork', { name: b.name, from: upper(b.machine), to: upper(host), repos: unpushed.map((r) => r.name).join(', ') }));
+            if (move !== request) return;
+            if (!take) { move = null; return; }
             move.work = { from: b.machine, folder: b.folder };
         }
         if (f.action === 'clone') toast(t('move.cloning', { machine: upper(host) }), 4000);
@@ -509,9 +581,17 @@ export function moveRequestFailed() {
     moveByDialog('');
 }
 
-/** A backend before 0.2 does not know folder_check and folder_clone: it checks the folder itself when saving. */
+/**
+ * A backend before 0.2 does not know folder_check and folder_clone: it checks the folder itself when saving. One
+ * before folder_create cannot give a bot a folder of its own; the user enters one.
+ */
 export function folderRequestUnknown(request, message) {
     if (request === 'folder_clone') { if (cloning) receiveCloned({ url: cloning.url, ok: false, message }); return; }
+    if (request === 'folder_create') {
+        if (creating) receiveFolderCreated({ name: creating.name, ok: false, message: t('editor.folderOld', { machine: upper(el.editorMachine.value) }) });
+        else if (picker.creating) receiveFolderCreated({ name: picker.creating, ok: false, message });
+        return;
+    }
     // Only a help for filling in the folder
     if (request === 'folder_propose') return;
     if (saving) saving.save(saving.asked);
@@ -519,6 +599,62 @@ export function folderRequestUnknown(request, message) {
 
 export function renderEditorAvatar() {
     fillAvatar(el.editorAvatar, { name: el.editorName.value || '?', avatar: state.editorAvatar }, el.editorName.value);
+}
+
+// ---------------------------------------------------------------- The set of profile pictures
+// "AI avatar" first offers the ready-made portraits of webapp/avatars (manifest.json lists them with the voice each
+// calls for); a tap stores one like an uploaded image. The image model is the last entry of the page.
+
+/** The manifest, fetched once per page load. */
+let avatarSet = null;
+
+export async function openAvatarPicker() {
+    el.avatarError.hidden = true;
+    el.avatarPicker.hidden = false;
+    if (!avatarSet) {
+        el.avatarGrid.replaceChildren(node('p', 'empty-small', t('common.loading')));
+        try {
+            const r = await fetch('avatars/manifest.json');
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            avatarSet = await r.json();
+        } catch (e) {
+            el.avatarGrid.replaceChildren();
+            el.avatarError.textContent = t('avatars.loadFailed', { error: e.message });
+            el.avatarError.hidden = false;
+            return;
+        }
+    }
+    const groups = [['female', t('avatars.female')], ['male', t('avatars.male')]];
+    el.avatarGrid.replaceChildren(...groups.flatMap(([voice, title]) => {
+        const grid = node('div', 'avatar-grid');
+        for (const a of avatarSet.filter((x) => x.voice === voice)) {
+            const k = node('button', 'avatar-choice');
+            k.type = 'button';
+            k.dataset.file = a.file;
+            const img = document.createElement('img');
+            img.src = `avatars/${a.file}`;
+            img.alt = '';
+            img.loading = 'lazy';
+            k.appendChild(img);
+            k.addEventListener('click', () => pickAvatar(a.file));
+            grid.appendChild(k);
+        }
+        return [node('h4', '', title), grid];
+    }));
+}
+
+/** Takes a picture of the set over as the bot's avatar (shrunk like an upload, so it is stored the same way). */
+async function pickAvatar(file) {
+    try {
+        const r = await fetch(`avatars/${file}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        state.editorAvatar = await shrinkImage(await r.blob(), AVATAR_EDGE, true);
+        renderEditorAvatar();
+        closeDialog(el.avatarPicker);
+    } catch (e) {
+        el.avatarError.textContent = t('avatars.loadFailed', { error: e.message });
+        el.avatarError.hidden = false;
+    }
 }
 
 // Suggestions from the model: names with field of work as chips, role straight into the field, avatar as photo (data URL) or SVG portrait.
@@ -633,6 +769,7 @@ export function openGroupEditor(g) {
     state.groupAvatarData = g ? g.avatar : '';
     el.gTitle.textContent = g ? t('menu.editGroup') : t('group.new');
     el.gName.value = g ? g.name : '';
+    fillCategoryOptions(el.gCategory, g ? g.category : '');
     el.gError.hidden = true;
     // what the ⋮ menu of the group held: search, favorite, delete
     el.gActions.hidden = !g;
@@ -671,6 +808,7 @@ export function openInfo(chatId) {
     const botId = b.id;
     state.infoBot = botId;
     state.infoChat = isConversation(chatId) ? chatId : botId;
+    infoDrawn = infoFields(b);
     fillAvatar(el.infoAvatar, b, b.id, true);
     el.infoName.textContent = b.name;
     el.infoArea.textContent = b.area || '';
@@ -701,6 +839,20 @@ export function openInfo(chatId) {
     renderInfoChat(true);
     showGitChanges(b, el.infoGit, (...parts) => el.infoGit.replaceChildren(...parts));
     send({ type: 'bot_info', botId }, responsibleMachine(b) || undefined);
+}
+
+/** What the top of the bot's page shows of the bot; the page is drawn again when it changes. */
+const infoFields = (b) => JSON.stringify([b.name, b.area, b.role, b.folder, b.approval, b.avatar, b.machine]);
+let infoDrawn = '';
+
+/**
+ * The bot's page keeps what openInfo drew: after the bot changed (saved in the editor, or on another device) it is drawn
+ * again, unless the editor is open over it.
+ */
+export function refreshInfo() {
+    const b = bot(state.infoBot);
+    if (!b || el.info.hidden || !el.editor.hidden || infoFields(b) === infoDrawn) return;
+    openInfo(state.infoChat || b.id);
 }
 
 export function fillInfo(info) {
@@ -794,7 +946,7 @@ export function openKnowledgeEditor(section, f) {
 }
 
 export function knowledgeError(text) {
-    if (el.kEditor.hidden) { alert(text); return; }
+    if (el.kEditor.hidden) { void alertDialog(text); return; }
     el.kError.textContent = text;
     el.kError.hidden = false;
 }

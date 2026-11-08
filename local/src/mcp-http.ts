@@ -81,7 +81,7 @@ export async function handle(n: RpcRequest, tools: EngineTool[]): Promise<Record
             return result({
                 protocolVersion: VERSIONS.includes(wanted) ? wanted : VERSIONS[0],
                 capabilities: { tools: { listChanged: false } },
-                serverInfo: { name: 'openfolk', version: '0.3.0' },
+                serverInfo: { name: 'openfolk', version: '0.4.0' },
             });
         }
         case 'ping':

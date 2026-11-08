@@ -35,7 +35,7 @@ export interface ToolHost {
 export function botToolServer(s: BotSession, host: ToolHost): McpServerConfig {
     return createSdkMcpServer({
         name: 'openfolk',
-        version: '0.3.0',
+        version: '0.4.0',
         // available directly, without going through the tool search
         alwaysLoad: true,
         tools: botTools(s, host),

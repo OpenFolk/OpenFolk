@@ -12,6 +12,7 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {HTMLButtonElement} chatTitle
  * @property {HTMLElement} chatName
  * @property {HTMLElement} chatSub
+ * @property {HTMLButtonElement} chatSettings
  * @property {HTMLButtonElement} chatModel
  * @property {HTMLButtonElement} chatMachine
  * @property {HTMLElement} headerMenu
@@ -52,6 +53,7 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {HTMLTextAreaElement} text
  * @property {HTMLButtonElement} btnSend
  * @property {HTMLButtonElement} btnMic
+ * @property {HTMLButtonElement} btnTalk
  * @property {HTMLElement} recording
  * @property {HTMLButtonElement} recDiscard
  * @property {HTMLElement} recDot

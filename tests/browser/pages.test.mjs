@@ -1,6 +1,8 @@
 // Phone: detail dialogs are pages over the full screen; back via the arrow or a swipe to the right, without a question
 // about changes. The chat's header opens the bot's page with switches, open changes and the chat's entries;
 // "Search in chat" leaves it for the chat. PC: dialogs stay.
+import { onceDialog } from './harness.mjs';
+
 
 export default async function ({ start, check }) {
     const h = await start({
@@ -33,14 +35,13 @@ export default async function ({ start, check }) {
     await h.wait(300);
     await p.fill('#editor-tone', 'changed');
     let asked = '';
-    p.once('dialog', (d) => { asked = d.message(); void d.dismiss(); });
+    await onceDialog(p, (d) => { asked = d.message(); void d.dismiss(); });
     // Filling the tone scrolls the form; the swipe starts on the title, so bring it back into view
     await p.locator('#editor-title').scrollIntoViewIfNeeded();
     const title = await box('#editor-title');
     await h.swipe(60, title.y + 10, 360, title.y + 10);
     await h.wait(200);
     check('changed and swiped back: closed without a question', asked === '' && !(await shown('#editor')), asked);
-    p.removeAllListeners('dialog');
 
     await p.click('[data-el=chat-title]');
     await h.wait(300);
@@ -49,7 +50,7 @@ export default async function ({ start, check }) {
     const actions = (await p.locator('#info-actions button[data-action]').evaluateAll((bs) => bs.map((b) => b.dataset.action))).join(' ');
     check('the page: model switch, open changes, the chat\'s entries', (await p.locator('#info-switches .model-switch .chip.on').count()) === 1
         && h.sent.some((f) => f.type === 'git_changes' && f.botId === 'pdf') && (await p.locator('#info-git .git-repo').count()) === 1
-        && actions === 'search conversation_new vscode edit favorite mute restart delete', actions);
+        && actions === 'search conversation_new vscode edit favorite mute category restart delete', actions);
     await p.click('#info-actions button[data-action="search"]');
     await h.wait(200);
     check('"Search in chat" leaves the page, the chat search is open', !(await shown('#info')) && (await shown('[data-el=chat-search]')) && (await p.evaluate(() => window.activePane().chatId)) === 'pdf');

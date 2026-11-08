@@ -45,7 +45,7 @@ const group = bots.saveGroup({ id: '', name: 'Team', avatar: '', members: ['dev'
 type Spec = { chatId: string; content: unknown; text: string };
 type Inner = {
     startTurn: (bot: { id: string }, spec: Spec) => void;
-    messageFromUser: (chatId: string, text: string, uploads: unknown[], voice?: unknown, quote?: unknown) => void;
+    messageFromUser: (chatId: string, text: string, uploads: unknown[], voice?: unknown, quote?: unknown, spoken?: boolean) => void;
     runRoutine: (r: unknown) => void;
 };
 const m = new BotManager(() => undefined) as unknown as Inner;
@@ -66,6 +66,18 @@ check('command in a group: to the mentioned bot, without group context', deliver
 m.messageFromUser(`g:${group.id}`, 'Who has time?', []);
 last = String(delivered.at(-1)?.content);
 check('normal message in a group: with group context', last.endsWith('Who has time?') && last.length > 'Who has time?'.length, last);
+
+// From the voice conversation: a voice message or a typed request gets the note to answer briefly; others do not
+const { t } = await import('./i18n.ts');
+m.messageFromUser('dev', '', [], { transcript: 'How is the build?', attachments: [] }, undefined, true);
+last = String(delivered.at(-1)?.content);
+check('voice conversation: transcript, then the note to answer for being read aloud', last.includes('How is the build?') && last.includes(t('prompt.spoken')), last);
+m.messageFromUser('dev', 'And the tests?', [], undefined, undefined, true);
+last = String(delivered.at(-1)?.content);
+check('spoken text message: with the note', last.includes('And the tests?') && last.includes(t('prompt.spoken')), last);
+m.messageFromUser('dev', '', [], { transcript: 'Plain voice message', attachments: [] });
+last = String(delivered.at(-1)?.content);
+check('plain voice message: without the note', last.includes('Plain voice message') && !last.includes(t('prompt.spoken')), last);
 
 const routine = { id: 'r1', botId: 'dev', name: 'Weekly', cron: '0 9 * * 1', enabled: true, updatedAt: '' };
 m.runRoutine({ ...routine, prompt: '/release patch' });

@@ -108,10 +108,23 @@ port and has Coolify generate the setup code. Give the `relay` service your doma
 variable of the resource to both containers, so engine keys set there reach the relay too; enter them in the app's
 first steps or in the terminal of `local` instead.
 
+**Updating, in this order:** the relay first, then the backends, the apps last (the desktop app updates itself,
+the mobile apps come through the stores). A newer relay serves older backends and apps; the other way round
+fails: a relay before 0.2.0 refuses the desktop app's address `openfolk://app`, and the person chats of 0.3.0 need the
+relay of that version. The web app compares the protocol version of each backend with its own and says which side
+needs an update; the release notes say when a release needs the relay first. Since 0.2.0 the desktop app runs the
+web app at `openfolk://app` instead of the relay's address, with a storage of its own. "On this computer" notices
+the missing sign-in and pairs again by itself; a window in the mode "relay address" has no backend of its own and is
+signed in once by hand, with the relay password or a pairing link from a signed-in device (Settings → "Devices and
+security" → "Pair another device"; it brings the end-to-end key along). The storage survives later updates.
+
 The first device needs no terminal: the backend prints a code to its log on every start, and the relay's sign-in
 page offers "Code from the server log" while the main account has no device. The page sends only its key; the backend
 seals the pairing link with that key and the code, so the relay passes on a box it cannot open. Not the setup code:
-the relay knows that one. Claude signs in with an Anthropic API key in the first steps, or with its subscription in
+the relay knows that one. To hand the code to someone before the server runs, for example a person with nothing but
+a phone, set it yourself as `FIRST_DEVICE_CODE` on the backend (at least 16 letters and digits); the log then names the
+variable instead of the code. Either code opens the first device only: once a device of the main account has talked
+to the backend it is used up. Claude signs in with an Anthropic API key in the first steps, or with its subscription in
 the container (`docker compose -f docker-compose.server.yml exec -u node local claude`); `… exec -u node local npm
 run pair` makes a pairing link as before. The bots on that server see the connectors of the claude.ai account
 signed in there (Gmail, Drive …) only if the machine settings let them in; an account of its own for the server
@@ -165,7 +178,11 @@ a sign-in file from a machine that is signed in (`~/.claude/.credentials.json`, 
 home volume. The image cannot shut down (`OPENFOLK_CONTAINER=1`) and `AUTOLOGON_METHOD` is `none`; the relay never needs to wake this
 machine. `npm run restart -w local` inside the container ends the process once no bot is working and Docker
 starts it again (`restart: unless-stopped`); `docker compose restart` does the same at once. The image has no
-Python, so bots on this machine do not transcribe voice messages. A bot for the container gets a folder under
+Python, so bots on this machine do not transcribe voice messages. For them take the same tag with `-voice`
+(`ghcr.io/openfolk/openfolk-local:latest-voice`, `:0.4.0-voice` …; `OPENFOLK_LOCAL_IMAGE` in the `.env`): larger, with
+Python and faster-whisper (`local/Dockerfile.voice`). It transcribes on the CPU with the model `small`
+unless the machine settings choose another; the model is downloaded into `/home/node` with the first voice message.
+A bot for the container gets a folder under
 `/work`: choose the container's machine in the bot editor and enter the repository's address as its folder;
 saving clones it there.
 

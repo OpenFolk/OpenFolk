@@ -93,6 +93,8 @@ export interface Bot {
     avatar: string;
     /** Voice for reading aloud; missing = the web app guesses from the name. */
     voice?: BotVoice;
+    /** Folder of the chat list (a Category id); missing = none. */
+    category?: string;
     approval: ApprovalPolicy;
     /** Foreign MCP tools (`mcp__server__tool`) the user allowed for this bot for good: they no longer ask. */
     allowedTools?: string[];
@@ -187,11 +189,26 @@ export interface Group {
     members: string[];
     favorite?: boolean;
     muted?: boolean;
+    /** Folder of the chat list (a Category id); missing = none. */
+    category?: string;
     createdAt: string;
     updatedAt: string;
 }
 
 export type GroupInput = Omit<Group, 'createdAt' | 'updatedAt'>;
+
+/**
+ * A folder of the chat list the user sorts bots and groups into (the user sees "folder"; a bot's `folder` is its
+ * working directory). Synced like groups; `category` on a bot or group names one.
+ */
+export interface Category {
+    id: string;
+    name: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export type CategoryInput = Pick<Category, 'id' | 'name'>;
 
 /** Kinds of push notification; security warnings always arrive and cannot be configured. */
 export type PushKind = 'done' | 'routine' | 'approval' | 'awake' | 'limit' | 'message' | 'handover';
@@ -216,6 +233,11 @@ export type SharedApiKey = (typeof SHARED_API_KEYS)[number];
 /** Voice for reading messages aloud: the first cloud voice with a key, the device's own, or one provider. */
 export const READ_ALOUD_VOICES = ['auto', 'device', 'openai', 'gemini'] as const;
 export type ReadAloudVoice = (typeof READ_ALOUD_VOICES)[number];
+/** How the voice conversation runs: in the app (local Whisper and the read-aloud voice) or over OpenAI Realtime. */
+export const TALK_MODES = ['app', 'openai', 'openai-mini'] as const;
+export type TalkMode = (typeof TALK_MODES)[number];
+/** Longest SDP offer of "talk_connect"; a browser's offer with audio and a data channel is a few KB. */
+export const TALK_SDP_MAX = 20_000;
 /** Longest text of one "speech_get"; OpenAI takes 4096 characters at a time. */
 export const SPEECH_TEXT_MAX = 4000;
 
@@ -235,13 +257,15 @@ export interface SharedSettings {
     pushPreview?: PushPreview;
     /** Voice for reading aloud (default 'auto'). */
     readAloud?: ReadAloudVoice;
+    /** How the voice conversation runs (default 'app'). */
+    talkMode?: TalkMode;
     /** Which API keys are stored (only in what goes to browsers). */
     apiKeys?: Partial<Record<SharedApiKey, boolean>>;
     updatedAt: string;
 }
 
 /** What a browser may change of the shared settings. */
-export type SharedSettingsInput = Partial<Pick<SharedSettings, 'language' | 'avatarModel' | 'voiceLanguage' | 'gitAutoPull' | 'pushPreview' | 'readAloud'>>;
+export type SharedSettingsInput = Partial<Pick<SharedSettings, 'language' | 'avatarModel' | 'voiceLanguage' | 'gitAutoPull' | 'pushPreview' | 'readAloud' | 'talkMode'>>;
 
 /** Faster-whisper models for voice messages; '' = automatic (large-v3-turbo, small without a graphics card). */
 export const VOICE_MODELS = ['', 'large-v3-turbo', 'medium', 'small', 'base'] as const;
@@ -676,6 +700,13 @@ export type ClientFrame =
     /** The subfolders of a folder on this machine (folder_listed), for the bot editor's folder picker; '' = the allowed roots */
     | { type: 'folder_list'; folder: string }
     /**
+     * Create a folder on this machine (folder_created): `name` below `parent`, without one below the folder for bots.
+     * For the picker, and for a bot saved without a folder or repository, which gets one named after it. A name that
+     * is taken by something else is refused, or with `nextFree` gets a number (name-2 …); an empty folder of that
+     * name is used as it is.
+     */
+    | { type: 'folder_create'; name: string; parent?: string; nextFree?: boolean }
+    /**
      * Move the bot to this machine, into its place (Bot.place) under this machine's folder for bots: clone the
      * repository or create the folder where needed, then save the bot here. `dryRun`: only say what would happen.
      * Answer: "bot_moved", then "bots".
@@ -683,6 +714,12 @@ export type ClientFrame =
     | { type: 'bot_move'; botId: string; dryRun?: boolean }
     | { type: 'group_save'; group: GroupInput }
     | { type: 'group_delete'; groupId: string }
+    /** Create (empty id) or rename a folder of the chat list; `chatId`: a bot or group that goes into the new one. Answer "bots". */
+    | { type: 'category_save'; category: CategoryInput; chatId?: string }
+    /** Delete a folder; the bots and groups in it stay, without one. */
+    | { type: 'category_delete'; categoryId: string }
+    /** Put a bot or group ('g:<id>') into a folder; '' takes it out. */
+    | { type: 'category_assign'; chatId: string; categoryId: string }
     | { type: 'favorite'; chatId: string; on: boolean }
     | { type: 'mute'; chatId: string; on: boolean }
     | { type: 'push_settings'; kinds: Partial<Record<PushKind, PushPriority>> }
@@ -696,7 +733,9 @@ export type ClientFrame =
     | { type: 'history'; chatId: string; limit?: number }
     /** Output of a tool from the history (sent there as `deferred` without output); answer "tool_output". */
     | { type: 'tool_output'; chatId: string; entryId: string; toolId: string }
-    | { type: 'send'; chatId: string; text: string; attachments?: UploadInput[]; replyTo?: Quote }
+    | { type: 'send'; chatId: string; text: string; attachments?: UploadInput[]; replyTo?: Quote;
+        /** From the voice conversation (webapp/js/talk.js): the bot gets the note to answer briefly, for being read aloud. */
+        spoken?: boolean }
     | { type: 'interrupt'; chatId: string }
     /** New session; with chatId only for that conversation, otherwise for the main chat. */
     | { type: 'restart'; botId: string; chatId?: string }
@@ -755,6 +794,9 @@ export type ClientFrame =
     | { type: 'file_get'; path: string }
     /** Part of a message to read aloud with the cloud voice of the shared settings; answer "speech" with the same `id`. */
     | { type: 'speech_get'; id: string; text: string; voice?: BotVoice }
+    /** Voice conversation over OpenAI Realtime: the backend sends the browser's SDP offer to OpenAI with the stored key
+     *  and the session for this chat's bot; the answer comes as "talk_answer". */
+    | { type: 'talk_connect'; id: string; chatId: string; sdp: string; voice?: BotVoice }
     | { type: 'push_subscribe'; subscription: unknown }
     /** The people this account can chat with and its person chats again; answer "people". */
     | { type: 'people' }
@@ -942,6 +984,8 @@ export type MessageCode =
 
 export type AgentFrame =
     | { type: 'bots'; bots: Bot[]; groups: Group[]; states: Record<string, BotState>; activity: Record<string, string>; activeChats: Record<string, string>; approvals: Approval[];
+        /** The folders of the chat list; missing from backends before them */
+        categories?: Category[];
         /** Context size in tokens per session key (bot id or conversation chatId), on this machine */
         context?: Record<string, number>;
         /** Waiting jobs per session key and chat, on this machine */
@@ -1027,6 +1071,8 @@ export type AgentFrame =
      * asked one is missing; `parent`: one level up ('' = the list of roots, missing at the top); `folders`: full paths.
      */
     | { type: 'folder_listed'; asked: string; ok: boolean; folder?: string; parent?: string; folders?: string[]; message?: string }
+    /** `folder`: the folder created (or the empty one of that name that was there), as this machine stores it. */
+    | { type: 'folder_created'; name: string; ok: boolean; folder?: string; message?: string; refused?: FolderRefusal }
     /**
      * `folder`: the bot's folder on this machine; `action`: it is there (`use`), the repository is cloned (`clone`) or
      * the folder is created (`create`). Not ok: the bot has no place or it is taken; the app asks for the folder then.
@@ -1035,6 +1081,8 @@ export type AgentFrame =
     | { type: 'file'; path: string; name: string; mime: string; data: string }
     /** The audio for "speech_get" (base64), or why there is none; the web app then reads with the device's voice. */
     | { type: 'speech'; id: string; mime?: string; data?: string; error?: string }
+    /** OpenAI's SDP answer to "talk_connect", or why there is none. */
+    | { type: 'talk_answer'; id: string; sdp?: string; error?: string }
     /** VAPID key for Web Push and the channels this backend can send to ('web', 'apns', 'fcm'; missing = only 'web'). */
     | { type: 'push_key'; publicKey: string; channels?: ('web' | 'apns' | 'fcm')[] }
     | { type: 'push_settings'; settings: PushSettings }
@@ -1183,10 +1231,12 @@ export interface TurnResultData {
 export interface Snapshot {
     bots: Bot[];
     groups: Group[];
+    /** The folders of the chat list; missing from backends before them */
+    categories?: Category[];
     routines: Routine[];
     /** Knowledge: fact key '<location>/<name>' (see KnowledgeLocation) -> fact */
     knowledge?: Record<string, KnowledgeFact>;
-    /** Deleted items: 'bot:<id>', 'group:<id>', 'routine:<id>', 'knowledge:<location>/<name>' -> time */
+    /** Deleted items: 'bot:<id>', 'group:<id>', 'category:<id>', 'routine:<id>', 'knowledge:<location>/<name>' -> time */
     deleted: Record<string, string>;
     push: unknown[];
     pushSettings?: PushSettings;
