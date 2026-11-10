@@ -62,7 +62,21 @@ export default async function ({ start, check }) {
     await p.click('#info-actions button[data-action="restart"]');
     await h.wait(100);
     check('restart declined: nothing sent, the page stays', !h.sent.some((f) => f.type === 'restart') && await p.isVisible('#info'));
+
+    // the main chat into a conversation: right below "New conversation", asked first, then to the bot's machine
+    const top = await p.locator('#info-switches > button[data-action]').evaluateAll((k) => k.map((x) => x.dataset.action));
+    check('"Move to a conversation" right below "New conversation"', top.join() === 'conversation_new,main_to_conversation', top);
+    await p.click('#info-switches button[data-action="main_to_conversation"]');
+    await h.wait(100);
+    check('move declined: nothing sent, the page stays', !h.sent.some((f) => f.type === 'main_to_conversation') && await p.isVisible('#info'));
     accept = true;
+    dialog = null;
+    await p.click('#info-switches button[data-action="main_to_conversation"]');
+    await h.wait(200);
+    const move = h.sent.find((f) => f.type === 'main_to_conversation');
+    check('move confirmed: to the bot\'s machine, back in the chat', dialog && dialog.kind === 'confirm' && move && move.botId === 'skool' && move.machine === 'desk' && !(await p.isVisible('#info')), { dialog, move });
+    await p.click('[data-el=chat-title]');
+    await h.wait(200);
     await p.click('#info [data-page-back]');
     await h.wait(100);
 

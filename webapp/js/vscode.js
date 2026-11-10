@@ -9,10 +9,24 @@ import { alertDialog, confirmDialog } from './dialogs.js';
 
 // ================================================================ VS Code sessions
 // Sessions that run on the machine in VS Code (or in the terminal): list per machine, history to watch along
-// (the backend reports new lines while the view is open) and "Continue here" as a branch.
+// (the backend reports new lines while the view is open) and "Continue here" as a branch. From a bot's page the
+// list holds its folder; from the "+" menu (botId null) every folder of the machines.
 export const vs = { botId: null, chatId: null, lists: {}, machine: null, session: null, base: 0, entries: [], working: false, adopting: false };
 
-/** `chatId`: the chat the list was opened from; the list offers to open it in VS Code. */
+/** The engine of a session for open and adopt: only Codex is named, Claude is what older backends know. */
+function engineOf(s) {
+    return s && s.engine === 'codex' ? { engine: 'codex' } : {};
+}
+
+/** The fields of a request that say whose sessions: the bot's folder, or nothing for the whole machine. */
+function scope() {
+    return vs.botId ? { botId: vs.botId } : {};
+}
+
+/**
+ * `botId` null: the sessions of every folder; `chatId`: the chat the list was opened from, which the list offers to
+ * open in VS Code.
+ */
 export function openVscode(botId, chatId = botId) {
     closeVscodeSession();
     vs.botId = botId;
@@ -26,19 +40,27 @@ export function showVscodeList() {
     closeVscodeSession();
     const b = bot(vs.botId);
     el.vsTitle.textContent = t('vscode.title');
-    el.vsSub.textContent = b ? `${b.name} · ${shortFolder(b.folder)}` : '';
+    el.vsSub.textContent = b ? `${b.name} · ${shortFolder(b.folder)}` : vs.botId ? '' : t('vscode.allFolders');
     el.vsBack.hidden = true;
     el.vsHistory.hidden = true;
     el.vsFooter.hidden = true;
     el.vsError.hidden = true;
     el.vsList.hidden = false;
     renderHandoverButtons();
-    for (const r of state.online) send({ type: 'vscode_sessions', botId: vs.botId }, r);
+    for (const r of state.online) send({ type: 'vscode_sessions', ...scope() }, r);
     renderVscodeList();
 }
 
+/** After reconnecting the browser is new to the backends: the list again, or watching registered again. */
+export function vscodeReconnected(online) {
+    if (el.vscode.hidden) return;
+    if (!vs.session) { showVscodeList(); return; }
+    if (online.includes(vs.machine)) send({ type: 'vscode_open', ...scope(), ...engineOf(vs.session), sessionId: vs.session.id, folder: vs.session.folder }, vs.machine);
+    renderVscodeAdoptButton();
+}
+
 export function receiveVscodeSessions(f) {
-    if (f.botId !== vs.botId) return;
+    if ((f.botId || null) !== vs.botId) return;
     vs.lists[f.machine || '?'] = f.sessions;
     if (!vs.session) renderVscodeList();
 }
@@ -59,14 +81,14 @@ function renderVscodeList() {
             continue;
         }
         if (!list.length) {
-            el.vsList.appendChild(node('li', 'empty-small', t('vscode.noSessions', { machine: upper(r) })));
+            el.vsList.appendChild(node('li', 'empty-small', t(vs.botId ? 'vscode.noSessions' : 'vscode.noSessionsMachine', { machine: upper(r) })));
             continue;
         }
         any = true;
         for (const s of list) el.vsList.appendChild(vscodeRow(r, s));
     }
     if (!any && Object.keys(vs.lists).length >= state.online.length) {
-        el.vsList.appendChild(node('li', 'empty-small vs-explanation', t('vscode.explanation')));
+        el.vsList.appendChild(node('li', 'empty-small vs-explanation', t(vs.botId ? 'vscode.explanation' : 'vscode.explanationAll')));
     }
 }
 
@@ -79,6 +101,7 @@ function vscodeRow(machine, s) {
     li.appendChild(head);
     if (s.firstPrompt && s.firstPrompt !== s.title) li.appendChild(node('span', 'vs-first', s.firstPrompt));
     const parts = [clockTime(s.lastModified), fileSize(s.size)];
+    if (s.engine === 'codex') parts.push('Codex');
     if (s.origin === 'terminal') parts.push(t('vscode.terminal'));
     if (s.folder) parts.push(vscodeSubfolder(s.folder));
     if (s.branch) parts.push(s.branch);
@@ -113,7 +136,7 @@ function openVscodeSession(machine, s) {
     el.vsFooter.hidden = false;
     renderVscodeAdoptButton();
     renderVscodeSub();
-    send({ type: 'vscode_open', botId: vs.botId, sessionId: s.id, folder: s.folder }, machine);
+    send({ type: 'vscode_open', ...scope(), ...engineOf(s), sessionId: s.id, folder: s.folder }, machine);
 }
 
 /** Leave the view of a session; the backend then stops watching the file. */
@@ -132,16 +155,40 @@ export function renderVscodeSub() {
     el.vsSub.classList.toggle('vs-running', vs.working);
 }
 
+/**
+ * The bot that can continue a session of `folder` on `machine`: it runs there and the folder lies in its own, the most
+ * specific one if several do. Case does not count, as Windows paths differ in it; the backend checks again.
+ */
+function botForFolder(machine, folder) {
+    const norm = (f) => (f || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    const o = norm(folder);
+    let best = null;
+    for (const b of state.bots) {
+        const base = norm(b.folder);
+        if (!base || responsibleMachine(b) !== machine || (o !== base && !o.startsWith(base + '/'))) continue;
+        if (!best || base.length > norm(best.folder).length) best = b;
+    }
+    return best;
+}
+
+/** The bot "Continue here" uses: the one the list belongs to, or in the machine-wide list the one of the folder. */
+function adoptingBot() {
+    return vs.botId ? bot(vs.botId) : vs.session ? botForFolder(vs.machine, vs.session.folder) : null;
+}
+
 /** Continuing only works where the transcript is: the bot has to run on this machine right now. */
 export function renderVscodeAdoptButton() {
-    const b = bot(vs.botId);
+    const b = adoptingBot();
     const where = b ? responsibleMachine(b) : null;
-    const fits = where === vs.machine;
+    const fits = Boolean(b) && where === vs.machine;
     el.vsAdopt.disabled = !fits || vs.adopting;
     el.vsAdopt.textContent = vs.adopting ? t('vscode.adopting') : t('vscode.continueHere');
-    el.vsHint.textContent = fits
-        ? t('vscode.adoptHint')
-        : t('vscode.adoptOtherMachine', { machine: upper(vs.machine), name: b ? b.name : t('vscode.theBot'), where: where ? upper(where) : t('vscode.noMachineAwake') });
+    el.vsHint.textContent = !vs.botId && !b
+        ? t('vscode.adoptNoBot', { machine: upper(vs.machine) })
+        : fits
+            ? (vs.session && vs.session.engine === 'codex' ? t('vscode.adoptHintCodex', { name: b.name })
+                : vs.botId ? t('vscode.adoptHint') : t('vscode.adoptHintBot', { name: b.name }))
+            : t('vscode.adoptOtherMachine', { machine: upper(vs.machine), name: b ? b.name : t('vscode.theBot'), where: where ? upper(where) : t('vscode.noMachineAwake') });
 }
 
 export function receiveVscodeHistory(f) {
@@ -200,11 +247,12 @@ function vscodeEntry(e, index) {
 }
 
 export function adoptVscodeSession() {
-    if (!vs.session || el.vsAdopt.disabled) return;
+    const b = adoptingBot();
+    if (!vs.session || !b || el.vsAdopt.disabled) return;
     vs.adopting = true;
     el.vsError.hidden = true;
     renderVscodeAdoptButton();
-    send({ type: 'vscode_adopt', botId: vs.botId, sessionId: vs.session.id, folder: vs.session.folder }, vs.machine);
+    send({ type: 'vscode_adopt', botId: b.id, ...engineOf(vs.session), sessionId: vs.session.id, folder: vs.session.folder }, vs.machine);
 }
 
 export function vscodeError(f, message) {

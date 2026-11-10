@@ -21,7 +21,7 @@ const FOREIGN_AUTH = ['ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE
  * environment never counts.
  */
 export function cliEnv(mode: AuthMode, key = '', base: NodeJS.ProcessEnv = process.env): Record<string, string | undefined> {
-    const env: Record<string, string | undefined> = { ...base, CLAUDE_AGENT_SDK_CLIENT_APP: 'openfolk/0.4.0' };
+    const env: Record<string, string | undefined> = { ...base, CLAUDE_AGENT_SDK_CLIENT_APP: 'openfolk/0.5.0' };
     for (const k of FOREIGN_AUTH) delete env[k];
     delete env.ANTHROPIC_API_KEY;
     if (mode === 'apikey') {

@@ -1,7 +1,8 @@
-// The bots' own tools (list_bots, message_bot, send_file, knowledge, history, hand_over), the same for every engine: Claude gets
+// The bots' own tools (list_bots, list_conversations, message_bot, send_file, set_avatar, make_avatar, set_profile, knowledge, history, hand_over), the same for every engine: Claude gets
 // them as an MCP server, the other engines as plain functions (EngineTool). What a tool needs of the bot manager
 // comes through ToolHost; this module imports only types from agent.ts.
 
+import fs from 'node:fs';
 import { createSdkMcpServer, tool, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type { Sender } from './agent.ts';
@@ -17,6 +18,8 @@ import { KNOWLEDGE_TYPES, type Bot, type KnowledgeLocation, type KnowledgeScope 
 const SCOPES = ['bot', 'folder', 'group', 'all'] as const;
 
 export type ToolText = { content: { type: 'text'; text: string }[]; isError: boolean };
+/** What a bot may set of its own profile with set_profile. The approval level stays with the user. */
+export type BotProfile = Partial<Pick<Bot, 'name' | 'area' | 'role' | 'tone'>>;
 export const toolText = (text: string, isError = false): ToolText => ({ content: [{ type: 'text', text }], isError });
 
 /** What the tools need of the bot manager. */
@@ -26,16 +29,24 @@ export interface ToolHost {
     /** The machine a bot runs on now (responsibleMachine), null while it sleeps. */
     machineOf(bot: Pick<Bot, 'machine'>): string | null;
     send: Sender;
-    messageBot(s: BotSession, target: string, job: string, wait: boolean): Promise<ToolText>;
+    messageBot(s: BotSession, target: string, job: string, wait: boolean, conversation?: string): Promise<ToolText>;
+    /** Whether a chat runs a turn right now (on this machine). */
+    busy(chatId: string): boolean;
     /** Hands the current chat over to the bot's contact (person chats); never waits for the person. */
     handOver(s: BotSession, summary: string): ToolText;
+    /** Stores the bot's own profile picture (a data URL) and says so in the chat. */
+    setAvatar(s: BotSession, avatar: string): ToolText;
+    /** Stores what the bot sets of its own profile (empty = unchanged) and says so in the chat. */
+    setProfile(s: BotSession, profile: BotProfile): ToolText;
+    /** Makes the bot's own profile picture like the editor's "AI avatar" (wish: what it should show) and stores it. */
+    makeAvatar(s: BotSession, wish: string): Promise<ToolText>;
     knowledgeChanged(locations: KnowledgeLocation[], by: BotSession): void;
 }
 
 export function botToolServer(s: BotSession, host: ToolHost): McpServerConfig {
     return createSdkMcpServer({
         name: 'openfolk',
-        version: '0.4.0',
+        version: '0.5.0',
         // available directly, without going through the tool search
         alwaysLoad: true,
         tools: botTools(s, host),
@@ -66,14 +77,34 @@ export function botTools(s: BotSession, host: ToolHost) {
             return toolText(`You run on ${config.machine.toUpperCase()}. Machines awake: ${host.online().map((r) => r.toUpperCase()).join(', ')}.\n${lines.join('\n') || 'No bots.'}${none}`);
         }),
         tool(
-            'message_bot',
-            'Gives another bot a job (it works in its own folder with its own session, possibly on another machine). With wait_for_reply=true (default) its answer comes back as the result.',
-            {
-                bot: z.string().describe('Id or name of the target bot, see list_bots'),
-                text: z.string().describe('Job or question, fully phrased'),
-                wait_for_reply: z.boolean().optional().describe('Default true'),
+            'list_conversations',
+            'Lists the conversations you can give jobs to: your own further ones and those of the bots you may reach, each with its id '
+            + '(for the conversation of message_bot), title, whether it works right now and its machine.',
+            {},
+            async () => {
+                const reachable = loadBots().filter((b) => b.id === s.bot.id || mayMessage(s.bot, b));
+                const here = s.currentTurn?.chatId ?? s.key;
+                const lines = reachable.flatMap((b) => {
+                    const where = host.machineOf(b);
+                    const machine = where ? where.toUpperCase() : `asleep, ${b.machine.toUpperCase()}`;
+                    const chats = [{ id: b.id, title: 'main chat' }, ...(b.conversations ?? []).filter((c) => !c.archived).map((c) => ({ id: `${b.id}~${c.id}`, title: c.title || 'New conversation' }))];
+                    return chats.map((c) => `- ${c.id}: ${b.name} · ${c.title}${host.busy(c.id) ? ' (working)' : ''} (${machine})${c.id === here ? ' [this conversation]' : ''}`);
+                });
+                return toolText(lines.join('\n') || 'No conversations.');
             },
-            async (args) => host.messageBot(s, args.bot, args.text, args.wait_for_reply !== false),
+        ),
+        tool(
+            'message_bot',
+            'Gives another bot, or another conversation of yours, a job: it works in its own folder with its own session, possibly on another machine. '
+            + 'Returns at once; the result comes back into this conversation by itself as a new message, however long it takes. '
+            + 'With wait_for_reply=true the answer comes back as the result of this call instead (for short questions; after 20 minutes it comes as a message after all).',
+            {
+                bot: z.string().optional().describe('Id or name of the target bot, see list_bots; into its main chat, or a conversation of its own while that is busy'),
+                conversation: z.string().optional().describe('Instead of bot: the id of a conversation, see list_conversations (also another one of yours)'),
+                text: z.string().describe('Job or question, fully phrased'),
+                wait_for_reply: z.boolean().optional().describe('Default false'),
+            },
+            async (args) => host.messageBot(s, args.bot ?? '', args.text, args.wait_for_reply === true, args.conversation),
         ),
         tool(
             'send_file',
@@ -202,6 +233,46 @@ export function botTools(s: BotSession, host: ToolHost) {
                 return toolText(r.text, r.error);
             },
         ),
+        tool(
+            'set_avatar',
+            'Sets your own profile picture from an image file in your folder (PNG, JPEG, WebP or GIF, at most '
+            + `${AVATAR_MAX / 1000} KB; square, about 512 × 512 pixels, looks best). Only when the user asks for it or agrees. `
+            + 'The chat shows that you changed it; the user can put another one back in your settings.',
+            { path: z.string().describe('Path of the image, relative to the working folder or absolute') },
+            async (args) => {
+                try {
+                    const a = botFile(s.bot.folder, args.path);
+                    if (a.size > AVATAR_MAX) return toolText(`The image has ${Math.round(a.size / 1000)} KB, at most ${AVATAR_MAX / 1000} KB fit. Shrink it to about 512 × 512 pixels first.`, true);
+                    const data = fs.readFileSync(a.path);
+                    const type = imageType(data);
+                    if (!type) return toolText('That is no PNG, JPEG, WebP or GIF image (SVG is not taken; convert it to PNG first).', true);
+                    return host.setAvatar(s, `data:${type};base64,${data.toString('base64')}`);
+                } catch (e) {
+                    return toolText((e as Error).message, true);
+                }
+            },
+        ),
+        tool(
+            'set_profile',
+            'Sets your own profile: name, field of work, role and working instructions. Only when the user asks for it or '
+            + 'agrees, e.g. when you set yourself up on your first start. A field left out stays as it is. The chat shows '
+            + 'that you changed it, the user can change everything in your settings; the new profile applies from the next message on.',
+            {
+                name: z.string().max(60).optional().describe('Your name, e.g. "Rudolf"'),
+                area: z.string().max(60).optional().describe('Field of work shown with the name, e.g. "Research"'),
+                role: z.string().max(200).optional().describe('Short role for the list, e.g. "Web research and summaries"'),
+                tone: z.string().max(4000).optional().describe('Working instructions and tone, part of your system prompt: what you do, what you ask about, how you report'),
+            },
+            async (args) => host.setProfile(s, args),
+        ),
+        tool(
+            'make_avatar',
+            'Makes your profile picture and sets it: a portrait photo by the image model when its key is in the shared settings '
+            + '(about 6 cents, up to two minutes), otherwise a drawn portrait. Only when the user asks for it or agrees. Your name '
+            + 'and role shape the person; say what else the picture should show. The user can put another one in your settings.',
+            { wish: z.string().max(600).optional().describe('What the picture should show beyond name and role, e.g. "curly red hair, hoodie, workshop"') },
+            async (args) => host.makeAvatar(s, args.wish ?? ''),
+        ),
         // Only for a bot with a contact: without one there is nobody to hand over to
         ...(s.bot.contact ? [tool(
             'hand_over',
@@ -214,6 +285,18 @@ export function botTools(s: BotSession, host: ToolHost) {
             async (args) => host.handOver(s, args.summary),
         )] : []),
     ];
+}
+
+/** A profile picture travels in bots.json to every machine and device: kept small. */
+export const AVATAR_MAX = 300_000;
+
+/** The image type by the file's first bytes, not its name; null for anything else (SVG included: it can carry script). */
+export function imageType(data: Buffer): string | null {
+    if (data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+    if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return 'image/jpeg';
+    if (data.subarray(0, 4).toString('latin1') === 'RIFF' && data.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+    if (/^GIF8[79]a$/.test(data.subarray(0, 6).toString('latin1'))) return 'image/gif';
+    return null;
 }
 
 /** Scope for a knowledge tool; a string = error message. */

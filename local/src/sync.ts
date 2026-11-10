@@ -56,6 +56,8 @@ export interface MergeResult {
     knowledge: KnowledgeLocation[];
     /** chats with new history entries */
     history: string[];
+    /** bots whose main chat another machine moved into a conversation (the browsers get it empty) */
+    mainCleared: string[];
     /** push settings taken over from the other machine */
     pushSettings: boolean;
     /** shared settings or API keys taken over from the other machine */
@@ -101,7 +103,7 @@ function mergeById<T extends { id: string; updatedAt?: string }>(
 export function merge(incoming: Snapshot): MergeResult {
     const s = migrateSnapshot(incoming);
     const result: MergeResult = {
-        config: false, botsChanged: [], botsMoved: [], botsDeleted: [], chatsDeleted: [], knowledge: [], history: [], pushSettings: false, settings: false, pinned: false, seen: false, personChats: false,
+        config: false, botsChanged: [], botsMoved: [], botsDeleted: [], chatsDeleted: [], knowledge: [], history: [], mainCleared: [], pushSettings: false, settings: false, pinned: false, seen: false, personChats: false,
     };
 
     // Unite tombstones (the later one wins)
@@ -122,6 +124,11 @@ export function merge(incoming: Snapshot): MergeResult {
 
     const oldBots = loadBots();
     const bots = mergeById<Bot>(oldBots, (s.bots ?? []).map(({ sessionId: _s, ...b }) => b as Bot), 'bot', dead);
+    // A newer edit from a machine that missed the clearing of the main chat must not undo it
+    for (const b of bots.changed) {
+        const kept = oldBots.find((x) => x.id === b.id)?.mainClearedAt;
+        if (kept && kept > (b.mainClearedAt ?? '')) b.mainClearedAt = kept;
+    }
     if (bots.changed.length || bots.removed.length) {
         // Session ids stay local (loadBots takes them from sessions.json)
         saveBots(bots.list);
@@ -132,6 +139,10 @@ export function merge(incoming: Snapshot): MergeResult {
                 result.botsChanged.push(b.id);
             }
             if (old && old.machine !== b.machine) result.botsMoved.push(old);
+            if (b.mainClearedAt && b.mainClearedAt !== old?.mainClearedAt) {
+                dropUntil(b.id, b.mainClearedAt);
+                result.mainCleared.push(b.id);
+            }
         }
         result.botsDeleted = bots.removed.map((b) => b.id);
         for (const b of bots.removed) {
@@ -173,6 +184,7 @@ export function merge(incoming: Snapshot): MergeResult {
     result.personChats = people.changed;
     for (const id of people.cleared) dropUntil(`p:${id}`, clearedAt(id));
 
+    const botsNow = s.history ? loadBots() : [];
     for (const [chatId, entries] of Object.entries(s.history ?? {})) {
         if (!/^([gp]:[a-z0-9-]+|[a-z0-9-]+(~[a-z0-9]+)?)$/.test(chatId)) continue;
         if (isPerson(chatId)) {
@@ -182,7 +194,9 @@ export function merge(incoming: Snapshot): MergeResult {
             continue;
         }
         if (dead[`bot:${botIdOf(chatId)}`] || dead[`chat:${chatId}`] || (chatId.startsWith('g:') && dead[`group:${chatId.slice(2)}`])) continue;
-        if (mergeHistory(chatId, entries) > 0) result.history.push(chatId);
+        // A main chat moved into a conversation: what a machine still sends from before stays away
+        const cleared = /^[a-z0-9-]+$/.test(chatId) ? botsNow.find((b) => b.id === chatId)?.mainClearedAt : undefined;
+        if (mergeHistory(chatId, cleared ? entries.filter((e) => e.ts > cleared) : entries) > 0) result.history.push(chatId);
     }
     return result;
 }

@@ -54,12 +54,19 @@ export interface AccountRouter {
     /** The handler of an account; null when this machine does not serve it. */
     handler(account: string): RelayHandler | null;
     all(): RelayHandler[];
-    /** The relay's accounts after connecting; null for a relay without accounts. */
-    hello(accounts: string[] | null, deleted: string[]): void;
+    /**
+     * The relay's accounts after connecting; null for a relay without accounts. `bound`: this machine joined by a setup
+     * link and serves that account only, set up by `setupBy`.
+     */
+    hello(accounts: string[] | null, deleted: string[], bound?: { account: string; setupBy?: string }): void;
     /** The relay's accounts with names and reach, for person chats. */
     people(list: Person[]): void;
     added(account: string): void;
     deleted(account: string): void;
+    /** The account runs on machines bound to it now: stop serving it, keep its data. */
+    released(account: string): void;
+    /** Person route: data from account `from` on another machine for account `to` here (decrypted, checked). */
+    person(from: string, to: string, data: PeerData, id?: string): void;
 }
 
 /** This long an answer to a browser is kept across a connection gap. */
@@ -82,6 +89,10 @@ export class RelayClient {
     relayPushChannels: NativePushChannel[] = [];
     /** Called on every successful connection (index.ts: the first one prints the pairing link). */
     onConnected: () => void = () => undefined;
+    /** The relay's answer to a person route message (person-route.ts). */
+    onPersonResult: (id: string, ok: boolean) => void = () => undefined;
+    /** The machines awake changed (person-route.ts sends what waits). */
+    onAgents: () => void = () => undefined;
     /** A waiting device asks to be the main account's first device (first-device.ts); null: no code here. */
     onFirstDevice: (id: string, pk: string) => Promise<PairBox | null> = async () => null;
     /** The relay answered 503 once already: it is unclaimed, the hint went to the log. */
@@ -115,6 +126,19 @@ export class RelayClient {
             method: 'POST', headers: { authorization: `Bearer ${agentToken()}` }, signal: AbortSignal.timeout(10_000),
         });
         if (!r.ok) throw new Error(`relay answered ${r.status}${r.status === 404 ? ' (relay too old for invitations)' : ''}`);
+        const j = (await r.json()) as { token?: unknown; expiresAt?: unknown };
+        if (typeof j.token !== 'string' || typeof j.expiresAt !== 'string') throw new Error('relay answered without a token');
+        return { token: j.token, expiresAt: j.expiresAt };
+    }
+
+    /** Mints (or with `revoke` voids) the setup link of an account at the relay, for admin `by` (POST /setup-invite). */
+    static async setupInvite(account: string, by: string, revoke = false): Promise<{ token: string; expiresAt: string } | null> {
+        const r = await fetch(`${RelayClient.origin()}/setup-invite`, {
+            method: 'POST', headers: { authorization: `Bearer ${agentToken()}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ account, by, ...(revoke ? { revoke } : {}) }), signal: AbortSignal.timeout(10_000),
+        });
+        if (!r.ok) throw new Error(`relay answered ${r.status}${r.status === 404 ? ' (relay too old for setup links)' : r.status === 403 ? ' (not for this account)' : ''}`);
+        if (revoke) return null;
         const j = (await r.json()) as { token?: unknown; expiresAt?: unknown };
         if (typeof j.token !== 'string' || typeof j.expiresAt !== 'string') throw new Error('relay answered without a token');
         return { token: j.token, expiresAt: j.expiresAt };
@@ -205,6 +229,14 @@ export class RelayClient {
     peer(data: PeerData, to: string | undefined, account: string): void {
         const d: PeerData = e2eEnabled ? { kind: 'e2e', ...encrypt(data, 'peer') } : data;
         this.transmit({ peer: d, ...(to ? { to } : {}), ...(account === DEFAULT_ACCOUNT ? {} : { account }) });
+    }
+
+    /** Person route: to one awake machine of account `to` (person-route.ts); false while not connected. */
+    person(data: PeerData, from: string, to: string, id: string): boolean {
+        if (this.ws?.readyState !== WebSocket.OPEN) return false;
+        const d: PeerData = e2eEnabled ? { kind: 'e2e', ...encrypt(data, 'peer') } : data;
+        this.transmit({ person: d, from, to, id });
+        return true;
     }
 
     /** Unpack a browser frame; null if it must not be processed. */
@@ -334,7 +366,10 @@ export class RelayClient {
                     this.reported.delete(`${e.cid}:stale`);
                     of(e.account)?.leave(e.cid);
                     break;
-                case 'agents': for (const h of r.all()) h.updateAgents(e.online); break;
+                case 'agents':
+                    for (const h of r.all()) h.updateAgents(e.online);
+                    this.onAgents();
+                    break;
                 case 'peer': {
                     const h = of(e.account);
                     const d = h && this.peerData(e.data, e.from);
@@ -348,13 +383,23 @@ export class RelayClient {
                     this.relayPushChannels = Array.isArray(e.pushChannels) ? e.pushChannels.filter((c) => c === 'apns' || c === 'fcm') : [];
                     if (this.relayPushChannels.length) this.log(`relay delivers app push over ${this.relayPushChannels.join(', ')}`);
                     r.hello(Array.isArray(e.accounts) ? e.accounts.filter((a) => typeof a === 'string') : null,
-                        Array.isArray(e.deletedAccounts) ? e.deletedAccounts.filter((a) => typeof a === 'string') : []);
+                        Array.isArray(e.deletedAccounts) ? e.deletedAccounts.filter((a) => typeof a === 'string') : [],
+                        typeof e.bound === 'string' ? { account: e.bound, ...(typeof e.setupBy === 'string' ? { setupBy: e.setupBy } : {}) } : undefined);
+                    this.onAgents();
                     // After hello: the accounts are served by now, so each one hears of its contacts
                     r.people(Array.isArray(e.people) ? e.people : []);
                     break;
                 case 'people': if (Array.isArray(e.list)) r.people(e.list); break;
                 case 'account_added': if (typeof e.account === 'string') r.added(e.account); break;
                 case 'account_deleted': if (typeof e.account === 'string') r.deleted(e.account); break;
+                case 'account_released': if (typeof e.account === 'string') r.released(e.account); break;
+                case 'person': {
+                    if (typeof e.from !== 'string' || typeof e.to !== 'string') break;
+                    const d = this.peerData(e.data, `account ${e.from}`);
+                    if (d) r.person(e.from, e.to, d, typeof e.id === 'string' ? e.id : undefined);
+                    break;
+                }
+                case 'person_result': if (typeof e.id === 'string') this.onPersonResult(e.id, e.ok === true); break;
                 case 'push_result': if (Array.isArray(e.gone) && e.gone.length) for (const h of r.all()) h.pushGone(e.gone); break;
                 case 'first_device': {
                     if (typeof e.id !== 'string' || typeof e.pk !== 'string') break;

@@ -54,7 +54,7 @@ export default async function ({ start, check }) {
     check('old backend: error shown', (await p.textContent('#row-menu')).includes('Unknown request git_pull'));
     await p.mouse.click(5, 5);
 
-    // Moving with unpushed commits: asked first; cancelling keeps the editor open and sends nothing
+    // Moving with unpushed commits: the work comes along without a question, said in a toast
     await h.push({ type: 'git_status', machine: 'desk', status: { skool: [UNPUSHED] } });
     await h.wait(100);
     await p.evaluate(() => openEditor(bot('skool')));
@@ -62,18 +62,13 @@ export default async function ({ start, check }) {
     await p.selectOption('#editor-machine', 'workstation');
     dialog = null;
     await p.click('#editor-form button[type=submit]');
-    await h.wait(150);
-    check('question offers to take the work from DESK to WORKSTATION', dialog && dialog.includes('DESK') && dialog.includes('(skool)') && dialog.includes('Take it along to WORKSTATION'), dialog);
-    check('cancelled: nothing checked, requested or saved, editor open', !h.sent.some((f) => f.type === 'folder_check' && f.machine === 'workstation')
-        && !h.sent.some((f) => f.type === 'bot_save' || f.type === 'work_take') && await p.isVisible('#editor'));
-    accept = true;
-    await p.click('#editor-form button[type=submit]');
     await h.wait(200);
     const saved = h.sent.find((f) => f.type === 'bot_save');
     const take = h.sent.find((f) => f.type === 'work_take');
-    check('confirmed: saved on the new machine', saved && saved.bot.machine === 'workstation', saved);
+    check('no question: saved on the new machine', dialog === null && saved && saved.bot.machine === 'workstation', { dialog, saved });
     check('the previous machine is asked for the work, with its folder, before the save', take && take.machine === 'desk' && take.botId === 'skool'
         && take.folder === 'C:/www/skool' && h.sent.indexOf(take) < h.sent.indexOf(saved), take);
+    check('the toast says the work comes along from DESK', (await p.textContent('#toast')).includes('comes along from DESK (skool)'), await p.textContent('#toast'));
 
     // Without unpushed work there is nothing to ask
     await h.push({ type: 'git_status', machine: 'desk', status: { skool: [BEHIND] } });

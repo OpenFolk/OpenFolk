@@ -72,10 +72,10 @@ export default async function ({ start, check }) {
     await h.swipe(30, 400, 330, 400);
     check('swiping to the right: back to the list', (await page()) === null && await listVisible());
 
-    // long press on a conversation: "Open changes" at the very top with count
+    // long press on a conversation: "Open changes" with count right below "New conversation" and "Rename conversation"
     await p.click('#chat-list li[data-chat="skool~aa11"]', { button: 'right' });
     await h.wait(100);
-    check('conversation: "Open changes" at the very top with count', (await p.locator('#row-menu button[data-action]').first().textContent()) === 'Open changes (1 repo)');
+    check('conversation: "Open changes" with count below the conversation\'s own entries', (await p.locator('#row-menu button[data-action]').nth(2).textContent()) === 'Open changes (1 repo)');
     await p.click('#row-menu .menu-back');
     await h.wait(100);
 

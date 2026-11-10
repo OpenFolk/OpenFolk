@@ -7,7 +7,7 @@ import path from 'node:path';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-folders-'));
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-folders-data-'));
 process.env.ALLOWED_ROOTS = root;
-const { botRoot, cloneName, cloneRepository, createFolder, inspectFolder, listFolder, placeOf, planMove, prepareMove, proposeFolder } = await import('./folders.ts');
+const { botRoot, cloneName, cloneRepository, createFolder, inspectFolder, listFolder, needsCredentials, placeOf, planMove, prepareMove, proposeFolder } = await import('./folders.ts');
 const { saveMachineSettings } = await import('./machine-settings.ts');
 
 let failures = 0;
@@ -20,6 +20,18 @@ check('name without .git and with a trailing slash', cloneName('https://git.exam
 for (const bad of ['--upload-pack=touch /tmp/x', 'ext::sh -c touch% /tmp/x', 'C:/www/website', '/home/me/website', 'file:///srv/repo.git', 'https://host/..']) {
     check(`refused: ${bad}`, (await refused(() => cloneName(bad))) !== '');
 }
+
+// git's refusals for want of credentials, as the hosts word them; other failures are not
+for (const [m, yes] of [
+    ["fatal: could not read Username for 'https://github.com': terminal prompts disabled", true],
+    ['remote: Repository not found.\nfatal: repository \'https://github.com/team/private.git/\' not found', true],
+    ["fatal: Authentication failed for 'https://git.example.com/team/x.git/'", true],
+    ['remote: HTTP Basic: Access denied', true],
+    ["fatal: unable to access 'https://git.example.com/x.git/': The requested URL returned error: 403", true],
+    ['git@github.com: Permission denied (publickey).', true],
+    ["fatal: unable to access 'https://nohost.invalid/x.git/': Could not resolve host: nohost.invalid", false],
+    ['fatal: destination path exists and is not an empty directory', false],
+] as const) check(`credentials: ${yes ? 'yes' : 'no'} for ${m.split('\n')[0].slice(0, 50)}`, needsCredentials(m) === yes);
 
 const repo = path.join(root, 'website');
 fs.mkdirSync(repo);

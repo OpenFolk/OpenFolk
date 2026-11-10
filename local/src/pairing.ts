@@ -44,6 +44,18 @@ export async function newMachineInvite(): Promise<{ url: string; command: string
 }
 
 /**
+ * The setup link of an account (`<relay>/#setup=<token>&e2e=<key>`), minted at the relay for admin `by`: the person's
+ * desktop app joins with it as a machine bound to the account and sets the bots up. The relay's own address, like an
+ * invitation for a machine. With `revoke` the open link stops working and none comes back.
+ */
+export async function newSetupLink(account: string, by: string, revoke = false): Promise<{ url?: string; expiresAt?: string }> {
+    const r = await RelayClient.setupInvite(account, by, revoke);
+    if (revoke || !r) return {};
+    const key = e2eKeyForLink().replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return { url: `${RelayClient.origin()}/#setup=${r.token}${key ? `&e2e=${key}` : ''}`, expiresAt: r.expiresAt };
+}
+
+/**
  * Opens a link in the default browser. On Windows not through `cmd /c start`: cmd splits the command line at the
  * '&' between pair= and e2e=.
  */

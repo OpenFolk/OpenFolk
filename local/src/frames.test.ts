@@ -21,6 +21,7 @@ const rejected = (name: string, frame: unknown, field: string) => {
 
 // ---- as the web app builds them (start.js, menus.js, queue.js, chat-features.js)
 accepted('new bot (empty id)', { type: 'bot_save', bot: { id: '', name: 'Lena', role: 'Landing pages', folder: 'C:/www/landing', model: 'default', tone: '', avatar: '', approval: 'risky', machine: '' } });
+accepted('new bot that sets itself up in the chat', { type: 'bot_save', setup: true, bot: { id: '', name: 'Lena', role: '', folder: 'C:/www/landing', model: 'default', tone: '', avatar: '', approval: 'risky', machine: '' } });
 accepted('new group (empty id, no picture yet)', { type: 'group_save', group: { id: '', name: 'Team', avatar: null, members: ['a', 'b'] } });
 accepted('new routine (empty id)', { type: 'routine_save', routine: { id: '', botId: 'cloud', name: 'Backup', cron: '0 3 * * *', prompt: 'Check the backup', enabled: true, wake: false } });
 accepted('fact', { type: 'knowledge_save', botId: 'cloud', location: { scope: 'all', key: '' }, fact: { name: 'servers', type: 'reference', description: 'Hosts', text: '...' }, oldName: undefined });

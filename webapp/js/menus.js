@@ -2,7 +2,7 @@
 import { locale, t, tn } from './i18n.js';
 import { MIN_BACKEND_PROTOCOL, PROTOCOL_VERSION, el, node, state } from './core.js';
 import { activePane, layoutPanes, paneFor } from './panes.js';
-import { bot, clockTime, conversation, conversationTitle, group, isConversation, isGroup, isPerson, modelOf, person, responsibleMachine, send, upper } from './e2e.js';
+import { bot, clockTime, conversation, conversationTitle, group, isConversation, isGroup, isPerson, modelOf, person, responsibleMachine, send, shortFolder, upper } from './e2e.js';
 import { archivedOf, isFavorite, isMuted, toggleFavorite, toggleMuted, categoryOf, setCategory, sortedCategories } from './connection.js';
 import { listTap, openChatSearch, renderChatList, rowMenu } from './list.js';
 import { closeChat, openChat, paneActivated, renderChatHeader, renderHeaders } from './chat.js';
@@ -22,6 +22,7 @@ export function tokensShort(n) {
 
 // Menu icons: lines 24×24 like the other icons of the app (stroke in text color, see svg in chat.css)
 export const ICONS = {
+    moveTo: '<path d="M4 12h11m0 0l-4-4m4 4l-4 4"/><path d="M19 5v14"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
     person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
@@ -75,7 +76,11 @@ export function chatMenuButtons(id, onPage = false) {
     const git = ['git', 'git', open ? t('git.openChangesCount', { repos: repoCount(open) }) : t('git.openChanges'), '', asleep];
     const search = ['search', 'search', t('menu.searchChat')];
     const conversationNew = ['conversation_new', 'conversation', t('conversation.new'), '', asleep];
+    // the main chat with its context into a conversation; the bot's machine holds the session
+    const mainMove = ['main_to_conversation', 'moveTo', t('menu.mainToConversation'), '', asleep];
     const vscode = ['vscode', 'monitor', t('menu.vscode')];
+    // The archived conversations of a bot behind one entry, which lists them in the menu's place
+    const archive = b && !isConversation(id) && archivedOf(b).length ? [['archive', 'archive', t('menu.archiveCount', { n: archivedOf(b).length })]] : [];
     const restart = ['restart', 'restart', t('menu.newSession')];
     const editBot = ['edit', 'pencil', t('menu.editBot')];
     // The folder of the list the chat is in; conversations follow their bot, the group editor has a field of its own
@@ -87,19 +92,19 @@ export function chatMenuButtons(id, onPage = false) {
         : !b
         ? [search, ...(onPage ? [] : [['group', 'group', t('menu.editGroup')]]), fav, mute, ...(onPage ? [] : [folder]), ['group_delete', 'delete', t('menu.deleteGroup'), 'danger']]
         : isConversation(id)
-            ? [...(onPage ? [] : [git]), search, conversationNew, ['main_chat', 'back', t('menu.mainChat', { name: b.name })], vscode,
-                ['rename', 'pencil', t('menu.renameConversation')], editBot, restart,
+            ? [conversationNew, ['rename', 'pencil', t('menu.renameConversation')], ...(onPage ? [] : [git]), search,
+                ['main_chat', 'back', t('menu.mainChat', { name: b.name })], vscode, editBot, restart,
                 ['to_archive', 'archive', t('menu.toArchive')], ['conversation_delete', 'delete', t('menu.deletePermanently'), 'danger']]
             : onPage
-                ? [search, conversationNew, vscode, editBot, fav, mute, folder, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']]
-                : [git, search, conversationNew,
-                    ...(archivedOf(b).length ? [['archive', 'archive', t('menu.archiveCount', { n: archivedOf(b).length })]] : []),
+                ? [conversationNew, mainMove, search, ...archive, vscode, editBot, fav, mute, folder, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']]
+                : [conversationNew, mainMove, git, search, ...archive,
                     vscode, ['info', 'info', t('menu.info')], editBot, fav, mute, folder, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']];
     return entries.map(([action, icon, text, cls, disabled]) => {
         const k = menuButton(icon, text, cls);
         k.dataset.action = action;
         k.disabled = Boolean(disabled);
         if (action === 'conversation_new') k.title = t('conversation.explain');
+        if (action === 'main_to_conversation') k.title = t('menu.mainToConversationExplain');
         return k;
     });
 }
@@ -124,10 +129,20 @@ export function chatSwitches(id, picked) {
     return parts;
 }
 
-/** The menu of a chat on a long press or right click in the list: switches, then the entries. */
+/** Entries that stand above the switches, at the very top of a bot's menu and page. */
+const TOP_ACTIONS = ['conversation_new', 'main_to_conversation', 'rename'];
+
+/** The chat's entries split into those at the very top and the rest. */
+function splitTopButtons(buttons) {
+    const isTop = (k) => TOP_ACTIONS.includes(k.dataset.action);
+    return [buttons.filter(isTop), buttons.filter((k) => !isTop(k))];
+}
+
+/** The menu of a chat on a long press or right click in the list: "New conversation", switches, then the entries. */
 export function fillChatMenu(menu, id) {
     delete menu.dataset.view;
-    menu.replaceChildren(...chatSwitches(id, () => { menu.hidden = true; }), ...chatMenuButtons(id));
+    const [top, rest] = splitTopButtons(chatMenuButtons(id));
+    menu.replaceChildren(...top, ...chatSwitches(id, () => { menu.hidden = true; }), ...rest);
 }
 
 // Model switch at the top of the chat menu: takes effect right away, the context stays (in the main chat for the bot,
@@ -221,16 +236,13 @@ function machineSwitch(b, picked) {
     return row;
 }
 
-async function chooseMachine(b, host) {
+function chooseMachine(b, host) {
     if (host === (b.machine || responsibleMachine(b))) return;
     // The sessions move along; a running job would be cut off
     const working = Object.entries(state.states).some(([cid, s]) => bot(cid) === b && (s === 'thinking' || s === 'waiting'));
     if (working) { void alertDialog(t('machine.moveBusy', { name: b.name })); return; }
-    // Only an awake machine can check or clone the folder there; waking it is asked first
-    if (!state.online.includes(host) && !state.waking[host]) {
-        if (!(await confirmDialog(t('machine.moveWakeConfirm', { name: b.name, machine: upper(host) })))) return;
-        wake(host);
-    }
+    // Only an awake machine can check or clone the folder there: a sleeping one is woken, the move goes on once it is
+    if (!state.online.includes(host) && !state.waking[host]) wake(host);
     moveBot(b, host);
 }
 
@@ -257,11 +269,19 @@ export async function chatMenuAction(id, action, menu, show = (...k) => { menu.r
         send({ type: 'restart', botId: b.id, chatId: id });
     }
     if (action === 'delete' && b) {
-        if (!(await confirmDeleteBot(b))) return false;
-        send({ type: 'bot_delete', botId: b.id });
+        const folder = await askFolderDeletion(b);
+        const option = folderOption(b, folder);
+        if (!(await confirmDeleteBot(b, option))) return false;
+        // With its folder only the bot's machine deletes it; it hands the deletion on to the others like any change
+        if (option?.checked) send({ type: 'bot_delete', botId: b.id, deleteFolder: true }, responsibleMachine(b));
+        else send({ type: 'bot_delete', botId: b.id });
         if (p) closeChat(p);
     }
     if (action === 'conversation_new' && b) send({ type: 'conversation_new', botId: b.id }, responsibleMachine(b) || undefined);
+    if (action === 'main_to_conversation' && b) {
+        if (!(await confirmDialog(t('menu.mainToConversationConfirm', { name: b.name })))) return false;
+        send({ type: 'main_to_conversation', botId: b.id }, responsibleMachine(b) || undefined);
+    }
     if (action === 'main_chat' && b) openChat(b.id, undefined, undefined, p || undefined);
     if (action === 'vscode' && b) openVscode(b.id, id);
     if (action === 'search') {
@@ -272,10 +292,8 @@ export async function chatMenuAction(id, action, menu, show = (...k) => { menu.r
     if (action === 'rename' && b) renameConversation(id);
     if (action === 'to_archive' && b) archiveConversation(id, true);
     if (action === 'archive' && b) {
-        // continue in the same menu: the archived conversations to bring back
-        const head = node('div', 'menu-info');
-        head.append(node('strong', '', t('info.archive')), node('span', '', t('menu.archiveHint')));
-        show(head, ...archiveButtons(b, () => { menu.hidden = true; }));
+        if (menu !== el.infoActions) menu.hidden = true;
+        openArchive(b);
     }
     if (action === 'git' && b) {
         if (window.innerWidth <= 760) openGitPage(b, Boolean(p));
@@ -303,7 +321,7 @@ let infoShown = '';
 
 /**
  * The upper part of the bot's page for its main chat or a conversation (state.infoChat): the conversation's title,
- * context, model and machine, the entries of the chat's menu and the archive. The open changes below come from
+ * context, model and machine, the entries of the chat's menu (the archive behind one of them). The open changes below come from
  * showGitChanges when the page opens.
  */
 export function renderInfoChat(force = false) {
@@ -322,10 +340,9 @@ export function renderInfoChat(force = false) {
         head.append(node('strong', '', conversationTitle(id)), node('span', '', t('info.conversation')));
         parts.unshift(head);
     }
-    el.infoSwitches.replaceChildren(...parts);
-    el.infoActions.replaceChildren(...chatMenuButtons(id, true));
-    el.infoArchiveHead.hidden = !archived.length;
-    el.infoArchive.replaceChildren(...archiveButtons(b, leaveInfo));
+    const [top, rest] = splitTopButtons(chatMenuButtons(id, true));
+    el.infoSwitches.replaceChildren(...top, ...parts);
+    el.infoActions.replaceChildren(...rest);
 }
 
 /** The info covers the chat on the phone and as an overlay: whatever leads to the chat leaves it; docked it stays. */
@@ -474,6 +491,13 @@ function toMainChat(p, b) {
     else openChat(b.id, undefined, undefined, p);
 }
 
+/** The page with a bot's archived conversations; a tap brings one back and opens it. */
+export function openArchive(b) {
+    el.archiveSub.textContent = `${b.name} · ${shortFolder(b.folder)}`;
+    el.archiveList.replaceChildren(...archiveButtons(b, () => closeDialog(el.archive)));
+    el.archive.hidden = false;
+}
+
 /** Buttons of a bot's archived conversations (title and date); a tap brings them back. */
 export function archiveButtons(b, close) {
     return archivedOf(b).map((cid) => {
@@ -567,7 +591,8 @@ function renderGitList() {
         const repo = node('div', 'git-repo');
         repo.append(node('strong', '', r.name));
         const where = total && rb && state.online.length > 1 ? responsibleMachine(rb) : null;
-        const meta = [total && rb ? rb.name + (where ? ` (${upper(where)})` : '') : '', r.branch, r.ahead ? t('git.notPushed', { n: r.ahead }) : '', r.behind ? t('git.notPulled', { n: r.behind }) : '']
+        const meta = [total && rb ? rb.name + (where ? ` (${upper(where)})` : '') : '', r.branch, r.ahead ? t('git.notPushed', { n: r.ahead }) : '', r.behind ? t('git.notPulled', { n: r.behind }) : '',
+            r.since ? t('git.since', { time: clockTime(r.since) }) : '']
             .filter(Boolean).join(' · ');
         if (meta) repo.append(node('span', 'git-meta', meta));
         if (r.files.length || r.ahead) repo.append(gitButton(rb, r));
@@ -894,7 +919,7 @@ export function gitError(message) {
  * goes. A bot's working folder is not deleted. A bot or group is confirmed by typing its name; one conversation is a
  * smaller loss, and its title is often just "New conversation", so there the button is enough.
  */
-function confirmDeleteBot(b) {
+function confirmDeleteBot(b, option) {
     const items = [t('danger.history')];
     const conversations = (b.conversations || []).length;
     const routines = state.routines.filter((r) => r.botId === b.id).length;
@@ -902,7 +927,41 @@ function confirmDeleteBot(b) {
     if (conversations) items.push(tn('danger.conversations', conversations));
     if (routines) items.push(tn('danger.routines', routines));
     if (groups) items.push(tn('danger.groups', groups));
-    return dangerDialog({ title: t('danger.botTitle', { name: b.name }), items, notes: b.folder ? [t('danger.botFolder', { folder: b.folder })] : [], name: b.name, action: t('menu.deleteBot') });
+    const notes = b.folder && !option ? [t('danger.botFolder', { folder: b.folder })] : [];
+    return dangerDialog({ title: t('danger.botTitle', { name: b.name }), items, notes, name: b.name, action: t('menu.deleteBot'), ...(option ? { option } : {}) });
+}
+
+/** The answer of the bot's machine to "folder_delete_check" while the delete dialog waits for it. */
+let folderAsk = null;
+
+/**
+ * Whether the bot's machine lets its working folder go with it: the answer, or null when that machine is asleep or
+ * too old to know the question (then the folder stays, as before).
+ */
+function askFolderDeletion(b) {
+    const machine = responsibleMachine(b);
+    if (!b.folder || !machine || !state.online.includes(machine)) return Promise.resolve(null);
+    if (folderAsk) folderAsk.resolve(null);
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => answerFolderAsk(b.id, null), 5000);
+        folderAsk = { botId: b.id, resolve: (r) => { clearTimeout(timer); folderAsk = null; resolve(r); } };
+        send({ type: 'folder_delete_check', botId: b.id }, machine);
+    });
+}
+
+/**
+ * connection.js: "folder_delete_checked", or null for an error (a backend before the question); an error names no
+ * bot (`botId` null) and answers whichever question waits.
+ */
+export function answerFolderAsk(botId, f) {
+    if (folderAsk && (botId === null || folderAsk.botId === botId)) folderAsk.resolve(f);
+}
+
+/** The box "Also delete the working folder" of the delete dialog; ticked off with the reason when the folder stays. */
+function folderOption(b, f) {
+    if (!f) return null;
+    const folder = f.folder || b.folder;
+    return f.ok ? { label: t('danger.botFolderDelete', { folder }), hint: t('danger.botFolderDeleteHint') } : { label: t('danger.botFolderDelete', { folder }), hint: f.message, disabled: true };
 }
 
 function confirmDeleteGroup(g) {

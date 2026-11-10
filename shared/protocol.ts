@@ -70,8 +70,9 @@ export function codexModelId(model: string | undefined): string | undefined {
     return engineOf(model) === 'codex' ? engineModelId(model) : undefined;
 }
 
-/** When a bot asks before acting. */
-export type ApprovalPolicy = 'never' | 'risky' | 'write';
+/** When a bot asks before acting. 'read': never writes or runs commands, refused without asking (a support bot). */
+export const APPROVALS = ['never', 'risky', 'write', 'read'] as const;
+export type ApprovalPolicy = (typeof APPROVALS)[number];
 
 /** The voice that reads a bot's answers aloud. */
 export const BOT_VOICES = ['female', 'male'] as const;
@@ -93,6 +94,8 @@ export interface Bot {
     avatar: string;
     /** Voice for reading aloud; missing = the web app guesses from the name. */
     voice?: BotVoice;
+    /** A voice of its own per provider (ids of VOICE_CATALOG); a provider without one reads with `voice`'s kind. */
+    voices?: Partial<Record<VoiceProvider, string>>;
     /** Folder of the chat list (a Category id); missing = none. */
     category?: string;
     approval: ApprovalPolicy;
@@ -118,6 +121,11 @@ export interface Bot {
     sessionId?: string;
     /** Further conversations besides the main chat, each with its own session. */
     conversations?: Conversation[];
+    /**
+     * When the main chat was moved into a conversation (main_to_conversation): every machine drops the main chat's
+     * entries up to then and keeps those of other machines away that still arrive.
+     */
+    mainClearedAt?: string;
     /** Account the bot hands a conversation over to (hand_over, person chats); missing = it cannot hand over. */
     contact?: string;
     /**
@@ -126,9 +134,51 @@ export interface Bot {
      * folder lies outside the allowed folders or in a repository without an origin; a move then asks for the folder.
      */
     place?: BotPlace;
+    /**
+     * Comes from an admin's setup of this account (AccountSetup): the admin changes it, the account cannot change or
+     * delete it. The setup's key ('support', 'dev' …).
+     */
+    managed?: string;
     createdAt: string;
     updatedAt: string;
 }
+
+/**
+ * A bot of an account set up by an admin: what the admin chooses; the account's machine clones the repository with the
+ * token and keeps the bot as a managed one (Bot.managed = key).
+ */
+export interface SetupBot {
+    /** a-z0-9-, unique in the setup; the bot's id on the account's machine is `setup-<key>` */
+    key: string;
+    name: string;
+    role: string;
+    tone: string;
+    approval: ApprovalPolicy;
+    /** https address of the repository */
+    repo: string;
+    /** User name for the token (Forgejo, GitHub); '' = 'git' */
+    gitUser: string;
+    model?: ModelChoice;
+}
+
+/**
+ * An admin's setup of another account: kept in the admin's account, sent to the account's machine (bound to it) when it
+ * changes and whenever that machine asks. Tokens per bot travel only end-to-end encrypted.
+ */
+export interface AccountSetup {
+    /** The account set up */
+    account: string;
+    bots: SetupBot[];
+    /** Account the bots hand over to; '' = none */
+    handover: string;
+    updatedAt: string;
+}
+
+/** A setup as the admin's browser sees it: per bot only whether a token is stored. */
+export type AccountSetupView = Omit<AccountSetup, 'bots'> & { bots: (SetupBot & { token: boolean })[] };
+
+/** A setup as the admin's browser saves it: `token` per bot, '' keeps the stored one. */
+export type AccountSetupInput = Omit<AccountSetup, 'updatedAt' | 'bots'> & { bots: (SetupBot & { token: string })[] };
 
 export interface Conversation {
     /** Short, a-z0-9 only; chatId is `<bot id>~<id>`. */
@@ -153,7 +203,7 @@ export interface BotPlace {
     repoPath?: string;
 }
 
-export type BotInput = Omit<Bot, 'sessionId' | 'createdAt' | 'updatedAt' | 'conversations' | 'canMessage' | 'allowedTools' | 'contact' | 'place'> & { canMessage?: string[] | null; allowedTools?: string[]; /** '' = none */ contact?: string | null };
+export type BotInput = Omit<Bot, 'sessionId' | 'createdAt' | 'updatedAt' | 'conversations' | 'canMessage' | 'allowedTools' | 'contact' | 'place' | 'managed'> & { canMessage?: string[] | null; allowedTools?: string[]; /** '' = none */ contact?: string | null };
 
 /** Bot id for a chatId (main chat or conversation). */
 export function botIdOf(chatId: string): string {
@@ -230,9 +280,54 @@ export type PushPreview = (typeof PUSH_PREVIEWS)[number];
 /** API keys kept in the shared settings; the keys themselves never reach a browser. */
 export const SHARED_API_KEYS = ['gemini', 'openai'] as const;
 export type SharedApiKey = (typeof SHARED_API_KEYS)[number];
-/** Voice for reading messages aloud: the first cloud voice with a key, the device's own, or one provider. */
-export const READ_ALOUD_VOICES = ['auto', 'device', 'openai', 'gemini'] as const;
+/** Voice for reading messages aloud: the first cloud voice with a key (else the machine's own), the device's own, the
+ *  bot's machine (Piper), or one provider. */
+export const READ_ALOUD_VOICES = ['auto', 'device', 'local', 'openai', 'gemini'] as const;
 export type ReadAloudVoice = (typeof READ_ALOUD_VOICES)[number];
+/** Providers of a voice of the backend; a bot can choose one voice per provider (`Bot.voices`). */
+export const VOICE_PROVIDERS = ['openai', 'gemini', 'local'] as const;
+export type VoiceProvider = (typeof VOICE_PROVIDERS)[number];
+/** One voice of a provider: its id there, the kind it reads as ('' = neither), and for Piper its language. */
+export interface VoiceInfo { id: string; kind: '' | BotVoice; lang?: Language }
+/**
+ * The voices the editor offers (webapp/js/voices.js shows the same list, voices.test.ts keeps both equal). OpenAI's 13
+ * of gpt-4o-mini-tts (kinds by ear, its docs give none); Gemini's 30 with the kinds Google's Cloud TTS page states;
+ * Piper's German and English voices worth hearing (the "x_low" and "low" ones only where there is nothing better).
+ */
+export const VOICE_CATALOG: Record<VoiceProvider, VoiceInfo[]> = {
+    openai: [
+        { id: 'marin', kind: 'female' }, { id: 'cedar', kind: 'male' }, { id: 'coral', kind: 'female' }, { id: 'nova', kind: 'female' },
+        { id: 'sage', kind: 'female' }, { id: 'shimmer', kind: 'female' }, { id: 'ash', kind: 'male' }, { id: 'ballad', kind: 'male' },
+        { id: 'echo', kind: 'male' }, { id: 'fable', kind: 'male' }, { id: 'onyx', kind: 'male' }, { id: 'verse', kind: 'male' },
+        { id: 'alloy', kind: '' },
+    ],
+    gemini: [
+        { id: 'Kore', kind: 'female' }, { id: 'Zephyr', kind: 'female' }, { id: 'Leda', kind: 'female' }, { id: 'Aoede', kind: 'female' },
+        { id: 'Callirrhoe', kind: 'female' }, { id: 'Autonoe', kind: 'female' }, { id: 'Despina', kind: 'female' }, { id: 'Erinome', kind: 'female' },
+        { id: 'Laomedeia', kind: 'female' }, { id: 'Achernar', kind: 'female' }, { id: 'Gacrux', kind: 'female' }, { id: 'Pulcherrima', kind: 'female' },
+        { id: 'Vindemiatrix', kind: 'female' }, { id: 'Sulafat', kind: 'female' },
+        { id: 'Charon', kind: 'male' }, { id: 'Puck', kind: 'male' }, { id: 'Fenrir', kind: 'male' }, { id: 'Orus', kind: 'male' },
+        { id: 'Enceladus', kind: 'male' }, { id: 'Iapetus', kind: 'male' }, { id: 'Umbriel', kind: 'male' }, { id: 'Algieba', kind: 'male' },
+        { id: 'Algenib', kind: 'male' }, { id: 'Rasalgethi', kind: 'male' }, { id: 'Alnilam', kind: 'male' }, { id: 'Schedar', kind: 'male' },
+        { id: 'Achird', kind: 'male' }, { id: 'Zubenelgenubi', kind: 'male' }, { id: 'Sadachbia', kind: 'male' }, { id: 'Sadaltager', kind: 'male' },
+    ],
+    local: [
+        { id: 'de_DE-kerstin-medium', kind: 'female', lang: 'de' }, { id: 'de_DE-ramona-low', kind: 'female', lang: 'de' },
+        { id: 'de_DE-eva_k-x_low', kind: 'female', lang: 'de' }, { id: 'de_DE-thorsten-high', kind: 'male', lang: 'de' },
+        { id: 'de_DE-karlsson-low', kind: 'male', lang: 'de' }, { id: 'de_DE-pavoque-low', kind: 'male', lang: 'de' },
+        { id: 'en_US-lessac-high', kind: 'female', lang: 'en' }, { id: 'en_US-amy-medium', kind: 'female', lang: 'en' },
+        { id: 'en_US-kristin-medium', kind: 'female', lang: 'en' }, { id: 'en_GB-cori-high', kind: 'female', lang: 'en' },
+        { id: 'en_US-ryan-high', kind: 'male', lang: 'en' }, { id: 'en_US-joe-medium', kind: 'male', lang: 'en' },
+        { id: 'en_US-john-medium', kind: 'male', lang: 'en' }, { id: 'en_GB-alan-medium', kind: 'male', lang: 'en' },
+    ],
+};
+
+/** The chosen voice if the catalog has it for this provider (and, for Piper, this language); else null. */
+export function catalogVoice(provider: VoiceProvider, id: string | undefined, language: Language): string | null {
+    const v = id ? VOICE_CATALOG[provider].find((x) => x.id === id) : undefined;
+    return v && (!v.lang || v.lang === language) ? v.id : null;
+}
+
 /** How the voice conversation runs: in the app (local Whisper and the read-aloud voice) or over OpenAI Realtime. */
 export const TALK_MODES = ['app', 'openai', 'openai-mini'] as const;
 export type TalkMode = (typeof TALK_MODES)[number];
@@ -374,6 +469,8 @@ export interface FolderRefusal {
 export interface VoiceSetup {
     state: 'ready' | 'missing' | 'installing' | 'failed' | 'unavailable';
     detail?: string;
+    /** Ready: whether the machine can also read aloud itself (piper-tts in the voice messages' Python). */
+    speech?: boolean;
 }
 
 export type MoveAction = 'use' | 'clone' | 'create';
@@ -582,6 +679,8 @@ export interface BotInfo {
 /** A session running on the machine in VS Code or in the terminal (not from a bot). */
 export interface VscodeSession {
     id: string;
+    /** Missing = Claude Code; 'codex' = a thread of Codex (VS Code extension or CLI). */
+    engine?: 'codex';
     /** Custom title, summary or first message */
     title: string;
     firstPrompt: string;
@@ -590,7 +689,10 @@ export interface VscodeSession {
     /** Transcript size in bytes */
     size: number;
     origin: 'vscode' | 'terminal';
-    /** Subfolder of the bot in which the session was started; missing = the bot's folder. */
+    /**
+     * Subfolder of the bot in which the session was started; missing = the bot's folder. In the machine-wide list
+     * always the working folder.
+     */
     folder?: string;
     /** A Claude process has the session open right now (VS Code starts it with --resume=<id>). */
     open: boolean;
@@ -621,6 +723,12 @@ export interface GitRepo {
     files: { status: string; path: string }[];
     /** Further files not in the list */
     more: number;
+    /**
+     * Since when something is open (ISO): the newest change of the listed files, for a repo with only unpushed
+     * commits the time of the last commit. Taken from the files, not from now, so an unchanged state stays the same
+     * JSON. Missing from older backends and for a repo with nothing to date.
+     */
+    since?: string;
     error?: string;
     /** The backend that sends this runs from this repo (the web app offers its restart there). */
     backend?: boolean;
@@ -672,6 +780,8 @@ export interface SuggestionRequest {
     model: ModelChoice;
     /** Suggestions already shown that should not come again. */
     previous?: string[];
+    /** Profile picture: what it should show beyond name and role (a bot's make_avatar). */
+    wish?: string;
 }
 
 export type SuggestionResult =
@@ -685,8 +795,15 @@ export type SuggestionResult =
 
 export type ClientFrame =
     | { type: 'bots' }
-    | { type: 'bot_save'; bot: BotInput }
-    | { type: 'bot_delete'; botId: string }
+    /** `setup`: a new bot sets itself up in its chat: it asks the user a few questions and fills in its profile. */
+    | { type: 'bot_save'; bot: BotInput; setup?: boolean }
+    /**
+     * `deleteFolder`: the bot's machine deletes its working folder too, after the check of "folder_delete_check"; if
+     * that fails now, nothing is deleted and an error answers. Sent to the bot's machine only then.
+     */
+    | { type: 'bot_delete'; botId: string; deleteFolder?: boolean }
+    /** Whether the bot's working folder may be deleted with it (folder_delete_checked); asked of the bot's machine. */
+    | { type: 'folder_delete_check'; botId: string }
     | { type: 'bot_suggest'; request: SuggestionRequest }
     /** Check a folder on this machine before a bot is saved with it (folder_checked) */
     | { type: 'folder_check'; folder: string }
@@ -737,9 +854,13 @@ export type ClientFrame =
         /** From the voice conversation (webapp/js/talk.js): the bot gets the note to answer briefly, for being read aloud. */
         spoken?: boolean }
     | { type: 'interrupt'; chatId: string }
+    /** A job between bots (Job): stop waiting for its result, with `cancel` also stop it at the target. To its source's machine. */
+    | { type: 'job_stop'; id: string; cancel?: boolean }
     /** New session; with chatId only for that conversation, otherwise for the main chat. */
     | { type: 'restart'; botId: string; chatId?: string }
     | { type: 'conversation_new'; botId: string }
+    /** The main chat with its history and session becomes a conversation; the main chat starts empty. */
+    | { type: 'main_to_conversation'; botId: string }
     | { type: 'conversation_rename'; chatId: string; title: string }
     /** Switch model, context stays: in the main chat the bot's, in a conversation only there. */
     | { type: 'model'; chatId: string; model: ModelChoice }
@@ -755,13 +876,19 @@ export type ClientFrame =
     | { type: 'pin'; chatId: string; entry: PinnedEntry; on: boolean }
     /** Read state of changed chats from this device (applies to all devices). */
     | { type: 'seen'; state: Record<string, SeenEntry> }
-    /** Sessions from VS Code and terminal in the bot's folder on the target machine; answer "vscode_sessions". */
-    | { type: 'vscode_sessions'; botId: string }
-    /** Read and follow one of these sessions; answers "vscode_history" until vscode_close. */
-    | { type: 'vscode_open'; botId: string; sessionId: string; folder?: string }
+    /**
+     * Sessions from VS Code and terminal on the target machine: in the bot's folder, or without `botId` in every
+     * folder of the machine (the "+" menu); answer "vscode_sessions".
+     */
+    | { type: 'vscode_sessions'; botId?: string }
+    /**
+     * Read and follow one of these sessions; answers "vscode_history" until vscode_close. Without `botId` (the
+     * machine-wide list) `folder` is the session's working folder and required.
+     */
+    | { type: 'vscode_open'; botId?: string; sessionId: string; folder?: string; engine?: 'codex' }
     | { type: 'vscode_close'; sessionId: string }
     /** Adopt as a branch into a new conversation (the session in VS Code stays unchanged). */
-    | { type: 'vscode_adopt'; botId: string; sessionId: string; folder?: string }
+    | { type: 'vscode_adopt'; botId: string; sessionId: string; folder?: string; engine?: 'codex' }
     /**
      * Hand this chat's session over to the machine: the bot ends its process, the machine opens the session in an
      * IDE window or a terminal. Missing target = 'ide' (clients from before). Answer "vscode_shown".
@@ -793,7 +920,7 @@ export type ClientFrame =
     | { type: 'knowledge_delete'; botId: string; location: KnowledgeLocation; name: string }
     | { type: 'file_get'; path: string }
     /** Part of a message to read aloud with the cloud voice of the shared settings; answer "speech" with the same `id`. */
-    | { type: 'speech_get'; id: string; text: string; voice?: BotVoice }
+    | { type: 'speech_get'; id: string; text: string; voice?: BotVoice; /** A voice of the catalog for the provider reading; unknown there = `voice`'s kind */ name?: string }
     /** Voice conversation over OpenAI Realtime: the backend sends the browser's SDP offer to OpenAI with the stored key
      *  and the session for this chat's bot; the answer comes as "talk_answer". */
     | { type: 'talk_connect'; id: string; chatId: string; sdp: string; voice?: BotVoice }
@@ -834,6 +961,17 @@ export type ClientFrame =
     | { type: 'voice_setup' }
     /** An invitation for one more machine (npm run join); answer "machine_join_link" to the asking browser only. */
     | { type: 'machine_join_link' }
+    /** The setups of accounts this admin account set up; answer "setups". */
+    | { type: 'setups' }
+    /** Create or change a setup (admins only); it goes to the account's machine. Answer "setups" to all browsers. */
+    | { type: 'setup_save'; setup: AccountSetupInput }
+    /** Forget a setup (the account stays); answer "setups". */
+    | { type: 'setup_delete'; account: string }
+    /**
+     * A setup link for the account (valid 7 days, once; a new one replaces the old) or, with `revoke`, none any more.
+     * Answer "setup_link" to the asking browser.
+     */
+    | { type: 'setup_link'; account: string; revoke?: boolean }
     | { type: 'ping' };
 
 /** What the browser sends: frame plus optionally the target machine (without: the first machine awake). */
@@ -875,7 +1013,7 @@ export type RelayRequest =
     /** Answers "account_created" with a pairing token for the new account's first device. */
     | { type: 'account_create'; name: string; admin?: boolean; reach?: Reach }
     /** `password`: own account only; `admin` and `reach`: not for one's own account. */
-    | { type: 'account_update'; id: string; name?: string; password?: string; admin?: boolean; reach?: Reach }
+    | { type: 'account_update'; id: string; name?: string; password?: string; admin?: boolean; reach?: Reach; /** with reach 'listed' */ contacts?: string[] }
     /** Removes the account, its devices and, on every machine, its data; not for 'main'. */
     | { type: 'account_delete'; id: string }
     /** A new invitation for another account (the last one expired); answers "account_invite". Not for 'main'. */
@@ -917,10 +1055,20 @@ export interface RelayAccount {
     created: string;
     /** Whom the account can chat with; missing = relay from before person chats, which counts as 'all'. */
     reach?: Reach;
+    /** With reach 'listed': the accounts it can chat with. */
+    contacts?: string[];
+    /**
+     * Set up by this admin account with a setup link: its bots run only on machines bound to it, which serve nothing
+     * else, and the admin's backend keeps its setup.
+     */
+    setupBy?: string;
 }
 
-/** 'all': every account that reaches all (a team member); 'admins': only the admins (a customer). Admins reach everyone. */
-export const REACHES = ['all', 'admins'] as const;
+/**
+ * 'all': every account that reaches all (a team member); 'admins': only the admins (a customer); 'listed': only the
+ * accounts in `contacts`. Admins reach everyone except a 'listed' account that does not list them.
+ */
+export const REACHES = ['all', 'admins', 'listed'] as const;
 export type Reach = (typeof REACHES)[number];
 
 /** An account as a contact for person chats: what the relay tells backends and backends tell browsers. */
@@ -929,11 +1077,18 @@ export interface Person {
     name: string;
     admin: boolean;
     reach: Reach;
+    /** With reach 'listed' */
+    contacts?: string[];
 }
 
-/** May account `a` chat with account `b`? Symmetric: admins reach and are reached by everyone. */
+/** May account `a` chat with account `b`? Symmetric; a 'listed' account on either side has to name the other. */
 export function reaches(a: Person, b: Person): boolean {
-    return a.id !== b.id && (a.admin || b.admin || (a.reach === 'all' && b.reach === 'all'));
+    if (a.id === b.id) return false;
+    if (a.reach === 'listed' || b.reach === 'listed') {
+        const names = (x: Person, y: Person) => x.reach !== 'listed' || (x.contacts ?? []).includes(y.id);
+        return names(a, b) && names(b, a);
+    }
+    return a.admin || b.admin || (a.reach === 'all' && b.reach === 'all');
 }
 
 /**
@@ -1008,7 +1163,8 @@ export type AgentFrame =
     | { type: 'deleted'; chatId: string; entryId: string }
     /** Waiting messages were discarded (stop, new session); the bot will not get them. */
     | { type: 'discarded'; chatId: string; entryIds: string[]; ts: string }
-    | { type: 'vscode_sessions'; botId: string; sessions: VscodeSession[] }
+    /** `botId` missing: the sessions of every folder on the machine. */
+    | { type: 'vscode_sessions'; botId?: string; sessions: VscodeSession[] }
     | { type: 'vscode_shown'; chatId: string; ok: boolean; message: string }
     | { type: 'commands'; botId: string; commands: BotCommand[] }
     | { type: 'git_changes'; botId: string; repos: GitRepo[] }
@@ -1049,6 +1205,8 @@ export type AgentFrame =
     | { type: 'state'; botId: string; state: BotState; detail?: string; activity?: string; /** chat of the running job */ chatId?: string;
         /** Waiting jobs of this session per chat (empty if none) */ queue?: Record<string, number> }
     | { type: 'approval'; approval: Approval }
+    /** The open jobs this machine's bots gave other bots (all of them, on every change and to a new browser). */
+    | { type: 'jobs'; jobs: Job[] }
     | { type: 'approval_done'; id: string; chatId: string; result: string }
     | { type: 'error'; chatId?: string; botId?: string; message: string; /** for an unknown request its type */ request?: string; code?: MessageCode }
     | { type: 'account'; subscription: string | null; model: string; version: string; apiKeySource: string; /** missing = Claude Code */ engine?: Engine }
@@ -1063,7 +1221,8 @@ export type AgentFrame =
      * false: git here has no credentials to push there
      */
     | { type: 'folder_checked'; asked: string; ok: boolean; folder?: string; remote?: string; push?: false; message?: string; refused?: FolderRefusal }
-    | { type: 'folder_cloned'; url: string; ok: boolean; folder?: string; push?: false; message?: string; refused?: FolderRefusal }
+    /** `credentials`: git refused the clone for want of credentials (a private repository); the app points to the git token. */
+    | { type: 'folder_cloned'; url: string; ok: boolean; folder?: string; push?: false; message?: string; refused?: FolderRefusal; credentials?: true }
     /** `folder`: where the repository goes; `existing`: a clone of it is there already, saving uses it as it is. */
     | { type: 'folder_proposed'; url: string; ok: boolean; folder?: string; existing?: boolean; message?: string }
     /**
@@ -1073,6 +1232,10 @@ export type AgentFrame =
     | { type: 'folder_listed'; asked: string; ok: boolean; folder?: string; parent?: string; folders?: string[]; message?: string }
     /** `folder`: the folder created (or the empty one of that name that was there), as this machine stores it. */
     | { type: 'folder_created'; name: string; ok: boolean; folder?: string; message?: string; refused?: FolderRefusal }
+    /** `message`: why the folder stays (shared with other bots, open git work, protected, missing). */
+    | { type: 'folder_delete_checked'; botId: string; ok: boolean; folder?: string; message?: string }
+    /** The working folder of a deleted bot was deleted with it. */
+    | { type: 'folder_deleted'; botId: string; folder: string }
     /**
      * `folder`: the bot's folder on this machine; `action`: it is there (`use`), the repository is cloned (`clone`) or
      * the folder is created (`create`). Not ok: the bot has no place or it is taken; the app asks for the folder then.
@@ -1103,6 +1266,13 @@ export type AgentFrame =
      * to run there. Carries the key, so it only travels encrypted, like "pair_link".
      */
     | { type: 'machine_join_link'; url: string; command: string; expiresAt: string; e2e: boolean }
+    /** The setups this admin account made (tokens only as "stored"). */
+    | { type: 'setups'; list: AccountSetupView[] }
+    /**
+     * A setup link (`<relay>/#setup=<token>&e2e=<key>`) for the account, or none after `revoke`. Carries the key, so it
+     * only travels encrypted.
+     */
+    | { type: 'setup_link'; account: string; url?: string; expiresAt?: string }
     /**
      * Settings of this machine, to the main account's browsers on connect and after every change. `anthropicKey`,
      * `gitPushToken`, `engineKeys`: such a secret is stored. `offers`: what this machine can do at all, whatever the settings say (the settings page greys out
@@ -1178,7 +1348,7 @@ export type RelayFrame =
     /** The secret being set up, as text and as the address for the QR code. */
     | { type: 'totp_setup'; secret: string; uri: string }
     /** Machines with a token of their own (joined by invitation). */
-    | { type: 'machine_tokens'; list: { machine: string; created: string }[] }
+    | { type: 'machine_tokens'; list: { machine: string; created: string; /** bound to this account by a setup link */ account?: string }[] }
     /** All accounts for an admin, otherwise only one's own. */
     | { type: 'accounts'; list: RelayAccount[]; current: string }
     | { type: 'account_created'; account: RelayAccount; pair: { token: string; expiresAt: string } }
@@ -1205,12 +1375,45 @@ export type ServerFrame = (AgentFrame & { machine?: string }) | RelayFrame;
 // ---- Backend <-> relay <-> backend (sync and jobs between machines) ----
 
 /** A job for a bot in transferable form (without callback). */
+/**
+ * Where a job given with message_bot came from, so its result finds the way back (local/src/jobs.ts): the source's
+ * machine, bot and chat, and the chain the source was in (bots and chats waiting for this job, against loops).
+ */
+export interface JobOrigin {
+    id: string;
+    machine: string;
+    botId: string;
+    chatId: string;
+    chain: string[];
+    chats: string[];
+}
+
+/**
+ * An open job between bots as the source's backend keeps it (`jobs.json`) and the app shows it in the source chat.
+ * `queued`: the target's machine is asleep, the job goes out once it wakes; `running`: the target works on it.
+ */
+export interface Job {
+    id: string;
+    from: JobOrigin;
+    to: { machine: string; botId: string; chatId: string };
+    /** The job, cut to a line for the app */
+    text: string;
+    ts: string;
+    state: 'queued' | 'running';
+    /** The tool waits for the answer itself (wait_for_reply) while this backend runs; nothing is delivered then */
+    waited?: boolean;
+}
+
 export interface TurnSpec {
     chatId: string;
     content: string | Record<string, unknown>[];
     text: string;
     from: string;
     chain: string[];
+    /** The chats waiting along the chain (sources of jobs); a job into one of them would be a loop */
+    chats?: string[];
+    /** The turn works on a job of another bot: its result goes back there (local/src/jobs.ts) */
+    job?: JobOrigin;
     hop: number;
     round?: string;
     roundDone?: string[];
@@ -1293,6 +1496,14 @@ export type PeerData =
     | { kind: 'history'; chatId: string; entries: HistoryEntry[] }
     | { kind: 'job'; id: string; botId: string; turn: TurnSpec; reply: boolean }
     | { kind: 'job_done'; id: string; result: TurnResultData }
+    /**
+     * The result of a job between bots (TurnSpec.job) from the target's machine to the source's, sent again each time the
+     * source wakes until it answers "job_ack"; `stopped`: the target was stopped.
+     */
+    | { kind: 'job_feedback'; id: string; botId: string; chatId: string; result: TurnResultData; stopped?: boolean }
+    | { kind: 'job_ack'; id: string }
+    /** "Cancel the job" from the source: the target's machine stops that chat. */
+    | { kind: 'job_cancel'; id: string; chatId: string }
     | { kind: 'restart'; botId: string }
     /** Transcript of a Claude session when switching machines, in chunks (base64); `key` = bot id or conversation chatId. */
     | { kind: 'session_transfer'; botId: string; folder: string; key: string; sessionId: string; part: number; parts: number; data: string }
@@ -1306,6 +1517,14 @@ export type PeerData =
     | { kind: 'keys_request' }
     /** The shared web push key pair; sent only through encrypted sync. */
     | { kind: 'keys'; vapid: { publicKey: string; privateKey: string } }
+    /** Person route (AgentOutbound `person`): a message of a person chat or a hand-over, into the other account's half. */
+    | { kind: 'person_message'; entry: HistoryEntry; message: 'message' | 'handover';
+        /** The attachments' files (path on the sending machine -> base64), which the other machine cannot fetch */
+        files?: Record<string, string> }
+    /** Person route, admin -> account set up: its setup with the token per bot key; the account's machine applies it. */
+    | { kind: 'setup'; setup: AccountSetup; tokens: Record<string, string> }
+    /** Person route, account set up -> its admin: send my setup (on connecting). */
+    | { kind: 'setup_request' }
     | { kind: 'e2e'; iv: string; data: string };
 
 /**
@@ -1326,13 +1545,27 @@ export type AgentInbound =
         /** the accounts there are and the ones deleted (their data goes); missing = relay without accounts, only 'main' */
         accounts?: string[]; deletedAccounts?: string[];
         /** the accounts with name and reach, for person chats; missing = relay from before them */
-        people?: Person[] }
+        people?: Person[];
+        /** this machine joined by a setup link and serves only this account */
+        bound?: string;
+        /** with `bound`: the admin who set the account up (asked for the setup) */
+        setupBy?: string }
+    /**
+     * Person route: `data` from account `from` (on another machine) for account `to` here. The relay checked that the
+     * sender serves `from` and that `from` may reach `to`. `id` is the sender's: a message sent again keeps it, so the
+     * receiver takes it once.
+     */
+    | { type: 'person'; from: string; to: string; id?: string; data: PeerData }
+    /** Answer to a `person` with `id`: delivered to a machine of the account, or none was awake (`ok` false). */
+    | { type: 'person_result'; id: string; ok: boolean }
     /** The accounts changed (created, renamed, reach, deleted): the full list again. */
     | { type: 'people'; list: Person[] }
     /** An account was deleted: the backend stops its bots and removes its data. */
     | { type: 'account_deleted'; account: string }
     /** An account was created; the backend starts serving it. */
     | { type: 'account_added'; account: string }
+    /** An account now runs on machines bound to it: this backend stops serving it and keeps what it has. */
+    | { type: 'account_released'; account: string }
     /** Answer to `push`: device tokens the push service no longer knows (app uninstalled); the backend drops them. */
     | { type: 'push_result'; gone: NativePushSubscription[] }
     /**
@@ -1368,6 +1601,8 @@ export interface NativePushMessage {
 export type AgentOutbound =
     | { frame: AgentFrame; cid?: string; account?: string }
     | { peer: PeerData; to?: string; account?: string }
+    /** To one awake machine of account `to` (person chats, setups across machines); answered by "person_result". */
+    | { person: PeerData; from: string; to: string; id: string }
     /** Planned runs of routines with `wake` (replaces the relay's previous schedule). */
     | { wakeSchedule: WakeEntry[] }
     /**

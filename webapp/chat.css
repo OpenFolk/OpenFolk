@@ -133,8 +133,14 @@ pre { white-space: pre-wrap; word-break: break-word; }
 #settings > .dialog {
     flex: 1; min-height: 0; width: 100%; max-width: none; max-height: none; border-radius: 0; box-shadow: none;
     padding: 14px 16px; animation: none;
+    /* only vertical scrolling, like the chat: overflow-y alone would make x scroll too, and the page moved sideways;
+       long values (addresses, keys, paths) break instead of widening it */
+    overflow-x: hidden; overflow-wrap: anywhere;
 }
-#settings > .dialog > * { max-width: 640px; }
+#settings > .dialog > * { max-width: 640px; min-width: 0; }
+/* The release notes are long reading: on a wide screen they take the room, the rest of "About" keeps its column */
+#settings > .dialog > #settings-about { max-width: 1200px; }
+#settings-about > :not(.release-notes) { max-width: 640px; }
 .sidebar { grid-area: 1 / 1; position: relative; display: flex; flex-direction: column; border-right: 1px solid var(--line); min-width: 0; min-height: 0; }
 /* The desktop apps: drag the sidebar's right edge to change its width, a double click restores it (start.js) */
 .sidebar-resize { display: none; position: absolute; top: 0; bottom: 0; right: -4px; width: 8px; z-index: 5; cursor: col-resize; touch-action: none; }
@@ -274,6 +280,24 @@ pre { white-space: pre-wrap; word-break: break-word; }
     .chat-list li.section.category:hover { background: var(--hover); }
 }
 .chat-list li:active { background: var(--hover); }
+/* Favorites as large tiles at the top, scrolling sideways */
+.chat-list li.fav-strip { display: block; padding: 10px 0 8px; cursor: default; }
+.chat-list li.fav-strip:active, .chat-list li.fav-strip:hover { background: none; }
+.fav-row { list-style: none; margin: 0; padding: 0 10px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.fav-row::-webkit-scrollbar { display: none; }
+.chat-list .fav-row li.fav-tile {
+    display: flex; flex-direction: column; align-items: center; gap: 5px; flex: 0 0 76px; padding: 4px 2px 6px;
+    border: 0; border-radius: 12px;
+}
+.fav-ring { position: relative; padding: 5px; }
+/* the ring alone pulses, not the picture */
+.fav-ring::before { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 2.5px solid transparent; }
+.fav-tile.thinking .fav-ring::before { border-color: var(--accent); animation: pulse 1.2s infinite; }
+.fav-tile.waiting .fav-ring::before { border-color: var(--warning); }
+.chat-list .fav-tile .avatar { width: 58px; height: 58px; font-size: 22px; }
+.fav-ring .dot.new, .fav-ring .badge { position: absolute; top: 1px; right: 1px; box-shadow: 0 0 0 2px var(--bg); }
+.fav-ring .dot.new { width: 13px; height: 13px; }
+.fav-name { max-width: 72px; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-list li.section:active { background: none; }
 .chat-list li.section.category:active { background: var(--hover); }
 .chat-list .avatar { width: 48px; height: 48px; }
@@ -662,7 +686,11 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .bubble .content pre.with-command .command-run { position: absolute; top: 6px; right: 6px; margin: 0; font-size: 12px; padding: 5px 8px; }
 .bubble .content ul, .bubble .content ol { padding-left: 22px; }
 .bubble .content table { border-collapse: collapse; font-size: 14px; display: block; overflow-x: auto; }
-.bubble .content td, .bubble .content th { border: 1px solid var(--line); padding: 3px 7px; }
+/* The bubble's overflow-wrap: anywhere shrinks a column's min-content width to one character, so short columns broke
+   letter by letter; break-word keeps words whole when sizing columns and breaks only words wider than the table */
+.bubble .content td, .bubble .content th {
+    border: 1px solid var(--line); padding: 3px 7px; text-align: left; vertical-align: top; overflow-wrap: break-word;
+}
 .bubble .content a { color: var(--link); }
 
 /* Tool rows: expandable with result */
@@ -731,6 +759,14 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .mention { max-height: 40dvh; overflow-y: auto; background: var(--bar-bg); border-top: 1px solid var(--line); padding: 4px 0; }
 .mention + .members { border-top: 0; }
 .queue { background: var(--bar-bg); border-top: 1px solid var(--line); }
+/* Jobs this chat gave other bots and waits for (queue.js renderJobs) */
+.jobs { background: var(--bar-bg); border-top: 1px solid var(--line); padding: 4px 10px; display: flex; flex-direction: column; gap: 2px; }
+.job { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 13px; }
+.job-text { flex: 1 1 auto; min-width: 0; border: 0; background: none; color: var(--muted); font: inherit; text-align: left; padding: 4px 0; cursor: pointer; }
+.job-text:hover { color: var(--text); }
+.job-stop { flex: 0 0 auto; border: 1px solid var(--line); color: var(--text); background: none; border-radius: 12px; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.job-cancel { border-color: var(--danger); color: var(--danger); }
+.job-actions { display: flex; gap: 6px; margin-left: auto; }
 .queue + .members { border-top: 0; }
 .queue-head { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; padding: 7px 14px; cursor: pointer; text-align: left; }
 .queue-head::after { content: '▾'; margin-left: auto; transition: transform .15s; }
@@ -806,14 +842,23 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .device-list li.relay-head .d-text strong { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .device-list li.relay-head ~ li:not(.relay-head) { margin-left: 10px; }
 /* Accounts: the actions get a row of their own below the name, beside it a phone has no room */
-#accounts-list li { flex-wrap: wrap; }
-#accounts-list .d-text { flex: 1 1 100%; }
-.account-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.account-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.setup-name { display: flex; gap: 8px; }
+.setup-name input { flex: 1; min-width: 0; }
 .pair-box { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 6px; }
 .pair-qr { width: min(240px, 70vw); background: #fff; padding: 8px; border-radius: 10px; }
 /* Not the icon look of the generic svg rule: its stroke width and round caps would run the modules together */
 .pair-qr svg { display: block; width: 100%; height: auto; fill: #000; stroke: none; stroke-width: 1; stroke-linecap: butt; stroke-linejoin: miter; }
 .pair-url { display: flex; gap: 6px; width: 100%; }
+/* Setup of a person (setups.js): one card per bot, the contacts as a column of ticks */
+.setup-box h4 { margin: 8px 0 0; }
+.setup-contacts { display: flex; flex-direction: column; gap: 4px; }
+.setup-bot { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.setup-bot > summary { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.setup-bot-sub { color: var(--muted); font-size: 13px; }
+.setup-bot-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.setup-bot-fields > .btn { align-self: flex-start; }
+a.primary, a.btn { text-decoration: none; }
 .pair-url input { flex: 1; min-width: 0; font-size: 12.5px; }
 
 /* Notifications: priority per kind, muted chats */
@@ -829,6 +874,8 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 /* Notifications, devices and accounts: blocks of the settings, laid out like the dialog around them */
 .settings-block { display: flex; flex-direction: column; gap: 12px; }
 .settings-block[hidden] { display: none; }
+/* Signing out: the last thing in the settings, apart from the rest */
+.settings-sign-out { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); align-items: flex-start; }
 .about-list { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 13.5px; }
 .about-list dt { color: var(--muted); }
 .about-list dd { margin: 0; overflow-wrap: anywhere; }
@@ -866,6 +913,11 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 #machine-join { margin-top: 8px; }
 .settings-voice-setup { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
 .settings-voice-setup .settings-hint { padding-left: 0; }
+/* The bot's voice in the editor: the list and "Listen" in one row */
+.voice-choice { display: flex; gap: 8px; align-items: flex-end; }
+.voice-choice[hidden] { display: none; }
+.voice-choice label { flex: 1; min-width: 0; }
+.voice-choice .btn { margin-bottom: 2px; }
 .chat-list .muted-badge { font-size: 12px; opacity: .7; }
 .d-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .d-text span { font-size: 12.5px; color: var(--muted); }
@@ -882,7 +934,7 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .overlay.side { justify-content: flex-end; padding: 0; }
 /* Questions and notices of dialogs.js: above every other dialog, the text keeps its line breaks */
 .overlay.ask { z-index: 60; }
-.overlay.ask .dialog { max-width: 420px; }
+.overlay.ask .dialog { max-width: 560px; }
 /* Delete dialogs: a warning box with what goes, a red button for the action */
 .danger-zone { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--danger); border-radius: 10px; background: color-mix(in srgb, var(--danger) 8%, transparent); }
 .danger-zone strong { color: var(--danger); }
@@ -896,7 +948,7 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .qr-scan video { width: min(420px, 100%); max-height: 70dvh; border-radius: 14px; background: #000; object-fit: cover; }
 .qr-scan p { margin: 0; max-width: 420px; }
 .dialog {
-    background: var(--surface); border-radius: 16px; padding: 22px; width: 100%; max-width: 460px;
+    background: var(--surface); border-radius: 16px; padding: 22px; width: 100%; max-width: 760px;
     max-height: calc(100dvh - 32px); overflow-y: auto; box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
     display: flex; flex-direction: column; gap: 12px;
 }
@@ -974,6 +1026,20 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .start-card .login-qr { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .start-card .login-qr[hidden] { display: none; }
 .start-card .login-or { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+/* The choice of accounts (signed out, or a key expired): the form's fields wait behind "Sign in to another account" */
+.start-card.choosing > :is(label, button, .login-qr, .start-help) { display: none; }
+.start-card .login-choose { display: flex; flex-direction: column; gap: 10px; }
+.start-card .login-choose[hidden] { display: none; }
+.login-accounts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.login-accounts li { position: relative; display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 12px; }
+.login-accounts li:hover { background: var(--hover); }
+.login-pick { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 14px; border: 0; background: none; font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+.login-pick strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.login-pick span { font-size: 12.5px; color: var(--muted); }
+.login-pick span:empty { display: none; }
+.login-more { flex: 0 0 auto; width: 44px; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 0 12px 12px 0; }
+.login-more svg { width: 20px; height: 20px; fill: currentColor; stroke: none; }
+.login-accounts .login-account-menu { top: calc(100% - 6px); right: 6px; min-width: 200px; }
 .start-card .login-qr .pair-qr { width: min(200px, 60vw); }
 @media (max-width: 760px) {
     .start-card { margin: 0 auto; background: none; border: 0; padding: 12px 4px; }
@@ -1156,7 +1222,6 @@ details summary { cursor: pointer; }
 
 /* "About": the version opens the release notes (settings dialog) */
 .about-version { font-size: inherit; font-weight: 600; }
-.release-notes { max-width: 640px; }
 .release-notes h3 { font-size: 15px; margin: 16px 0 6px; }
 .release-notes h4 { font-size: 14px; margin: 18px 0 6px; color: var(--muted); }
 .release-notes ul { margin: 0 0 8px; padding-left: 20px; }
@@ -1164,3 +1229,10 @@ details summary { cursor: pointer; }
 .release-notes code { font-size: 12.5px; }
 .release-notes-older { margin: 4px 0; }
 .release-notes-older summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+
+/* boot.js: the app did not load after several tries */
+.boot-failed {
+    position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 24px; background: var(--bg); color: var(--text); text-align: center;
+}
+.boot-failed p { margin: 0; max-width: 360px; }

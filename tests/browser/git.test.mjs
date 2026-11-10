@@ -109,6 +109,6 @@ export default async function ({ start, check }) {
     await h.wait(100);
     await h.push({ type: 'git_changes', machine: 'desk', botId: 'skool', repos: REPOS });
     await h.wait(100);
-    check('a late answer does not overwrite the long-press menu', await p.locator('#row-menu button', { hasText: 'VS Code' }).count() === 1);
+    check('a late answer does not overwrite the long-press menu', await p.locator('#row-menu button', { hasText: 'Machine sessions' }).count() === 1);
     check('no page errors', !h.errors.length, h.errors);
 }

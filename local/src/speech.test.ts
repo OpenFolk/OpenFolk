@@ -6,19 +6,46 @@ import path from 'node:path';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-speech-'));
 process.env.DATA_DIR = dir;
 process.env.E2E_KEY = 'off';
+process.env.MACHINE_NAME = 'desk';
+// Not the project's .env (a WHISPER_PYTHON there would run the real Piper); a container without Python instead: the
+// machine cannot read aloud itself, so "auto" never picks it here
+process.env.OPENFOLK_ENV_FILE = path.join(dir, '.env');
+process.env.OPENFOLK_CONTAINER = '1';
+delete process.env.WHISPER_PYTHON;
 
 let failures = 0;
 const check = (name: string, ok: boolean, info?: unknown) => { console.log(`${ok ? 'ok    ' : 'FAILED'} ${name}${ok || info === undefined ? '' : ' ' + JSON.stringify(info)}`); if (!ok) failures++; };
 
 const settings = await import('./settings.ts');
 const { speechProvider, synthesize } = await import('./speech.ts');
+const { speaker } = await import('./speech-local.ts');
 const { checkClientFrame } = await import('./frames.ts');
 
 const has = (...keys: string[]) => (k: string) => keys.includes(k);
 check('auto: OpenAI first, then Gemini, else the device', speechProvider('auto', has('openai', 'gemini')) === 'openai'
     && speechProvider('auto', has('gemini')) === 'gemini' && speechProvider('auto', has()) === null);
+check('auto: without a key the machine itself, when it speaks', speechProvider('auto', has(), true) === 'local' && speechProvider('auto', has('gemini'), true) === 'gemini');
 check('a chosen provider without its key: the device', speechProvider('gemini', has('openai')) === null && speechProvider('openai', has('openai')) === 'openai');
-check('device: never a cloud voice', speechProvider('device', has('openai', 'gemini')) === null);
+check('the machine chosen: always asked, ready or not', speechProvider('local', has('openai'), false) === 'local');
+check('device: never a cloud voice', speechProvider('device', has('openai', 'gemini'), true) === null);
+
+// The machine's own voice: in a container without Python it says so; with Piper (stubbed) the WAV comes from the cache dir
+settings.saveSettings({ language: 'de', readAloud: 'local' });
+let localError = '';
+await synthesize('Hello').catch((e: Error) => { localError = e.message; });
+check('local in a container without Python: the message says voice messages are unavailable there', localError.includes('DESK') && localError.includes('-voice'), localError);
+const spoken: { text: string; voice: string }[] = [];
+speaker.speak = async (text: string, voice: string, file: string) => { spoken.push({ text, voice }); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, 'RIFF' + text); return 1.5; };
+const l = await synthesize('Guten Tag.', 'male');
+check('local: Piper gets the text and the male German voice, the WAV comes back', spoken.length === 1 && spoken[0].voice === 'de_DE-thorsten-high' && spoken[0].text === 'Guten Tag.' && l.mime === 'audio/wav' && Buffer.from(l.data, 'base64').toString() === 'RIFFGuten Tag.', { spoken, l });
+await synthesize('Guten Tag.', 'male');
+check('local: the same text again comes from the cache', spoken.length === 1, spoken.length);
+await synthesize('Guten Tag.', 'female');
+check('local: the female German voice is Kerstin', spoken.length === 2 && spoken[1].voice === 'de_DE-kerstin-medium', spoken[1]);
+settings.saveSettings({ language: 'en', readAloud: 'local' });
+await synthesize('Good day.', 'female');
+check('local: in English Lessac', spoken.at(-1)?.voice === 'en_US-lessac-high', spoken.at(-1));
+settings.saveSettings({ language: 'en', readAloud: 'auto' });
 
 const calls: { url: string; headers: Record<string, string>; body: Record<string, unknown> }[] = [];
 let answer: () => Response = () => new Response('no', { status: 500 });
@@ -30,6 +57,7 @@ globalThis.fetch = (async (url: string, init: RequestInit) => {
 let error = '';
 await synthesize('Hello').catch((e: Error) => { error = e.message; });
 check('without a key: an error, no request', error.includes('API key') && calls.length === 0, error);
+check('frame: "local" is a valid choice', checkClientFrame({ type: 'settings_save', settings: { readAloud: 'local' } }).ok);
 
 settings.saveApiKeys({ openai: 'sk-test', gemini: 'g-test' });
 answer = () => new Response(Buffer.from('MP3DATA'));

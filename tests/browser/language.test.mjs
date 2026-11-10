@@ -20,7 +20,7 @@ export default async function ({ start, check }) {
     let s = await texts();
     check('German browser: German UI and <html lang="de">', s.lang === 'de' && s.settings === 'Einstellungen' && s.status === 'DESK, WORKSTATION verbunden · über test.local', s);
     check('data-i18n texts, placeholders, titles and aria labels in German', s.search === 'In allen Chats suchen' && s.searchLabel === 'In allen Chats suchen'
-        && s.newTitle === 'Neue Unterhaltung, neuer Bot, neue Gruppe oder neuer Ordner' && s.empty.startsWith('Wähle links einen Bot') && s.machines === 'Status', s);
+        && s.newTitle === 'Neue Unterhaltung, neuer Bot, neue Gruppe, neuer Ordner oder Sessions am Rechner' && s.empty.startsWith('Wähle links einen Bot') && s.machines === 'Status', s);
 
     // a message code from the relay in German
     await h.openChat('Anna');
@@ -42,14 +42,14 @@ export default async function ({ start, check }) {
     check('`language` frame to every machine that is awake', frames.length === 2 && frames.every((f) => f.language === 'en') && frames.map((f) => f.machine).sort().join() === 'desk,workstation', frames);
     s = await texts();
     check('re-rendered in English without a reload', s.lang === 'en' && s.settings === 'Settings' && s.search === 'Search all chats' && s.status === 'DESK, WORKSTATION connected · via test.local'
-        && s.newTitle === 'New conversation, bot, group or folder' && s.machines === 'Status', s);
+        && s.newTitle === 'New conversation, bot, group or folder, or the sessions on the machine' && s.machines === 'Status', s);
     check('the open settings page is English too', (await p.textContent('#settings .settings-bar strong')) === 'Settings'
         && (await p.locator('#settings-language option').allTextContents()).join('|') === 'Automatic|English|Deutsch');
     check('chosen language stored on this device', await p.evaluate(() => localStorage.getItem('openfolk-language') === 'en'));
     // the arrow on a phone, the X on a wide screen
     await p.locator('#settings .settings-bar .round:visible').first().click();
     await p.click('#btn-new');
-    check('"+" menu rebuilt in English', (await p.locator('#new-menu button').allTextContents()).join('|') === 'New conversation|New bot|New group|New folder');
+    check('"+" menu rebuilt in English', (await p.locator('#new-menu button').allTextContents()).join('|') === 'New conversation|New bot|New group|New folder|Machine sessions');
     await p.click('#btn-new');
 
     // without a choice of its own the backends' setting applies; a backend whose language was never chosen gets this page's

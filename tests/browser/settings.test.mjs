@@ -188,9 +188,7 @@ export default async function ({ start, check }) {
             handoverIde: true, handoverTerminal: true, voiceModel: '', voiceDevice: 'auto', voicePreload: true, gitPushUser: 'bot', gitPushHost: 'git.example.com', botFolder: '' } });
     await h.wait(100);
     const folderShown = await botFolder();
-    const folderHint = await p.evaluate(() => [...document.querySelectorAll('#settings-machines .hint')].map((n) => n.textContent).find((x) => x.includes('moving here')) || '');
-    check('folder for bots: empty, the first allowed folder as placeholder, the allowed ones named', folderShown?.value === '' && folderShown.placeholder === 'D:/work'
-        && folderHint.includes('D:/work, E:/more'), [folderShown, folderHint]);
+    check('folder for bots: empty, the first allowed folder as placeholder', folderShown?.value === '' && folderShown.placeholder === 'D:/work', folderShown);
     await p.evaluate(() => {
         const input = [...document.querySelectorAll('#settings-machines label')].find((l) => l.querySelector('span')?.textContent === 'Folder').querySelector('input');
         input.value = 'D:/work/OpenFolk';

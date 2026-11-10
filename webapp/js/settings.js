@@ -78,6 +78,14 @@ export function openSettingsAt(block) {
     block.scrollIntoView({ block: 'start' });
 }
 
+/** The settings of one machine, opened at "Pushing with git" (a clone that lacked credentials leads here). */
+export function openGitSettings(host) {
+    openMachines.add(host);
+    openSettings();
+    const git = el.settingsMachines.querySelector(`details.settings-machine[data-host="${CSS.escape(host)}"] .settings-git`);
+    (git || el.settingsMachines).scrollIntoView({ block: 'start' });
+}
+
 /** The devices block: the list, the end-to-end key and the second factor, fresh from the relay. */
 function loadDevices() {
     el.deviceList.replaceChildren(node('li', 'empty-small', t('common.loading')));
@@ -98,7 +106,8 @@ function renderRelayClaim() {
 
 export function renderSettings() {
     const st = state.machineStatus;
-    const joined = (state.machineTokens || []).map((x) => x.machine);
+    // A machine bound to an account by a setup link is that person's: it leaves with the account, not from this list
+    const joined = (state.machineTokens || []).filter((x) => !x.account).map((x) => x.machine);
     const hosts = [...new Set([...state.online, ...(st ? Object.keys(st.hosts || {}) : []), ...joined])].sort();
     el.machineAddRow.hidden = !state.machineTokens || !state.online.length;
     // A click opens <details> at once but fires 'toggle' a task later; a render in between would close it again
@@ -419,7 +428,6 @@ function fallbackRules(host, ms) {
                 : t('settings.fallbackOnSubscription', { usd });
         box.appendChild(node('p', 'settings-fallback-now', now));
     }
-    box.appendChild(node('p', 'hint', t('settings.fallbackHint')));
     return box;
 }
 
@@ -433,7 +441,7 @@ function providersForm(host, ms, details) {
     const off = choice ? s.disabledEngines : [];
     const statuses = (state.setupPerMachine[host] || {}).engines || {};
     details.appendChild(node('h4', '', t('settings.providers')));
-    if (choice) details.appendChild(node('p', 'hint', t(off.length === ENGINES.length ? 'settings.providersNone' : 'settings.providersHint')));
+    if (choice && off.length === ENGINES.length) details.appendChild(node('p', 'hint', t('settings.providersNone')));
     for (const engine of choice ? ENGINES : ['claude']) {
         const on = !off.includes(engine);
         if (choice) {
@@ -455,7 +463,6 @@ function providersForm(host, ms, details) {
         part.appendChild(node('span', 'settings-hint', t(status === 'ready' ? 'settings.engineReady' : status === 'sign_in' ? 'settings.engineSignIn'
             : status === 'missing' ? 'settings.engineMissing' : 'settings.engineChecking')));
         if (engine === 'opencode') {
-            part.appendChild(node('p', 'hint', t('settings.opencodeHint')));
             details.appendChild(part);
             continue;
         }
@@ -489,7 +496,7 @@ function providersForm(host, ms, details) {
                 // A key on its way switches over; without a key the machine goes back to the subscription
                 sendMachine(host, authPatch(v ? mode : 'subscription'), keyPatch(v));
             });
-            part.append(key, node('p', 'hint', t('settings.engineKeyHint')));
+            part.append(key);
             if (claude && auth === 'both') part.appendChild(fallbackRules(host, ms));
         } else if (status === 'sign_in' || status === 'missing') {
             const how = node('p', 'hint', t('settings.engineHow') + ' ');
@@ -518,13 +525,12 @@ function machineForm(host, ms) {
         const folderField = textField('settings.botFolderField', s.botFolder, (v) => set({ botFolder: v }));
         /** @type {HTMLInputElement} */ (folderField.querySelector('input')).placeholder = ms.roots?.[0] || '';
         details.appendChild(folderField);
-        details.appendChild(node('p', 'hint', t('settings.botFolderHint', { roots: (ms.roots || []).join(', ') || '–' })));
     }
 
     details.appendChild(node('h4', '', t('settings.shutdown')));
     const noShutdown = !ms.offers.shutdown;
     details.appendChild(checkField('settings.shutdownAllowed', s.shutdown && !noShutdown, (v) => set({ shutdown: v }), noShutdown));
-    details.appendChild(node('p', 'hint', noShutdown ? t('settings.shutdownUnavailable') : t('settings.shutdownHow', { method: ms.shutdownMethod })));
+    if (noShutdown) details.appendChild(node('p', 'hint', t('settings.shutdownUnavailable')));
     const off = noShutdown || !s.shutdown;
     details.appendChild(numberField('settings.shutdownDelay', s.shutdownDelaySeconds, 3600, (v) => set({ shutdownDelaySeconds: v }), off));
     details.appendChild(selectField('settings.afterWake', s.afterWake, [['ifIdle', 'settings.afterWakeIfIdle'], ['always', 'settings.afterWakeAlways'], ['never', 'settings.afterWakeNever']],
@@ -538,14 +544,13 @@ function machineForm(host, ms) {
     if ('claudeAiConnectors' in s) {
         details.appendChild(node('h4', '', t('settings.connectors')));
         details.appendChild(checkField('settings.claudeAiConnectors', s.claudeAiConnectors, (v) => set({ claudeAiConnectors: v })));
-        details.appendChild(node('p', 'hint', t('settings.claudeAiConnectorsHint')));
     }
 
     details.appendChild(node('h4', '', t('settings.handover')));
     details.appendChild(checkField('settings.handoverIde', s.handoverIde && ms.offers.ide, (v) => set({ handoverIde: v }), !ms.offers.ide));
     details.appendChild(checkField('settings.handoverTerminal', s.handoverTerminal && ms.offers.terminal, (v) => set({ handoverTerminal: v }), !ms.offers.terminal));
 
-    details.appendChild(node('h4', '', t('settings.git')));
+    details.appendChild(node('h4', 'settings-git', t('settings.git')));
     // An address is cut down to its host here already: older backends refuse anything else
     const hostField = textField('settings.gitPushHost', s.gitPushHost, (v) => {
         const host = gitHostOf(v);
@@ -557,7 +562,6 @@ function machineForm(host, ms) {
     const gitKey = node('div', 'settings-key');
     keyField(gitKey, 'settings.gitPushToken', ms.gitPushToken, (v) => sendMachine(host, {}, { gitPushToken: v }));
     details.appendChild(gitKey);
-    details.appendChild(node('p', 'hint', t('settings.gitPushHint')));
 
     details.appendChild(node('h4', '', t('settings.voice')));
     if (ms.voice) details.appendChild(voiceSetupRow(host, ms.voice));
@@ -577,9 +581,10 @@ function voiceSetupRow(host, voice) {
     const row = node('div', 'settings-voice-setup');
     const detail = voice.detail === 'no_python' ? t('settings.voiceNoPython') : voice.detail || '';
     const model = voice.state === 'installing' && voice.detail?.startsWith('model:') ? voice.detail.slice(6) : '';
-    const text = voice.state === 'ready' ? t('settings.voiceReady')
+    // ready without `speech`: an environment from before the voice for reading aloud, or a Python of one's own without it
+    const text = voice.state === 'ready' ? t(voice.speech === false ? 'settings.voiceReadyNoSpeech' : 'settings.voiceReady')
         : model ? t('settings.voiceInstallingModel', { model, size: MODEL_SIZES[model] || '?' })
-        : voice.state === 'installing' ? t(voice.detail === 'packages' ? 'settings.voiceInstallingPackages' : 'settings.voiceInstalling')
+        : voice.state === 'installing' ? t(voice.detail === 'packages' ? 'settings.voiceInstallingPackages' : voice.detail === 'voices' ? 'settings.voiceInstallingVoices' : 'settings.voiceInstalling')
             : voice.state === 'failed' ? t('settings.voiceFailed', { error: detail })
                 : voice.state === 'unavailable' ? t('settings.voiceUnavailable') : t('settings.voiceMissing');
     row.appendChild(node('span', 'settings-hint', text));

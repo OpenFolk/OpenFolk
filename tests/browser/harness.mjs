@@ -108,6 +108,8 @@ export async function start(browser, o = {}) {
     const ctx = await browser.newContext({
         viewport: { width: 400, height: 860 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, colorScheme: o.dark ? 'dark' : 'light',
         locale: o.locale ?? 'en-US',
+        // Other window sizes or a video (scripts/screenshots.mjs)
+        ...o.context,
     });
     // second.local: another origin for tests that move to another relay
     await ctx.route(/^https?:\/\/(?:test|second)\.local\//, (r) => {

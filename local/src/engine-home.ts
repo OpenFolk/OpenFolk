@@ -1,4 +1,5 @@
-// Where the engines of an account keep their sign-in, sessions and settings. 'main' uses the machine's own
+// Where the engines of an account keep their sign-in, sessions and settings. The machine's owner ('main', or the
+// account a machine is bound to by a setup link, store.ts) uses the machine's own
 // (~/.claude, ~/.codex, or what CLAUDE_CONFIG_DIR and CODEX_HOME say), so nothing changes for one person alone. Every
 // other account gets folders of its own in its part of the data folder (accounts/<id>/engines/), which every setup
 // keeps, the bots' file tools do not hand out, and which goes with the account when it is deleted.
@@ -14,7 +15,7 @@ import { cliEnv, cliSettings, type AuthMode } from './auth.ts';
 import { config } from './config.ts';
 import { claudeOnKey } from './key-fallback.ts';
 import { anthropicKey, engineKey, machineSettings } from './machine-settings.ts';
-import { accountPath, currentAccount, DEFAULT_ACCOUNT } from './store.ts';
+import { accountPath, currentAccount, ownerAccount } from './store.ts';
 import type { Engine, KeyEngine } from '../../shared/protocol.ts';
 
 /** Engines an account other than 'main' can sign in to with a folder of its own. */
@@ -24,12 +25,12 @@ type HomeEngine = 'claude' | 'codex';
 
 /** The current account's own folder for an engine; null for 'main', which uses the machine's. */
 export function engineHome(engine: HomeEngine): string | null {
-    return currentAccount() === DEFAULT_ACCOUNT ? null : accountPath('engines', engine);
+    return currentAccount() === ownerAccount() ? null : accountPath('engines', engine);
 }
 
 /** Whether the engine may run for the current account. */
 export function engineAvailable(engine: Engine): boolean {
-    return currentAccount() === DEFAULT_ACCOUNT || ACCOUNT_ENGINES.includes(engine);
+    return currentAccount() === ownerAccount() || ACCOUNT_ENGINES.includes(engine);
 }
 
 /** The environment of a CLI with the account's folders; for 'main' unchanged. */
@@ -53,7 +54,7 @@ export function claudeConfigDir(): string {
  * (key-fallback.ts).
  */
 export function accountAuth(): AuthMode {
-    if (currentAccount() !== DEFAULT_ACCOUNT) return 'subscription';
+    if (currentAccount() !== ownerAccount()) return 'subscription';
     const mode = config.auth;
     if (mode === 'both') return claudeOnKey() ? 'apikey' : 'subscription';
     return mode;
@@ -64,7 +65,7 @@ export function accountAuth(): AuthMode {
  * the machine owner's: another account never runs on them.
  */
 export function engineKeyFor(engine: KeyEngine): string {
-    if (currentAccount() !== DEFAULT_ACCOUNT || machineSettings().engineAuth[engine] !== 'apikey') return '';
+    if (currentAccount() !== ownerAccount() || machineSettings().engineAuth[engine] !== 'apikey') return '';
     return engineKey(engine);
 }
 

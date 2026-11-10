@@ -2,7 +2,8 @@
 // tools. As context Claude gets README.md and CLAUDE.md of the folder and its entries.
 // Profile picture: with the key of the image model in the shared settings (Gemini for Nano Banana, OpenAI for gpt-image)
 // Claude describes the person and the image model turns that into a photo (data URL); without a key Claude
-// draws an SVG that the browser turns into an image.
+// draws an SVG that the browser turns into an image. A bot making its own picture (make_avatar) gets the same, only
+// small: the backend cannot shrink a picture, and the SVG is kept as it is.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -73,7 +74,8 @@ export function folderContext(folder: string): string {
 
 export function prompt(a: SuggestionRequest, context: string, task: Task = a.what, lang: Language = language()): string {
     const languageName = LANGUAGE_NAMES[lang];
-    const known = [a.name && `Name: ${a.name}`, a.area && `Field of work: ${a.area}`, a.role && `Role: ${a.role}`, a.tone && `Tone/way of working: ${a.tone.slice(0, 600)}`].filter(Boolean).join('\n');
+    const known = [a.name && `Name: ${a.name}`, a.area && `Field of work: ${a.area}`, a.role && `Role: ${a.role}`, a.tone && `Tone/way of working: ${a.tone.slice(0, 600)}`,
+        a.wish && (task === 'photo' || task === 'avatar') && `Wishes for the picture: ${a.wish.slice(0, 600)}`].filter(Boolean).join('\n');
     const head = ['A user creates a bot in a messenger app: a Claude Code colleague that works permanently in a project folder.',
         known ? `Details so far:\n${known}` : 'No details so far.', context || 'Nothing is known about the folder.'];
     switch (task) {
@@ -160,6 +162,13 @@ export function resultFrom(what: SuggestionRequest['what'], data: unknown): Sugg
     }
 }
 
+/** A profile picture as data URL for Bot.avatar: the photo as it is, the SVG encoded (the apps show it like any picture). */
+export function avatarDataUrl(r: SuggestionResult): string {
+    if (r.what !== 'avatar') throw new Error('No picture received');
+    if (r.image) return r.image;
+    return `data:image/svg+xml;base64,${Buffer.from(checkSvg(r.svg), 'utf8').toString('base64')}`;
+}
+
 /** Description of the person from Claude's answer; throws if it is missing. */
 export function descriptionFrom(data: unknown): string {
     const o = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
@@ -178,12 +187,15 @@ export function photoPrompt(description: string): string {
         + 'to life colors, editorial magazine quality. No text, no watermark, no logo, no illustration, no painting, no 3D render.';
 }
 
-/** Asks Claude for a suggestion; a short session without tools and without history. */
-export async function suggest(a: SuggestionRequest): Promise<SuggestionResult> {
+/**
+ * Asks Claude for a suggestion; a short session without tools and without history. `small`: the photo comes at
+ * 512 pixels (a bot's own picture, which nothing shrinks before it travels in bots.json); the editor shrinks itself.
+ */
+export async function suggest(a: SuggestionRequest, small = false): Promise<SuggestionResult> {
     const context = folderContext(a.folder);
     if (a.what === 'avatar' && photoPossible()) {
         const description = descriptionFrom(await askClaude(a, context, 'photo'));
-        return { what: 'avatar', image: await createPhoto(photoPrompt(description)) };
+        return { what: 'avatar', image: await createPhoto(photoPrompt(description), small) };
     }
     return resultFrom(a.what, await askClaude(a, context, a.what));
 }
@@ -229,8 +241,8 @@ async function askClaude(a: SuggestionRequest, context: string, task: Task): Pro
 }
 
 /** Lets the image model create a square photo; result as data URL. */
-async function createPhoto(promptText: string): Promise<string> {
-    return photoProvider() === 'gemini' ? photoGemini(promptText) : photoOpenai(promptText);
+async function createPhoto(promptText: string, small: boolean): Promise<string> {
+    return photoProvider() === 'gemini' ? photoGemini(promptText, small) : photoOpenai(promptText, small);
 }
 
 async function imageRequest(url: string, headers: Record<string, string>, body: unknown): Promise<{ ok: boolean; status: number; json: Record<string, unknown> }> {
@@ -245,13 +257,14 @@ async function imageRequest(url: string, headers: Record<string, string>, body: 
 }
 
 /** Google Gemini (Nano Banana): generateContent with image output, image in candidates[].content.parts[].inlineData. */
-async function photoGemini(promptText: string): Promise<string> {
+async function photoGemini(promptText: string, small: boolean): Promise<string> {
     const { ok, status, json } = await imageRequest(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(avatarModel())}:generateContent`,
         { 'x-goog-api-key': photoKey() },
         {
             contents: [{ parts: [{ text: promptText }] }],
-            generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '1:1', imageSize: '1K' } },
+            // 512 only from Nano Banana 2 on; an older image model answers with its error
+            generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '1:1', imageSize: small ? '512' : '1K' } },
         },
     );
     const error = (json.error as { message?: string } | undefined)?.message;
@@ -270,11 +283,12 @@ async function photoGemini(promptText: string): Promise<string> {
 }
 
 /** OpenAI Images (gpt-image): image as b64_json. */
-async function photoOpenai(promptText: string): Promise<string> {
+async function photoOpenai(promptText: string, small: boolean): Promise<string> {
     const { ok, status, json } = await imageRequest(
         'https://api.openai.com/v1/images/generations',
         { authorization: `Bearer ${photoKey()}` },
-        { model: avatarModel(), prompt: promptText, n: 1, size: '1024x1024', quality: 'medium', output_format: 'jpeg' },
+        // gpt-image makes no 512: a stronger JPEG compression keeps the picture small instead
+        { model: avatarModel(), prompt: promptText, n: 1, size: '1024x1024', quality: 'medium', output_format: 'jpeg', ...(small ? { output_compression: 60 } : {}) },
     );
     const error = (json.error as { message?: string } | undefined)?.message;
     if (!ok) throw new Error(`Image model ${avatarModel()}: ${error || `HTTP ${status}`}`);

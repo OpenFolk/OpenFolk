@@ -107,30 +107,116 @@ export class Owner {
 }
 
 export const MACHINE_TOKENS_FILE = 'machine-tokens.json';
+export const SETUP_INVITES_FILE = 'setup-invites.json';
 /** How long an invitation for a machine works. */
 const INVITE_MS = 15 * 60_000;
+/** How long a setup link works: an admin forwards it, and the person opens it when they get to it. */
+export const SETUP_INVITE_MS = 7 * 24 * 60 * 60_000;
+
+interface MachineToken {
+    machine: string;
+    hash: string;
+    created: string;
+    /** Joined by a setup link: the machine serves this account only. */
+    account?: string;
+}
 
 /**
  * Machines joined by invitation: each has an agent token of its own, valid for its machine name only, kept as a hash.
  * The shared AGENT_TOKEN keeps working next to them. An invitation is a one-time token, kept in memory only: a
  * restart of the relay voids open invitations.
+ *
+ * A setup link joins a machine bound to one account. Its invitation lives for days, so it is kept as a hash on disk
+ * (a relay deployed in between must not void it), one per account: a new link replaces the old.
  */
 export class MachineTokens {
     private file: string;
-    private list: { machine: string; hash: string; created: string }[] = [];
+    private setupFile: string;
+    private list: MachineToken[] = [];
     private invites = new Map<string, number>();
+    private setupInvites: { hash: string; account: string; until: number }[] = [];
 
     constructor(dataDir: string) {
         this.file = path.join(dataDir, MACHINE_TOKENS_FILE);
+        this.setupFile = path.join(dataDir, SETUP_INVITES_FILE);
         try {
             const v = JSON.parse(fs.readFileSync(this.file, 'utf8')) as unknown;
             if (Array.isArray(v)) this.list = v.filter((t) => t && typeof t.machine === 'string' && /^[0-9a-f]{64}$/.test(String(t.hash)));
+        } catch { /* none yet */ }
+        try {
+            const v = JSON.parse(fs.readFileSync(this.setupFile, 'utf8')) as unknown;
+            if (Array.isArray(v)) {
+                this.setupInvites = v.filter((i) => i && typeof i.account === 'string' && typeof i.until === 'number' && /^[0-9a-f]{64}$/.test(String(i.hash)));
+            }
         } catch { /* none yet */ }
     }
 
     private save(): void {
         fs.mkdirSync(path.dirname(this.file), { recursive: true });
         fs.writeFileSync(this.file, JSON.stringify(this.list, null, 2), { mode: 0o600 });
+    }
+
+    private saveSetupInvites(now = Date.now()): void {
+        this.setupInvites = this.setupInvites.filter((i) => i.until > now);
+        fs.mkdirSync(path.dirname(this.setupFile), { recursive: true });
+        fs.writeFileSync(this.setupFile, JSON.stringify(this.setupInvites, null, 2), { mode: 0o600 });
+    }
+
+    /** A setup link for the account, replacing an open one. */
+    setupInvite(account: string, now = Date.now()): { token: string; expiresAt: string } {
+        const token = randomBytes(24).toString('base64url');
+        this.setupInvites = this.setupInvites.filter((i) => i.account !== account);
+        this.setupInvites.push({ hash: hashToken(token), account, until: now + SETUP_INVITE_MS });
+        this.saveSetupInvites(now);
+        return { token, expiresAt: new Date(now + SETUP_INVITE_MS).toISOString() };
+    }
+
+    /** The open setup link of the account stops working; true if there was one. */
+    revokeSetup(account: string): boolean {
+        const before = this.setupInvites.length;
+        this.setupInvites = this.setupInvites.filter((i) => i.account !== account);
+        if (before === this.setupInvites.length) return false;
+        this.saveSetupInvites();
+        return true;
+    }
+
+    /**
+     * Redeems a setup link: an agent token bound to its account, under the machine's name or, when that name belongs
+     * to another machine (`taken`: one without a token of its own), under the name with a number.
+     */
+    joinSetup(invite: string, machine: string, taken: (name: string) => boolean, now = Date.now()): { token: string; machine: string; account: string } | 'invalid' {
+        const h = hashToken(invite);
+        const found = this.setupInvites.find((i) => tokenEquals(i.hash, h) && i.until > now);
+        if (!found || !/^[a-z0-9-]{1,32}$/.test(machine)) return 'invalid';
+        let name = machine;
+        for (let i = 2; this.list.some((t) => t.machine === name) || taken(name); i++) name = `${machine.slice(0, 28)}-${i}`;
+        this.setupInvites = this.setupInvites.filter((i) => i !== found);
+        this.saveSetupInvites(now);
+        const token = randomBytes(32).toString('hex');
+        this.list.push({ machine: name, hash: hashToken(token), created: new Date(now).toISOString(), account: found.account });
+        this.save();
+        return { token, machine: name, account: found.account };
+    }
+
+    /** The account a machine token is bound to; undefined for one without (and for the shared AGENT_TOKEN). */
+    accountOf(raw: string, machine?: string): string | undefined {
+        return this.list.find((t) => (!machine || t.machine === machine) && tokenMatches(t.hash, raw))?.account;
+    }
+
+    /** Machines bound to an account: name -> account. */
+    bound(): Map<string, string> {
+        return new Map(this.list.filter((t) => t.account).map((t) => [t.machine, t.account!]));
+    }
+
+    /** The account is gone: its machines' tokens and its setup link go with it; returns those machines. */
+    removeAccount(account: string): string[] {
+        const gone = this.list.filter((t) => t.account === account).map((t) => t.machine);
+        if (gone.length) {
+            this.list = this.list.filter((t) => t.account !== account);
+            this.save();
+        }
+        this.revokeSetup(account);
+        return gone;
     }
 
     invite(now = Date.now()): { token: string; expiresAt: string } {
@@ -145,6 +231,8 @@ export class MachineTokens {
         const h = hashToken(invite);
         const until = this.invites.get(h);
         if (!until || until < now || !/^[a-z0-9-]{1,32}$/.test(machine)) return 'invalid';
+        // The name of a machine bound to an account stays its own; an invitation does not take it over
+        if (this.list.some((t) => t.machine === machine && t.account)) return 'invalid';
         this.invites.delete(h);
         const token = randomBytes(32).toString('hex');
         this.list = this.list.filter((t) => t.machine !== machine);
@@ -158,8 +246,8 @@ export class MachineTokens {
         return this.list.some((t) => (!machine || t.machine === machine) && tokenMatches(t.hash, raw));
     }
 
-    all(): { machine: string; created: string }[] {
-        return this.list.map(({ machine, created }) => ({ machine, created }));
+    all(): { machine: string; created: string; account?: string }[] {
+        return this.list.map(({ machine, created, account }) => ({ machine, created, ...(account ? { account } : {}) }));
     }
 
     remove(machine: string): boolean {

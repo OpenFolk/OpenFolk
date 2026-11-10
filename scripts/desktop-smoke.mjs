@@ -5,6 +5,8 @@
 //    signed in there, and the backend connects there.
 // 2. "Connect this computer to my server": the link from "Add machine" on the setup page joins the computer to a relay;
 //    the backend runs in the app and the window is pointed at that relay.
+// 2b. A setup link handed over by the system (openfolk://setup?link=…, as a second start): asked once, the computer
+//    joins bound to the account the link is for; "Disconnect from …" in the menu goes back to "on this computer".
 // The relays are real relay processes on 127.0.0.1. The app is quit gently each time.
 //   node scripts/desktop-smoke.mjs [--exe <packaged app>]   (--exe: the built app, e.g. win-unpacked/OpenFolk.exe)
 import { spawn } from 'node:child_process';
@@ -209,6 +211,84 @@ function showLog(run) {
         check('mode "on this computer", signed in at that relay', run.config().mode === 'local' && run.config().paired === `${server.origin}/`, run.config());
     } catch (e) {
         check(`desktop app joined (${e.message})`, false);
+        showLog(run);
+    } finally {
+        await quit(run);
+        server.stop();
+        try { fs.rmSync(run.profile, { recursive: true, force: true, maxRetries: 5 }); } catch { /* a file still held */ }
+    }
+}
+
+// ---- 2b. A setup link from the browser, while the app runs: the system hands it over as a second start
+{
+    const AGENT_TOKEN = crypto.randomBytes(24).toString('hex');
+    const USER_PASSWORD = crypto.randomBytes(24).toString('hex');
+    const server = await startRelay({ AGENT_TOKEN, USER_PASSWORD });
+    const run = await launch({});
+    try {
+        // The admin's side, as its browser and backend do it: an account, then the setup link for it
+        const account = await new Promise((resolve, reject) => {
+            const ws = new WebSocket(`${server.origin.replace('http', 'ws')}/ws/client`);
+            ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: USER_PASSWORD }));
+            ws.onmessage = (m) => {
+                const f = JSON.parse(String(m.data));
+                if (f.type === 'auth' && f.ok) ws.send(JSON.stringify({ type: 'account_create', name: 'Kunde' }));
+                if (f.type === 'account_created') {
+                    resolve(f.account.id);
+                    ws.close();
+                }
+            };
+            ws.onerror = () => reject(new Error('relay socket'));
+        });
+        const invite = await fetch(`${server.origin}/setup-invite`, {
+            method: 'POST', headers: { authorization: `Bearer ${AGENT_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ account, by: 'main' }),
+        }).then((r) => r.json());
+        const link = `${server.origin}/#setup=${invite.token}&e2e=${crypto.randomBytes(32).toString('base64url')}`;
+        const win = await run.app.firstWindow();
+        await win.waitForSelector('#join-form');
+        // Native dialogs answered by the test: "Set up" and "Disconnect" are the first button each
+        await run.app.evaluate(({ dialog }) => {
+            globalThis.asked = [];
+            dialog.showMessageBox = async (_w, o) => {
+                globalThis.asked.push(o.message);
+                return { response: 0 };
+            };
+        });
+        await run.app.evaluate(({ app: a }, url) => a.emit('second-instance', {}, ['OpenFolk.exe', `openfolk://setup?link=${encodeURIComponent(url)}`], ''), link);
+        const host = new URL(server.origin).host;
+        check('setup link: asked once, naming the relay', await until(() => run.app.evaluate(() => globalThis.asked.length === 1), 15_000)
+            && (await run.app.evaluate(() => globalThis.asked[0])).includes(host), await run.app.evaluate(() => globalThis.asked));
+        const loaded = await relayShown(win, server.origin);
+        check('setup link: the window is pointed at the relay', loaded, win.url());
+        check('setup link: the machine joined bound to the account', await until(() => server.log().includes(`(bound to account ${account})`), 60_000), server.log().slice(-800));
+        check('setup link: the binding is kept in the profile', await until(() => readJson(path.join(run.profile, 'data', 'binding.json')).account === account, 20_000));
+        // Signed in as the account, which has no bots until its admin's setup arrives (no admin machine here): it starts
+        // with the people it can write to
+        const start = loaded && await win.waitForFunction(() => [...document.querySelectorAll('#chat-list .welcome button')].some((b) => b.textContent === 'Main'), null, { timeout: 60_000 })
+            .then(() => true, () => false);
+        check('setup link: signed in there as the account, its contacts to write to', start, await win.evaluate(() => document.body.innerText.slice(0, 400)).catch((e) => e.message));
+        check('setup link: the link works once', (await fetch(`${server.origin}/setup`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: invite.token, machine: 'x' }) })).status === 403);
+
+        // The way back: "Disconnect from <relay>" in the app's menu
+        const clicked = await run.app.evaluate(({ Menu }, h) => {
+            const find = (items) => {
+                for (const i of items) {
+                    if (i.label && i.label.includes(h) && typeof i.click === 'function') return i;
+                    const sub = i.submenu && find(i.submenu.items);
+                    if (sub) return sub;
+                }
+                return null;
+            };
+            const item = find(Menu.getApplicationMenu()?.items ?? []);
+            if (item) item.click();
+            return Boolean(item);
+        }, host);
+        check('disconnect: the menu has the entry', clicked);
+        check('disconnect: the profile\'s .env no longer points at the relay', await until(() => !/RELAY_URL=|AGENT_TOKEN=/.test(run.env()), 30_000), run.env());
+        check('disconnect: the backend left that relay', await until(() => / disconnected/.test(server.log().split('connected from').pop() ?? ''), 30_000), server.log().slice(-400));
+        check('disconnect: back to "on this computer"', run.config().mode === 'local' && !run.config().paired, run.config());
+    } catch (e) {
+        check(`desktop app took a setup link (${e.message})`, false);
         showLog(run);
     } finally {
         await quit(run);

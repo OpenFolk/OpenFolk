@@ -25,7 +25,7 @@ export default async function ({ start, check }) {
     await p.click('[data-el=chat-title]');
     await h.wait(150);
     const labels = await p.locator('#info-actions button[data-action]').allTextContents();
-    check('one entry "VS Code"', labels.filter((l) => l.includes('VS Code')).join() === 'VS Code', labels);
+    check('one entry "Machine sessions"', labels.filter((l) => l.includes('Machine sessions')).join() === 'Machine sessions', labels);
     await p.click('#info-actions button[data-action="vscode"]');
     await h.wait(100);
     check('a backend from before: only the IDE', (await p.isVisible('#vs-show')) && !(await p.isVisible('#vs-terminal')));

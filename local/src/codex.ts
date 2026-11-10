@@ -50,10 +50,10 @@ export function codexBinary(): string {
  * and keeps a key login in place of the ChatGPT one, so a key gets a folder of its own (CodexConnection.start signs in
  * there): ~/.codex keeps the subscription login for switching back. Threads stay in the folder they were started in.
  */
-export function codexEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function codexEnv(base: NodeJS.ProcessEnv = process.env, keyHome = true): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = engineEnv({ ...base, CODEX_MANAGED_BY_NPM: '1' });
     for (const k of API_KEYS) delete env[k];
-    if (engineKeyFor('codex')) {
+    if (keyHome && engineKeyFor('codex')) {
         env.CODEX_HOME = dataPath('codex-apikey');
         fs.mkdirSync(env.CODEX_HOME, { recursive: true });
     }
@@ -81,7 +81,7 @@ export class CodexConnection extends RpcProcess {
 
     async start(): Promise<void> {
         const r = await this.call<{ userAgent: string }>('initialize', {
-            clientInfo: { name: 'openfolk', title: 'OpenFolk', version: '0.4.0' },
+            clientInfo: { name: 'openfolk', title: 'OpenFolk', version: '0.5.0' },
             // dynamic tools (thread/start.dynamicTools) are still experimental
             capabilities: { experimentalApi: true },
         });
@@ -504,7 +504,7 @@ export class CodexRun {
 
 // ------------------------------------------------------------------ Mapping the items
 
-interface Item {
+export interface Item {
     type: string;
     id: string;
     command?: string;
@@ -548,7 +548,7 @@ export function shellName(command: string): string {
     return POWERSHELL.test(command) || process.platform === 'win32' ? 'PowerShell' : 'Bash';
 }
 
-function toolFrom(item: Item): ToolCall | null {
+export function toolFrom(item: Item): ToolCall | null {
     const call = (name: string, input: Record<string, unknown>): ToolCall => ({ id: item.id, name, summary: toolSummary(name, input) });
     switch (item.type) {
         case 'commandExecution':
@@ -572,7 +572,7 @@ function toolFrom(item: Item): ToolCall | null {
     }
 }
 
-function resultFrom(item: Item): { ok: boolean; text: string } {
+export function resultFrom(item: Item): { ok: boolean; text: string } {
     switch (item.type) {
         case 'commandExecution':
             return { ok: item.status === 'completed' && (item.exitCode ?? 0) === 0, text: item.status === 'declined' ? t('engine.declined') : item.aggregatedOutput ?? '' };
@@ -611,6 +611,6 @@ export function codexInput(content: string | Record<string, unknown>[]): Record<
     return r.length ? r : [text('')];
 }
 
-function truncate(text: string): string {
+export function truncate(text: string): string {
     return text.length > MAX_RESULT ? text.slice(0, MAX_RESULT) + '\n…' : text;
 }

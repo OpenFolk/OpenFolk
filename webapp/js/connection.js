@@ -1,17 +1,17 @@
 /* OpenFolk web app: connection to the relay and handling of incoming frames. */
 import { t, tn } from './i18n.js';
-import { COLLAPSED_KEY, DEVICE_KEY, TOKEN_KEY, el, state, storage } from './core.js';
+import { COLLAPSED_KEY, DEVICE_KEY, SIGNED_OUT_KEY, TOKEN_KEY, el, state, storage, toast } from './core.js';
 import { activePane, capacity, createPane, isWide, paneFor, panes, rememberedPanes, visibleChats } from './panes.js';
 import { askForKey, bot, botIdOf, decrypt, e2e, group, imageOriginal, isGroup, isPerson, mergeStates, plain, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList, renderSearchResult, renderUsage, setSearchMarks } from './list.js';
 import { BRIEFLY_GONE_MS, closeChat, loadingBar, openChat, renderChatHeader, renderHeaders, updateSendAllowed } from './chat.js';
 import { BACKEND_GONE_MS, refreshMachinesPage, renderMachines, scheduleWakePoll } from './machines.js';
 import { historyUnchanged, markSeen, receiveCommands, noteIncoming, receiveSeen, renderEntry, renderHistory, renderPinned, scroll, setRead } from './chat-features.js';
-import { approvalsToBottom, attachmentBar, dropStaleLive, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
+import { approvalsToBottom, attachmentBar, dropStaleLive, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderJobs, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
 import { imageRequested, playback, removeVoicePending, startPlayback } from './voice.js';
 import { bundled, connectionVia, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
-import { closeDialog, gitError, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
-import { receiveVscodeHistory, receiveVscodeSessions, renderVscodeAdoptButton, showVscodeList, vs, vscodeError, vscodeShown } from './vscode.js';
+import { answerFolderAsk, closeDialog, gitError, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
+import { receiveVscodeHistory, receiveVscodeSessions, vs, vscodeError, vscodeReconnected, vscodeShown } from './vscode.js';
 import {
     continueMove, fillInfo, folderRequestUnknown, knowledgeError, moveRequestFailed, openInfo, pickerFailed, receiveCloned, receiveFolderChecked, receiveFolderCreated, receiveFolderListed, receiveFolderProposed, receiveMoved, refreshInfo,
     receiveSuggestion, renderRoutines, suggestButton,
@@ -21,7 +21,8 @@ import {
     autologonReported, machineJoinError, settingsSaveFailed, settingsSaved, receiveMachineTokens, receiveSettings, renderDevices, renderMachineJoin, renderAbout, renderPairLink, renderSettings, renderTotp,
     renderTotpSetup, totpError,
 } from './settings.js';
-import { accountError, dropCurrentAccount, receiveAccountCreated, receiveInvite, rememberAccount, renderAccounts } from './accounts.js';
+import { accountError, continueNewAccount, dropCurrentAccount, newAccountFailed, receiveAccountCreated, receiveInvite, rememberAccount, renderAccounts, renderChooser } from './accounts.js';
+import { receiveSetupLink, receiveSetups } from './setups.js';
 import { connectOthers } from './others.js';
 import { signInTerminalAnswer } from './welcome.js';
 import { announceMove, relayClaimed, relayClaimFailed } from './relay-claim.js';
@@ -79,6 +80,7 @@ export function showLogin(message) {
         el.loginError.hidden = false;
     }
     void startQrLogin();
+    renderChooser();
 }
 
 /** Sign-in: a pairing link once, otherwise the device key, otherwise once the password (from the form or stored). */
@@ -87,12 +89,12 @@ export function credentials() {
     // it adds the account of the link, the one so far stays in the list (accounts.js)
     if (state.pairToken) return { type: 'auth', pair: state.pairToken, name: state.loginName || undefined };
     const device = storage.get(DEVICE_KEY);
-    // While another account is being added, the current one's key waits (accounts.js)
-    if (device && !state.stashedDevice) return { type: 'auth', device };
+    // While another account is being added, the current one's key waits; signed out, every key waits (accounts.js)
+    if (device && !state.stashedDevice && !storage.get(SIGNED_OUT_KEY)) return { type: 'auth', device };
     const v = state.loginAttempt;
     if (v) return { type: 'auth', token: v.token, totp: v.totp || undefined, name: v.name || undefined, account: v.account || undefined };
     const old = storage.get(TOKEN_KEY);
-    if (old) return { type: 'auth', token: old };
+    if (old && !storage.get(SIGNED_OUT_KEY)) return { type: 'auth', token: old };
     return null;
 }
 
@@ -269,6 +271,7 @@ function receive(f) {
                 send({ type: 'wake_status' });
                 scheduleWakePoll();
                 startApproval();
+                continueNewAccount();
             } else {
                 const paired = !!state.pairToken;
                 state.rejected = true;
@@ -296,6 +299,12 @@ function receive(f) {
             break;
         case 'machine_tokens':
             receiveMachineTokens(f.list);
+            break;
+        case 'setups':
+            receiveSetups(f.list);
+            break;
+        case 'setup_link':
+            receiveSetupLink(f);
             break;
         case 'machine_join_link':
             if (!approvalLink(f)) renderMachineJoin(f);
@@ -366,12 +375,7 @@ function receive(f) {
                 for (const id of allChats()) if (!open.includes(id)) send({ type: 'history', chatId: id, limit: 1 });
             }
             if (f.online.length) state.catchUp = false;
-            if (!el.vscode.hidden) {
-                // after reconnecting the browser is new to the backend: register watching again
-                if (vs.session && f.online.includes(vs.machine)) send({ type: 'vscode_open', botId: vs.botId, sessionId: vs.session.id, folder: vs.session.folder }, vs.machine);
-                if (vs.session) renderVscodeAdoptButton();
-                else showVscodeList();
-            }
+            vscodeReconnected(f.online);
             renderChatList();
             renderMachines();
             renderHeaders();
@@ -444,6 +448,12 @@ function receive(f) {
             renderChatList();
             renderGitTotal();
             refreshInfo();
+            if (state.openNewBot) {
+                // A bot just created in the editor: its chat, where it asks its setup questions
+                const created = state.openNewBot.until > Date.now() ? f.bots.find((x) => !state.openNewBot.known.includes(x.id)) : null;
+                if (created || state.openNewBot.until <= Date.now()) state.openNewBot = null;
+                if (created) state.openAfterBots = created.id;
+            }
             if (state.openAfterBots && allChats().includes(state.openAfterBots)) {
                 openChat(state.openAfterBots);
                 state.openAfterBots = null;
@@ -731,7 +741,7 @@ function receive(f) {
             }
             if (f.request && f.request.startsWith('account_')) {
                 el.accountsCreate.disabled = false;
-                accountError(message);
+                if (!newAccountFailed(message)) accountError(message);
                 break;
             }
             // Warming up is only a speed-up; an older backend does not know it
@@ -756,6 +766,16 @@ function receive(f) {
             }
             if (f.request === 'folder_list') {
                 pickerFailed(message);
+                break;
+            }
+            // A backend before the question: the dialog goes on without the box
+            if (f.request === 'folder_delete_check') {
+                answerFolderAsk(null, null);
+                break;
+            }
+            // Deleting with the folder was refused at the last moment: nothing was deleted
+            if (f.request === 'bot_delete') {
+                void alertDialog(message);
                 break;
             }
             if (f.request === 'bot_move') {
@@ -810,8 +830,18 @@ function receive(f) {
         case 'folder_listed':
             receiveFolderListed(f);
             break;
+        case 'jobs':
+            state.jobs[f.machine] = f.jobs || [];
+            for (const p of panes) renderJobs(p);
+            break;
         case 'folder_created':
             receiveFolderCreated(f);
+            break;
+        case 'folder_delete_checked':
+            answerFolderAsk(f.botId, f);
+            break;
+        case 'folder_deleted':
+            toast(t('danger.botFolderDeleted', { folder: f.folder }), 4000);
             break;
         case 'models':
             state.models = f.models || [];

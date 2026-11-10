@@ -26,9 +26,48 @@ export function inAccount<T>(account: string, fn: () => T): T {
     return current.run(account, fn);
 }
 
+/**
+ * A machine joined by a setup link belongs to the person of one account (an employee, a customer): the relay tells it
+ * so on every connect, and the binding is kept (binding.json) so it holds from the start, before the relay is reached.
+ * That account is then the machine's owner, as 'main' is everywhere else: it runs on the machine's own engine sign-in
+ * and changes the machine's settings. `setupBy`: the admin whose setup it follows.
+ */
+export interface Binding {
+    account: string;
+    setupBy?: string;
+}
+
+const BINDING_FILE = 'binding.json';
+let binding: Binding | null | undefined;
+
+export function machineBinding(): Binding | null {
+    if (binding === undefined) {
+        const b = readMachineJson<Partial<Binding> | null>(BINDING_FILE, null);
+        binding = b && isAccountId(b.account) ? { account: b.account, ...(isAccountId(b.setupBy) ? { setupBy: b.setupBy } : {}) } : null;
+    }
+    return binding;
+}
+
+export function setMachineBinding(b: Binding | null): void {
+    if (JSON.stringify(b) === JSON.stringify(machineBinding())) return;
+    binding = b;
+    if (b) writeMachineJson(BINDING_FILE, b);
+    else fs.rmSync(dataPath(BINDING_FILE), { force: true });
+}
+
+/** The account that owns this machine: its own one when bound, otherwise 'main'. */
+export function ownerAccount(): string {
+    return machineBinding()?.account ?? DEFAULT_ACCOUNT;
+}
+
 /** After an account was deleted: its data must not be read or written any more. */
 export function retireAccount(account: string): void {
     retired.add(account);
+}
+
+/** Whether the account was deleted while this process runs: nothing of it is served again. */
+export function isRetired(account: string): boolean {
+    return retired.has(account);
 }
 
 /** The accounts that have a folder on this machine. */

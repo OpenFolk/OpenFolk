@@ -16,7 +16,7 @@ const { botTools } = await import('./bot-tools.ts');
 const { searchHistoryText, readHistoryText } = await import('./history-tools.ts');
 const { checkClientFrame } = await import('./frames.ts');
 const { BotManager } = await import('./agent.ts');
-import type { AgentFrame, ClientFrame, HistoryEntry } from '../../shared/protocol.ts';
+import type { AgentFrame, ClientFrame, HistoryEntry, PeerData } from '../../shared/protocol.ts';
 
 let failures = 0;
 const check = (name: string, ok: boolean, info?: unknown) => { console.log(`${ok ? 'ok    ' : 'FAILED'} ${name}${ok || info === undefined ? '' : ` (is ${JSON.stringify(info)})`}`); if (!ok) failures++; };
@@ -128,6 +128,45 @@ const r2 = inAccount('kunde', () => host.handOver(session, 'Nochmal'));
 check('a second hand-over right after is refused', r2.isError);
 const lonely = { bot: { ...support, contact: 'anna' }, currentTurn: { chatId: 'support' }, key: 'support' };
 check('a contact the account cannot reach is refused', inAccount('kunde', () => host.handOver({ ...lonely, currentTurn: { chatId: 'support~ab12' } }, 'x')).isError);
+
+// Chosen contacts ('listed'): only those named, and only if the other side does not limit itself either
+setPeople([
+    { id: 'main', name: 'Marco', admin: true, reach: 'all' },
+    { id: 'anna', name: 'Anna', admin: false, reach: 'all' },
+    { id: 'kunde', name: 'Kunde Müller', admin: false, reach: 'listed', contacts: ['anna'] },
+    { id: 'other', name: 'Other', admin: false, reach: 'listed', contacts: ['kunde'] },
+]);
+check('listed: reaches exactly the accounts it names, an admin too only if named', contactsOf('kunde').map((p) => p.id).join() === 'anna');
+check('listed: an admin it does not name does not reach it', !contactsOf('main').some((p) => p.id === 'kunde'));
+check('listed on both sides: both have to name each other', !contactsOf('other').some((p) => p.id === 'kunde'));
+
+// Across machines: the customer's account lives on a machine of its own, Marco's half arrives through the relay
+setPeople([
+    { id: 'main', name: 'Marco', admin: true, reach: 'all' },
+    { id: 'kunde', name: 'Kunde Müller', admin: false, reach: 'listed', contacts: ['main'] },
+]);
+const routed: { to: string; data: PeerData }[] = [];
+managers.kunde.otherAccount = () => false;
+managers.kunde.toAccount = (to, data) => { routed.push({ to, data }); };
+handle('kunde', { type: 'send', chatId: 'p:main', text: 'Von meinem Rechner', attachments: [{ name: 'notiz.txt', type: 'text/plain', data: Buffer.from('notiz').toString('base64') }] });
+const out = routed.at(-1);
+check('a person on another machine: the message goes through the relay, with its file', out?.to === 'main' && out.data.kind === 'person_message'
+    && out.data.message === 'message' && Object.values(out.data.files ?? {})[0] === Buffer.from('notiz').toString('base64'), out?.data.kind);
+const theirs = history('kunde', 'p:main').at(-1);
+check('the sender keeps its half as always', theirs?.text === 'Von meinem Rechner' && theirs.from === 'me');
+// What arrives on Marco's machine; the sender's file path does not exist there
+if (out?.data.kind === 'person_message') {
+    const moved = { ...out.data, entry: { ...out.data.entry, attachments: out.data.entry.attachments?.map((a) => ({ ...a, path: '/elsewhere/notiz.txt', machine: 'laptop' })) },
+        files: { '/elsewhere/notiz.txt': Object.values(out.data.files ?? {})[0] } };
+    inAccount('main', () => managers.main.personInbound('kunde', moved));
+}
+const arrived = history('main', 'p:kunde').at(-1);
+const arrivedFile = arrived?.attachments?.[0]?.path ?? '';
+check('it arrives in the receiver\'s half from the person, with the file in its uploads', arrived?.from === 'person:kunde' && arrived.text === 'Von meinem Rechner'
+    && fs.existsSync(arrivedFile) && fs.readFileSync(arrivedFile, 'utf8') === 'notiz', arrived);
+const count = history('main', 'p:anna').length;
+inAccount('main', () => managers.main.personInbound('anna', { kind: 'person_message', entry: { id: 'x1', role: 'user', text: 'Hi', ts: new Date().toISOString(), from: 'me' }, message: 'message' }));
+check('from an account this one does not reach: dropped', history('main', 'p:anna').length === count);
 
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} failures` : '\nall ok');

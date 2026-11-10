@@ -104,11 +104,30 @@ function samePath(a: string, b: string): boolean {
     return norm(a) === norm(b);
 }
 
+/**
+ * Since when something is open in a repo: the newest modification time of the listed files (a deleted one has none),
+ * otherwise, with commits not pushed yet, the time of the last commit.
+ */
+export async function openSince(root: string, state: Pick<GitRepo, 'files' | 'ahead'>): Promise<string | undefined> {
+    let newest = 0;
+    for (const f of state.files) {
+        try {
+            newest = Math.max(newest, fs.statSync(path.join(root, f.path)).mtimeMs);
+        } catch {
+            // deleted, or renamed away
+        }
+    }
+    if (!newest && state.ahead) newest = Number(await git(root, ['log', '-1', '--format=%ct']).catch(() => '0')) * 1000;
+    return newest ? new Date(Math.floor(newest / 1000) * 1000).toISOString() : undefined;
+}
+
 /** State of a repo; --no-optional-locks so the query creates no index.lock while a bot works there. */
 async function repoState(root: string, name: string, relPath: string, max = MAX_FILES): Promise<GitRepo> {
     try {
         const raw = await git(root, ['--no-optional-locks', '-c', 'core.quotepath=false', 'status', '--porcelain=v1', '--branch', '-z']);
-        return { name, path: relPath, ...parseStatus(raw, max), ...(samePath(root, REPO) ? { backend: true } : {}) };
+        const state = parseStatus(raw, max);
+        const since = await openSince(root, state);
+        return { name, path: relPath, ...state, ...(since ? { since } : {}), ...(samePath(root, REPO) ? { backend: true } : {}) };
     } catch (e) {
         return { name, path: relPath, branch: '', ahead: 0, behind: 0, files: [], more: 0, error: (e as Error).message.split('\n')[0] };
     }

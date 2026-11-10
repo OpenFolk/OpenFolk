@@ -10,3 +10,6 @@ declare function qrcode(typeNumber: number, errorCorrection: 'L' | 'M' | 'Q' | '
     getModuleCount(): number;
     isDark(row: number, col: number): boolean;
 };
+
+// boot.js reloads the page while the app has not started; js/start.js sets this once it has
+interface Window { openfolkStarted?: boolean }

@@ -38,6 +38,7 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {HTMLElement} sleepText
  * @property {HTMLButtonElement} sleepWake
  * @property {HTMLElement} mention
+ * @property {HTMLElement} jobs
  * @property {HTMLElement} queue
  * @property {HTMLButtonElement} queueHead
  * @property {HTMLElement} queueList

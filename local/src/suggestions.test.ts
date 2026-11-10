@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 // Allowed root for this test: the folder containing this repo (set before the config is loaded)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 process.env.ALLOWED_ROOTS = path.dirname(projectRoot);
-const { descriptionFrom, resultFrom, photoPrompt, folderContext, prompt, checkSvg } = await import('./suggestions.ts');
+const { avatarDataUrl, descriptionFrom, resultFrom, photoPrompt, folderContext, prompt, checkSvg } = await import('./suggestions.ts');
 
 let failures = 0;
 const check = (name: string, ok: boolean) => { console.log(`${ok ? 'ok    ' : 'FAILED'} ${name}`); if (!ok) failures++; };
@@ -26,6 +26,9 @@ check('prompt: first name and field of work as separate fields', /no hyphen/i.te
 check('prompt: known field of work included', prompt({ what: 'role', folder: '', name: 'Rudolf', area: 'Research', role: '', tone: '', model: 'default' }, '', 'role', 'en').includes('Field of work: Research'));
 const pf = prompt({ what: 'avatar', folder: '', name: 'Deploy Dave', role: 'Server', tone: '', model: 'default', previous: ['x'] }, '', 'photo');
 check('prompt: photo describes a person instead of SVG', pf.includes('image model') && pf.includes('attractive') && pf.includes('different person') && !pf.includes('viewBox'));
+const wish = { what: 'avatar' as const, folder: '', name: 'Ada', role: '', tone: '', model: 'default', wish: 'curly red hair, hoodie' };
+check('prompt: a wish for the picture reaches photo and SVG, not the name', prompt(wish, '', 'photo').includes('Wishes for the picture: curly red hair') && prompt(wish, '').includes('curly red hair')
+    && !prompt({ ...wish, what: 'name' }, '').includes('curly'));
 check('description: too short is an error', throws(() => descriptionFrom({ description: 'short' })));
 check('description: gets truncated', descriptionFrom({ description: 'x'.repeat(2000) }).length === 1500);
 const fp = photoPrompt('A woman with red hair in a blazer.');
@@ -50,6 +53,10 @@ check('SVG: external address rejected', throws(() => checkSvg(good.replace('href
 check('SVG: external url() rejected', throws(() => checkSvg(good.replace('url(#g)', 'url(https://x/y)'))));
 check('SVG: no SVG rejected', throws(() => checkSvg('<div>hi</div>')));
 check('SVG: too large rejected', throws(() => checkSvg(good.replace('<rect', '<rect data-x="' + 'a'.repeat(210000) + '"'))));
+
+check('avatar data URL: the photo as it is', avatarDataUrl({ what: 'avatar', image: 'data:image/jpeg;base64,/9j/4AAQ' }) === 'data:image/jpeg;base64,/9j/4AAQ');
+check('avatar data URL: the SVG encoded', avatarDataUrl({ what: 'avatar', svg: '```svg\n' + good + '\n```' }) === `data:image/svg+xml;base64,${Buffer.from(good).toString('base64')}`);
+check('avatar data URL: a bad SVG or another result is an error', throws(() => avatarDataUrl({ what: 'avatar', svg: '<div/>' })) && throws(() => avatarDataUrl({ what: 'role', role: 'x' })));
 
 if (failures) process.exit(1);
 console.log('all tests passed');

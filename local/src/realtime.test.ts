@@ -22,6 +22,9 @@ const s = realtimeSession(bot, { mode: 'openai', voice: 'male', language: 'de', 
 const tool = s.tools[0];
 check('session: the large model, audio only, low reasoning', s.model === 'gpt-realtime-2.1' && s.output_modalities.join() === 'audio' && s.reasoning.effort === 'low', s);
 check('session: male voice is cedar', s.audio.output.voice === 'cedar', s.audio.output.voice);
+const own = realtimeSession(bot, { mode: 'openai', voice: 'male', voiceId: 'ash', language: 'de', transcribe: '' });
+const noRealtime = realtimeSession(bot, { mode: 'openai', voice: 'female', voiceId: 'nova', language: 'de', transcribe: '' });
+check('session: the own OpenAI voice of the bot; one Realtime lacks gives way to the kind', own.audio.output.voice === 'ash' && noRealtime.audio.output.voice === 'marin', [own.audio.output.voice, noRealtime.audio.output.voice]);
 check('session: one tool ask_bot with a required request', s.tools.length === 1 && tool.name === 'ask_bot' && tool.parameters.required.join() === 'request', tool);
 check('session: the instructions name the bot and pin the language', s.instructions.includes('Fred') && s.instructions.includes('German') && s.instructions.includes('ask_bot'), s.instructions);
 check('session: transcription in the voice language, semantic turn detection', 'language' in s.audio.input.transcription && s.audio.input.transcription.language === 'de' && s.audio.input.turn_detection.type === 'semantic_vad', s.audio.input);

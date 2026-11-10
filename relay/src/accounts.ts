@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { checkPassword, hashPassword } from './auth.ts';
 import { MIN_TOKEN_LENGTH } from './owner.ts';
-import type { Person, Reach, RelayAccount } from '../../shared/protocol.ts';
+import { reaches, type Person, type Reach, type RelayAccount } from '../../shared/protocol.ts';
 
 export const ACCOUNTS_FILE = 'accounts.json';
 export const MAIN = 'main';
@@ -21,7 +21,7 @@ interface StoredAccount extends RelayAccount {
     hash?: string;
 }
 
-export type AccountChange = { name?: string; password?: string; admin?: boolean; reach?: Reach };
+export type AccountChange = { name?: string; password?: string; admin?: boolean; reach?: Reach; contacts?: string[] };
 export type AccountResult = 'ok' | 'name_taken' | 'invalid';
 
 /** a-z0-9 and hyphen, as the backends use it as a folder name. */
@@ -61,7 +61,31 @@ export class Accounts {
 
     /** The accounts as contacts for person chats (backends filter them per account). */
     people(): Person[] {
-        return this.list.map((a) => ({ id: a.id, name: a.name, admin: a.id === MAIN || a.admin, reach: a.reach === 'admins' ? 'admins' : 'all' }));
+        return this.list.map(toPerson);
+    }
+
+    /** May account `from` send to account `to` across machines: a person chat, or a setup between it and its admin. */
+    mayRoute(from: string, to: string): boolean {
+        const a = this.list.find((x) => x.id === from);
+        const b = this.list.find((x) => x.id === to);
+        if (!a || !b) return false;
+        return reaches(toPerson(a), toPerson(b)) || b.setupBy === from || a.setupBy === to;
+    }
+
+    /** The admin who set the account up with a setup link; undefined for every other account. */
+    setupBy(id: string): string | undefined {
+        return this.list.find((x) => x.id === id)?.setupBy;
+    }
+
+    /** From now on the account's bots run only on machines bound to it (a setup link was minted for it). */
+    markSetUp(id: string, by: string): boolean {
+        const a = this.list.find((x) => x.id === id);
+        if (!a || id === MAIN) return false;
+        if (a.setupBy !== by) {
+            a.setupBy = by;
+            this.save();
+        }
+        return true;
     }
 
     ids(): string[] {
@@ -121,6 +145,9 @@ export class Accounts {
         }
         if (change.admin !== undefined && id !== MAIN) a.admin = change.admin;
         if (change.reach !== undefined && id !== MAIN) a.reach = change.reach;
+        if (change.contacts !== undefined && id !== MAIN) {
+            a.contacts = [...new Set(change.contacts.filter((c) => c !== id && this.list.some((x) => x.id === c)))];
+        }
         this.save();
         return 'ok';
     }
@@ -128,6 +155,8 @@ export class Accounts {
     remove(id: string): boolean {
         if (id === MAIN || !this.list.some((x) => x.id === id)) return false;
         this.list = this.list.filter((x) => x.id !== id);
+        // Nobody keeps naming an account that is gone
+        for (const x of this.list) if (x.contacts?.includes(id)) x.contacts = x.contacts.filter((c) => c !== id);
         this.deleted[id] = new Date().toISOString();
         this.save();
         return true;
@@ -143,6 +172,15 @@ export class Accounts {
     }
 }
 
+const reachOf = (a: StoredAccount): Reach => (a.reach === 'admins' || a.reach === 'listed' ? a.reach : 'all');
+
 function toPublic(a: StoredAccount): RelayAccount {
-    return { id: a.id, name: a.name, admin: a.id === MAIN || a.admin, created: a.created, reach: a.reach === 'admins' ? 'admins' : 'all' };
+    return {
+        id: a.id, name: a.name, admin: a.id === MAIN || a.admin, created: a.created, reach: reachOf(a),
+        ...(reachOf(a) === 'listed' ? { contacts: a.contacts ?? [] } : {}), ...(a.setupBy ? { setupBy: a.setupBy } : {}),
+    };
+}
+
+function toPerson(a: StoredAccount): Person {
+    return { id: a.id, name: a.name, admin: a.id === MAIN || a.admin, reach: reachOf(a), ...(reachOf(a) === 'listed' ? { contacts: a.contacts ?? [] } : {}) };
 }

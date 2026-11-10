@@ -84,6 +84,41 @@ backend as such a task (administrator PowerShell):
 .\local\tools\install-task.ps1            # status and last log lines (local\data\local.log)
 ```
 
+**Backend (Linux):** the desktop app's "Run without signing in" (the .deb package; an AppImage mounts its files at
+another path on every start) creates the systemd user service `openfolk-backend` and turns on lingering, so the user's
+services start at boot without a sign-in. From a checkout the same by hand, with `RELAY_URL` in `.env`:
+
+```ini
+# ~/.config/systemd/user/openfolk.service
+[Unit]
+Description=OpenFolk backend
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=/home/you/openfolk
+ExecStart=/usr/bin/node local/src/index.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+```sh
+systemctl --user enable --now openfolk
+loginctl enable-linger "$USER"     # some systems want sudo for it
+journalctl --user -u openfolk -f   # the log
+```
+
+`npm run restart` works as below: the backend ends once no bot is working and systemd starts it again.
+
+**macOS:** there is no way to run the backend before a sign-in that keeps the user's keychain, where Claude Code keeps
+its sign-in; a LaunchAgent only starts after one, and an automatic sign-in does not go together with FileVault. A Mac
+woken for a routine therefore needs someone to sign in; for bots that work while nobody is there, use a Linux machine
+or the backend container on a server.
+
 After changes to `local/` or `shared/` restart without admin rights; the restart waits until no bot is working:
 
 ```powershell
@@ -179,9 +214,10 @@ home volume. The image cannot shut down (`OPENFOLK_CONTAINER=1`) and `AUTOLOGON_
 machine. `npm run restart -w local` inside the container ends the process once no bot is working and Docker
 starts it again (`restart: unless-stopped`); `docker compose restart` does the same at once. The image has no
 Python, so bots on this machine do not transcribe voice messages. For them take the same tag with `-voice`
-(`ghcr.io/openfolk/openfolk-local:latest-voice`, `:0.4.0-voice` …; `OPENFOLK_LOCAL_IMAGE` in the `.env`): larger, with
-Python and faster-whisper (`local/Dockerfile.voice`). It transcribes on the CPU with the model `small`
-unless the machine settings choose another; the model is downloaded into `/home/node` with the first voice message.
+(`ghcr.io/openfolk/openfolk-local:latest-voice`, `:0.5.0-voice` …; `OPENFOLK_LOCAL_IMAGE` in the `.env`): larger, with
+Python, faster-whisper and Piper (`local/Dockerfile.voice`). It transcribes on the CPU with the model `small`
+unless the machine settings choose another; the model is downloaded into `/home/node` with the first voice message,
+the voices for reading aloud with the first message read with "the bot's machine" as the voice.
 A bot for the container gets a folder under
 `/work`: choose the container's machine in the bot editor and enter the repository's address as its folder;
 saving clones it there.
@@ -268,6 +304,7 @@ without any of them nothing is woken and shutting down uses the operating system
 | `wol` | Sends the Wake-on-LAN packet itself. Needs the relay in the same network, or a router that forwards the UDP port. | `WAKE_MACHINES=desktop=AA:BB:CC:DD:EE:FF,…`, `WOL_ADDRESS`, `WOL_PORT` |
 | `command` | Runs your command, e.g. `ssh root@router etherwake {mac}` or a call to a home automation system. | `WAKE_COMMAND` with `{machine}` and `{mac}`, `WAKE_MACHINES` |
 | `service` | Asks an external wake service, which also reports whether a machine is running. | `WAKEUP_URL`, `WAKEUP_API_TOKEN` |
+| `agent` | A small device in the machines' network (a Raspberry Pi, a NAS) runs `wake-agent/wake-agent.mjs`, connects to the relay by itself and sends the packet there; nothing to open on the router. It only ever gets "wake <MAC>". Setup in `wake-agent/README.md`. | `WAKE_AGENT_TOKEN` (at least 32 characters), `WAKE_MACHINES` with MAC addresses |
 | `none` | No waking. | |
 
 The machine names are the backends' `MACHINE_NAME`. For routines with "wake" the relay wakes `WAKE_LEAD_SECONDS`
@@ -282,4 +319,6 @@ happens after routines the machine was woken for are settings of the machine in 
 down" nor "restart".
 
 **Automatic sign-in (Windows):** `AUTOLOGON_METHOD=script` with `AUTOLOGON_SCRIPT` shows a switch per machine in
-the settings; without it the app says that it is not set up.
+the settings; without it the app says that it is not set up. It signs the desktop session in, which only "Open in VS
+Code" and a remote desktop need. The bots of a woken machine need just the backend, which runs without a sign-in on
+Windows and Linux (see "Backend (Windows)" and "Backend (Linux)" above); a Mac needs a sign-in.

@@ -31,16 +31,28 @@ and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; ev
     Instead of the link, the page shows a QR code for the relay's address (`qr-join.js`): a signed-in phone scans it,
     the user confirms there, a backend mints the invitation and the phone sends it back sealed for the app's key, as in
     the QR sign-in of a device (`webapp/js/qr-login.js`, `kind=machine` in the code). The relay only passes the box on.
+  - **A setup link** (`https://relay/#setup=…`, from an admin's "Set up" in the accounts) joins the same way, but bound
+    to one account: the relay's page for it opens `openfolk://setup?link=…`, which the app registers with the system
+    (`setAsDefaultProtocolClient`, `protocols` in `package.json` for the macOS bundle; Windows and Linux hand it over
+    through `second-instance`, macOS through `open-url`). The app asks once, naming the relay, and refuses with the
+    reason when the profile has bots of its own or is joined to a relay already. Pasted into B it works as well.
+- **Disconnecting:** "Disconnect from …" (File menu, tray, macOS app menu) is offered while the backend talks to a
+  relay it joined. It stops the backend, takes `RELAY_URL`, `AGENT_TOKEN`, `E2E_KEY` and `MACHINE_NAME` out of the
+  profile's `.env` and starts "on this computer" again; the data folder stays as it is.
 - **Moving to a relay on a server:** "on this computer" can move later. The first steps or the settings claim a
   relay with the setup code from its log; the backend moves over at once and writes `RELAY_URL` into the profile's
   `.env`. The window takes the pairing link of the new relay and is signed in there from then on (`backend.js` reads
   `RELAY_URL` from the profile; `config.json` remembers the address the window is signed in at).
-- **Run without signing in (Windows):** a checkbox in the tray menu and under "File", offered once the backend talks
+- **Run without signing in (Windows, Linux):** a checkbox in the tray menu and under "File", offered once the backend talks
   to a relay on a server. It asks for administrator rights (UAC) and creates the scheduled task "OpenFolk backend
   <user>" (`task.ps1`, which lies next to the app where only administrators can change it): at system start, without
   sign-in, it runs the app's backend with the profile's `.env` and data folder, so a machine woken for a routine
   reports by itself. While it is on the app never starts a backend of its own, so two never run against the same
   data; quitting the app leaves the task's backend running, and switching it off takes the backend back into the app.
+  On Linux it is the systemd user service `openfolk-backend` (`~/.config/systemd/user/`, log in
+  `journalctl --user -u openfolk-backend`) with lingering (`loginctl enable-linger`), so it starts at boot without a
+  sign-in; no administrator rights unless the system refuses lingering, then the app names the command. Offered with
+  the .deb package, not the AppImage, which mounts its files at another path on every start. macOS has no such switch.
 - **Profile folder:** `%APPDATA%\OpenFolk` (Windows), `~/.config/OpenFolk` (Linux),
   `~/Library/Application Support/OpenFolk` (macOS). The choice and the address are stored in its `config.json`;
   change them via the tray menu, "File → Change setup" or, on the Mac, "OpenFolk → Change setup".
@@ -69,6 +81,8 @@ and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; ev
   web app itself has its own language setting.
 - **Push:** Electron does not support the Web Push API; the notification settings in the app apply to phones and
   browsers as before. While the window is open, the web app shows new answers itself.
+- **Zoom:** Ctrl and + or - (Cmd on the Mac), also on the number pad and with the mouse wheel; Ctrl+0 returns to
+  the normal size. The level applies to every page of the app and stays across starts (`zoom` in `config.json`).
 - On Windows and Linux the menu bar is hidden; Alt shows it (reload, zoom, full screen, developer tools).
 
 ## Develop and build

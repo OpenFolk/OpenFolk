@@ -340,5 +340,4 @@ export function showScanButtons() {
     const can = canScanQr();
     el.loginScan.hidden = !can;
     el.devicesScan.hidden = !can;
-    el.devicesScanHint.textContent = t(can ? 'qr.devicesHintApp' : 'qr.devicesHint');
 }

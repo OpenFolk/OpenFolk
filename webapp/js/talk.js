@@ -35,6 +35,8 @@ const SILENCE_MS = 1500;
 const QUIET_RESTART_MS = 45_000;
 /** Right after the transcript the bot's state may still say idle; after this, idle means nothing is coming. */
 const IDLE_GRACE_MS = 5000;
+/** Understanding takes a second or two with the model loaded; longer, the page says why. */
+const SLOW_SENDING_MS = 6000;
 
 /** Whether the conversation runs in this chat. */
 export function talking(chatId) {
@@ -53,6 +55,8 @@ export function startTalk(p) {
     onReadingEnd(readingEnded);
     // the tap that opens the page unlocks the sound, which iOS wants before anything plays on its own
     unlockVoices();
+    // Whisper unloads after half an hour; loading it takes up to a minute, so start now and not at the first sentence
+    if (!realtimeOn()) send({ type: 'voice_warmup' }, responsibleMachine(b) || undefined);
     holdScreen(true);
     talk.timer = setInterval(tick, 250);
     if (!state.agentOnline || machineToWake(p.chatId)) fail(t('talk.machineOff'));
@@ -457,6 +461,11 @@ function holdScreen(on) {
     }).catch(() => undefined);
 }
 
+function machineName() {
+    const b = bot(talk.chatId);
+    return String((b && responsibleMachine(b)) || '').toUpperCase();
+}
+
 function botName() {
     const b = bot(talk.chatId);
     return b ? b.name : '';
@@ -468,7 +477,8 @@ function phaseText() {
     switch (talk.phase) {
         case 'connecting': return t('talk.connecting');
         case 'listening': return t('talk.listening');
-        case 'sending': return t('talk.sending');
+        // a long wait is the speech model starting on the machine (cold start up to a minute)
+        case 'sending': return Date.now() - talk.since > SLOW_SENDING_MS ? t('talk.sendingSlow', { machine: machineName() }) : t('talk.sending');
         case 'thinking': return (!talk.rt && b && state.activity[b.id]) || t('talk.thinking', { name });
         case 'speaking': return t('talk.speaking', { name });
         case 'muted': return t('talk.muted');

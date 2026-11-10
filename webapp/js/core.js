@@ -17,19 +17,24 @@ export const el = {
     aboutList: $('about-list'), releaseNotes: $('release-notes'), brandVersion: $('brand-version'), settingsDevices: $('settings-devices'), deviceList: $('device-list'), e2eStatus: $('e2e-status'), relayClaimBox: $('relay-claim-box'),
     loginAccount: /** @type {HTMLInputElement} */ ($('login-account')), loginOtherAccount: $('login-other-account'), loginCancel: /** @type {HTMLButtonElement} */ ($('login-cancel')),
     accountSwitch: /** @type {HTMLButtonElement} */ ($('account-switch')), accountMenu: $('account-menu'),
+    loginChoose: $('login-choose'), loginAccounts: $('login-accounts'), loginChooseNew: /** @type {HTMLButtonElement} */ ($('login-choose-new')),
+    loginChooseOther: /** @type {HTMLButtonElement} */ ($('login-choose-other')), loginChooseBack: /** @type {HTMLButtonElement} */ ($('login-choose-back')),
+    accountsSignOut: /** @type {HTMLButtonElement} */ ($('accounts-sign-out')),
+    settingsSignOut: /** @type {HTMLElement} */ ($('settings-sign-out')),
+    settingsSignedIn: /** @type {HTMLElement} */ ($('settings-signed-in')),
     settingsAccounts: $('settings-accounts'), accountsOwnName: /** @type {HTMLInputElement} */ ($('accounts-own-name')), accountsPassword: /** @type {HTMLInputElement} */ ($('accounts-password')),
-    accountsOwnHint: $('accounts-own-hint'), accountsOwnSave: /** @type {HTMLButtonElement} */ ($('accounts-own-save')), accountsList: $('accounts-list'), accountsNewName: /** @type {HTMLInputElement} */ ($('accounts-new-name')),
+    accountsOwnSave: /** @type {HTMLButtonElement} */ ($('accounts-own-save')), accountsList: $('accounts-list'), accountsNewName: /** @type {HTMLInputElement} */ ($('accounts-new-name')),
     accountsNewAdmin: /** @type {HTMLInputElement} */ ($('accounts-new-admin')), accountsNewCustomer: /** @type {HTMLInputElement} */ ($('accounts-new-customer')), accountsCreate: /** @type {HTMLButtonElement} */ ($('accounts-create')),
     accountsNewForm: $('accounts-new-form'), accountsNewCancel: /** @type {HTMLButtonElement} */ ($('accounts-new-cancel')),
     accountsLink: /** @type {HTMLInputElement} */ ($('accounts-link')), accountsLinkGo: /** @type {HTMLButtonElement} */ ($('accounts-link-go')),
-    inviteBox: $('invite-box'), accountsError: $('accounts-error'),
-    accountsIntro: $('accounts-intro'), accountsJoin: /** @type {HTMLButtonElement} */ ($('accounts-join')), accountsScan: /** @type {HTMLButtonElement} */ ($('accounts-scan')), accountsOwn: $('accounts-own'),
+    inviteBox: $('invite-box'), setupBox: $('setup-box'), accountsError: $('accounts-error'),
+    accountsJoin: /** @type {HTMLButtonElement} */ ($('accounts-join')), accountsScan: /** @type {HTMLButtonElement} */ ($('accounts-scan')), accountsOwn: $('accounts-own'),
     settingsAllAccounts: /** @type {HTMLInputElement} */ ($('settings-all-accounts')), settingsAllAccountsField: $('settings-all-accounts-field'),
     e2eEnter: /** @type {HTMLButtonElement} */ ($('e2e-enter')), e2eDelete: /** @type {HTMLButtonElement} */ ($('e2e-delete')),
     pairCreate: /** @type {HTMLButtonElement} */ ($('pair-create')), pairBox: $('pair-box'), totpTitle: $('totp-title'), totpBox: $('totp-box'),
     loginQr: $('login-qr'), loginQrCode: $('login-qr-code'), loginQrRenew: $('login-qr-renew'), loginFirst: $('login-first'),
     loginFirstCode: /** @type {HTMLInputElement} */ ($('login-first-code')), loginFirstSend: /** @type {HTMLButtonElement} */ ($('login-first-send')), loginScan: /** @type {HTMLButtonElement} */ ($('login-scan')),
-    devicesScan: /** @type {HTMLButtonElement} */ ($('devices-scan')), devicesScanHint: $('devices-scan-hint'),
+    devicesScan: /** @type {HTMLButtonElement} */ ($('devices-scan')),
     settingsPush: $('settings-push'), pushStatus: $('push-status'), pushEnable: /** @type {HTMLButtonElement} */ ($('push-enable')),
     pushKinds: $('push-kinds'),
     settings: $('settings'), settingsTheme: /** @type {HTMLSelectElement} */ ($('settings-theme')), settingsBubble: $('settings-bubble'), settingsAutoRead: /** @type {HTMLInputElement} */ ($('settings-auto-read')), settingsLanguage: /** @type {HTMLSelectElement} */ ($('settings-language')),
@@ -55,7 +60,8 @@ export const el = {
     editorAvatarAi: /** @type {HTMLButtonElement} */ ($('editor-avatar-ai')), avatarPicker: $('avatar-picker'), avatarGrid: $('avatar-grid'), avatarError: $('avatar-error'), avatarGenerate: /** @type {HTMLButtonElement} */ ($('avatar-generate')), editorNameSuggest: /** @type {HTMLButtonElement} */ ($('editor-name-suggest')), editorNameSuggestions: $('editor-name-suggestions'),
     editorRoleSuggest: /** @type {HTMLButtonElement} */ ($('editor-role-suggest')),
     editorName: /** @type {HTMLInputElement} */ ($('editor-name')), editorArea: /** @type {HTMLInputElement} */ ($('editor-area')), editorRole: /** @type {HTMLInputElement} */ ($('editor-role')), editorFolder: /** @type {HTMLInputElement} */ ($('editor-folder')), editorRepo: /** @type {HTMLInputElement} */ ($('editor-repo')), editorModel: /** @type {HTMLSelectElement} */ ($('editor-model')),
-    editorModelCustom: /** @type {HTMLInputElement} */ ($('editor-model-custom')), editorApproval: /** @type {HTMLSelectElement} */ ($('editor-approval')), editorTone: /** @type {HTMLTextAreaElement} */ ($('editor-tone')), editorVoice: /** @type {HTMLSelectElement} */ ($('editor-voice')), editorCategory: /** @type {HTMLSelectElement} */ ($('editor-category')),
+    editorModelCustom: /** @type {HTMLInputElement} */ ($('editor-model-custom')), editorApproval: /** @type {HTMLSelectElement} */ ($('editor-approval')), editorTone: /** @type {HTMLTextAreaElement} */ ($('editor-tone')), editorVoice: /** @type {HTMLSelectElement} */ ($('editor-voice')), editorVoiceChoice: $('editor-voice-choice'), editorVoiceWhere: $('editor-voice-where'),
+    editorVoiceName: /** @type {HTMLSelectElement} */ ($('editor-voice-name')), editorVoiceListen: /** @type {HTMLButtonElement} */ ($('editor-voice-listen')), editorVoiceHint: $('editor-voice-hint'), editorCategory: /** @type {HTMLSelectElement} */ ($('editor-category')),
     editorContact: /** @type {HTMLSelectElement} */ ($('editor-contact')), editorContactBlock: $('editor-contact-block'),
     editorCanMessage: /** @type {HTMLSelectElement} */ ($('editor-can-message')), editorCanMessageBots: $('editor-can-message-bots'), editorAllowedTools: $('editor-allowed-tools'), editorError: $('editor-error'),
     editorMachine: /** @type {HTMLSelectElement} */ ($('editor-machine')), editorFolderHint: $('editor-folder-hint'), editorFolderBrowse: /** @type {HTMLButtonElement} */ ($('editor-folder-browse')),
@@ -66,7 +72,7 @@ export const el = {
     info: $('info'), infoAvatar: $('info-avatar'), infoName: $('info-name'), infoArea: $('info-area'), infoRole: $('info-role'), infoFacts: $('info-facts'),
     infoRoutines: $('info-routines'), infoRoutineNew: /** @type {HTMLButtonElement} */ ($('info-routine-new')), infoKnowledgeTabs: $('info-knowledge-tabs'),
     infoKnowledgeHint: $('info-knowledge-hint'), infoKnowledge: $('info-knowledge'), infoKnowledgeNew: /** @type {HTMLButtonElement} */ ($('info-knowledge-new')),
-    infoSwitches: $('info-switches'), infoGit: $('info-git'), infoActions: $('info-actions'), infoArchiveHead: $('info-archive-head'), infoArchive: $('info-archive'),
+    infoSwitches: $('info-switches'), infoGit: $('info-git'), infoActions: $('info-actions'),
     gActions: $('group-actions'),
     infoSkills: $('info-skills'), infoClaude: $('info-claude'), infoEditTop: $('info-edit-top'),
     rEditor: $('routine-editor'), rForm: /** @type {HTMLFormElement} */ ($('routine-form')), rTitle: $('routine-title'), rName: /** @type {HTMLInputElement} */ ($('routine-name')), rKind: /** @type {HTMLSelectElement} */ ($('routine-kind')),
@@ -78,6 +84,7 @@ export const el = {
     machines: $('machines'), machinesNone: $('machines-none'), usageNone: $('usage-none'), machinesPage: $('machines-page'),
     tabBar: $('tab-bar'), tabRepos: $('tab-repos'), tabReposBadge: $('tab-repos-badge'),
     gitPage: $('git-page'), gitPageContent: $('git-page-content'), gitBack: /** @type {HTMLButtonElement} */ ($('git-back')), gitTitle: $('git-title'), gitSub: $('git-sub'),
+    archive: $('archive'), archiveSub: $('archive-sub'), archiveList: $('archive-list'),
     vscode: $('vscode'), vsBack: /** @type {HTMLButtonElement} */ ($('vs-back')), vsTitle: $('vs-title'), vsSub: $('vs-sub'), vsList: $('vs-list'), vsShow: $('vs-show'), vsTerminal: $('vs-terminal'),
     talk: $('talk'), talkAvatar: $('talk-avatar'), talkAvatarButton: /** @type {HTMLButtonElement} */ ($('talk-avatar-button')), talkName: $('talk-name'), talkPhase: $('talk-phase'),
     talkHeard: $('talk-heard'), talkAnswer: $('talk-answer'), talkError: $('talk-error'), talkMic: /** @type {HTMLButtonElement} */ ($('talk-mic')), talkEnd: /** @type {HTMLButtonElement} */ ($('talk-end')),
@@ -85,7 +92,9 @@ export const el = {
 };
 
 /** Bot templates for the editor; texts are dictionary keys, the folder is left to the user. */
+// 'ask' (the first, the default): no presets. Every new bot asks the user in its chat and fills in what is still open itself
 export const TEMPLATES = [
+    { id: 'ask', name: '', role: '', tone: '', approval: 'risky' },
     { id: '', name: '', role: '', tone: '', approval: 'risky' },
     { id: 'chief', name: 'template.chief.name', role: 'template.chief.role', tone: 'template.chief.tone', approval: 'risky' },
     { id: 'developer', name: 'template.developer.name', role: 'template.developer.role', tone: 'template.developer.tone', approval: 'risky' },
@@ -145,6 +154,7 @@ export const state = {
     autologon: {},           // host -> { on, password } according to its backend (automatic Windows sign-in)
     capabilities: {},        // host -> { shutdown, shutdownSeconds, cancelShutdown, autologon, restart } from its settings
     bots: [], groups: [], categories: [], states: {}, activity: {}, activeChats: {}, approvals: {}, routines: [],
+    jobs: {},                // host -> the open jobs its bots gave other bots (Job in shared/protocol.ts)
     people: [],              // whom this account can chat with [{ id, name, admin, reach }], from the backends
     personChats: [],         // favorite, mute and deletion of the person chats [{ id, favorite, muted, cleared, updatedAt }]
     usage: null, pushKey: '',
@@ -163,6 +173,7 @@ export const state = {
     engineLogin: {},         // 'machine:engine' -> { state, url, code, message } of a sign-in with a device code
     live: Object.create(null), // chatId -> { botId -> { wrap, bubble, content, text, tools: Map, rows: Map, timer } }
     editorBot: null, editorAvatar: '', editorRemote: '', // origin of the edited bot's folder, offered for cloning
+    openNewBot: null,        // { known: bot ids before the save, until } of a bot just created: its chat opens once it is listed
     groupEditorGroup: null, groupAvatarData: '',
     infoBot: null, infoChat: null, routineEdit: null,
     retryDelay: 1000,
@@ -219,7 +230,7 @@ export const storage = {
  */
 export const RELAYS_KEY = 'openfolk-relays';
 /** Base names of what this device keeps per relay; core.js appends the relay's scope (and the account's). */
-export const RELAY_KEYS = ['openfolk-token', 'openfolk-device', 'openfolk-accounts', 'openfolk-collapsed', 'openfolk-seen', 'openfolk-panes'];
+export const RELAY_KEYS = ['openfolk-token', 'openfolk-device', 'openfolk-accounts', 'openfolk-signed-out', 'openfolk-collapsed', 'openfolk-seen', 'openfolk-panes'];
 
 /** @returns {{ url: string, name: string, scope: string }[]} */
 export function deviceRelays() {
@@ -277,8 +288,20 @@ export const BUBBLE_DEFAULT = 'green';
 export const ACCOUNTS_KEY = 'openfolk-accounts' + relayScope;
 
 /**
- * The accounts of the current relay, or with `scope` those of another one this device knows.
- * @returns {{ id: string, name: string, admin: boolean, device: string }[]}
+ * "Signed out": the device keeps its accounts' keys, but the page uses none of them and shows the choice of accounts
+ * instead (accounts.js). A sign-in ends it.
+ */
+export const SIGNED_OUT_KEY = 'openfolk-signed-out' + relayScope;
+/**
+ * An account not used as the active one for this long loses its key on this device and asks for its password again.
+ * Counted here, not by the relay: the connections of the shared list (others.js) keep every key in use there.
+ */
+export const ACCOUNT_IDLE_MS = 30 * 24 * 60 * 60_000;
+
+/**
+ * The accounts of the current relay, or with `scope` those of another one this device knows. `device` is empty for an
+ * account whose key expired (ACCOUNT_IDLE_MS); `used` is when it last signed in as the active account.
+ * @returns {{ id: string, name: string, admin: boolean, device: string, used?: number }[]}
  */
 export function deviceAccounts(scope = relayScope) {
     try {
@@ -289,9 +312,34 @@ export function deviceAccounts(scope = relayScope) {
     }
 }
 
+/**
+ * Drops the keys of accounts idle for ACCOUNT_IDLE_MS; their entries stay, so the choice still names them. Accounts
+ * stored before this rule start counting now.
+ * @param {string} [scope]
+ */
+export function expireAccounts(scope = relayScope, now = Date.now()) {
+    const list = deviceAccounts(scope);
+    if (!list.length) return;
+    const deviceKey = 'openfolk-device' + scope;
+    let changed = false;
+    for (const a of list) {
+        if (!a.device) continue;
+        if (typeof a.used !== 'number') {
+            a.used = now;
+            changed = true;
+        } else if (now - a.used > ACCOUNT_IDLE_MS) {
+            if (storage.get(deviceKey) === a.device) storage.remove(deviceKey);
+            a.device = '';
+            changed = true;
+        }
+    }
+    if (changed) storage.set('openfolk-accounts' + scope, JSON.stringify(list));
+}
+expireAccounts();
+
 // A notification of another account opens the page with ?account=<id>: that one, if this device is signed in to it.
 // Here, before anything reads the key, so it needs no second load.
-const wantedAccount = deviceAccounts().find((a) => a.id === new URLSearchParams(location.search).get('account'));
+const wantedAccount = deviceAccounts().find((a) => a.device && a.id === new URLSearchParams(location.search).get('account'));
 if (wantedAccount) storage.set(DEVICE_KEY, wantedAccount.device);
 {
     // Gone from the address, or switching later (a reload) would land in this relay and account again
@@ -304,7 +352,7 @@ if (wantedAccount) storage.set(DEVICE_KEY, wantedAccount.device);
 }
 
 /** The account the page was loaded for ('main' on a relay or device without accounts). */
-export const loadedAccount = deviceAccounts().find((a) => a.device === storage.get(DEVICE_KEY))?.id || 'main';
+export const loadedAccount = deviceAccounts().find((a) => a.device && a.device === storage.get(DEVICE_KEY))?.id || 'main';
 /** Name suffix of what this device remembers per relay and account: two of them can have a bot with the same id. */
 export const accountScopeOf = (id, scope = relayScope) => scope + (id === 'main' ? '' : `:${id}`);
 const accountScope = accountScopeOf(loadedAccount);

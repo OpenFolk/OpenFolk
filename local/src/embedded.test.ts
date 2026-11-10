@@ -83,7 +83,10 @@ try {
 
     // The engines: Claude without a sign-in is noticed, said in the log and kept for the setup checklist
     const enginesFile = path.join(data, 'accounts', 'main', 'engines.json');
-    const noticed = await waitFor('Claude Code', 60_000) && fs.existsSync(enginesFile);
+    // The log line may come before the file is written: wait for both
+    let noticed = await waitFor('Claude Code', 60_000);
+    for (let i = 0; i < 50 && noticed && !fs.existsSync(enginesFile); i++) await new Promise((r) => setTimeout(r, 100));
+    noticed &&= fs.existsSync(enginesFile);
     const engines = noticed ? JSON.parse(fs.readFileSync(enginesFile, 'utf8')) : {};
     check('Claude without a sign-in: noticed and named in the log', engines.claude === 'sign_in' && /claude in a terminal|claude im Terminal/.test(output), { engines, log: output.slice(-800) });
 } catch (e) {

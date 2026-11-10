@@ -42,6 +42,7 @@ function startApp(profile, config) {
         app: {
             name: 'OpenFolk', isPackaged: false, getPath: () => profile, getLocale: () => 'en', getVersion: () => '0.0.0',
             setPath: () => undefined, requestSingleInstanceLock: () => true, on: () => undefined, quit: () => undefined,
+            setAsDefaultProtocolClient: () => true,
             whenReady: () => new Promise((resolve) => { state.whenReady = resolve; }),
             getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings: () => undefined,
         },

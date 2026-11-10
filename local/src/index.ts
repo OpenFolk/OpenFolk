@@ -139,6 +139,12 @@ async function announcePairing(): Promise<void> {
 const accounts = new Accounts((account) => new BotManager(
     (frame, cid) => relay.send(frame, cid, account), (data, to) => relay.peer(data, to, account), (schedule) => relay.wakeSchedule(schedule, account)));
 relay.setRouter(accounts);
+// Person chats and setups with accounts on other machines (person-route.ts)
+const { PersonRoute } = await import('./person-route.ts');
+const personRoute = new PersonRoute((data, from, to, id) => relay.person(data, from, to, id));
+accounts.route = personRoute;
+relay.onPersonResult = (id, ok) => personRoute.result(id, ok);
+relay.onAgents = () => personRoute.retry();
 // App push through the relay for channels this machine has no credentials for
 relayPush.channels = () => relay.relayPushChannels;
 relayPush.send = (subscriptions, message) => relay.pushViaRelay(subscriptions, message);

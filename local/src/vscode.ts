@@ -8,14 +8,14 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { listSessions } from '@anthropic-ai/claude-agent-sdk';
+import { listSessions, type SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { claudeConfigDir } from './engine-home.ts';
 import { t } from './i18n.ts';
 import { toolSummary } from './session.ts';
 import type { HistoryEntry, ToolCall, VscodeSession } from '../../shared/protocol.ts';
 
 /** At most this many sessions are listed (the newest). */
-const MAX_LIST = 30;
+export const MAX_LIST = 30;
 /** This many entries go to the browser on open. */
 export const MAX_ENTRIES = 300;
 const MAX_RESULT = 1500;
@@ -224,7 +224,7 @@ function cwdOf(dir: string): string | null {
     return cwd;
 }
 
-function isInside(p: string, folder: string): boolean {
+export function isInside(p: string, folder: string): boolean {
     // Canonical on both sides: the bot's folder may be a junction, the transcript's cwd the real path, or the other way
     const rel = path.relative(canonical(folder), canonical(p));
     return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -256,6 +256,41 @@ export function sessionFolders(folder: string, otherBots: string[]): string[] {
     return r;
 }
 
+/**
+ * The list entry of a session whose transcript lies in the project folder of `o`; null for a bot's session, another
+ * program's, or one that cannot be read.
+ */
+function describe(s: SDKSessionInfo, o: string, open: Set<string>): Omit<VscodeSession, 'folder'> | null {
+    let file: string;
+    try {
+        file = transcriptPath(o, s.sessionId);
+    } catch {
+        return null;
+    }
+    const h = origin(file);
+    if (!h) return null;
+    let working = false;
+    try {
+        const size = fs.statSync(file).size;
+        const tail = linesFrom(readBytes(file, Math.max(0, size - TAIL_BYTES), TAIL_BYTES));
+        const isOpen = open.has(s.sessionId);
+        working = workingFrom(tail) && (isOpen || Date.now() - s.lastModified < WORKING_MAX_MIN * 60_000);
+    } catch {
+        return null;
+    }
+    return {
+        id: s.sessionId,
+        title: oneLine(s.customTitle || s.summary || s.firstPrompt || t('vscode.untitled'), 80),
+        firstPrompt: oneLine(s.firstPrompt ?? '', 140),
+        lastModified: new Date(s.lastModified).toISOString(),
+        size: s.fileSize ?? 0,
+        origin: h,
+        open: open.has(s.sessionId),
+        working,
+        branch: s.gitBranch || undefined,
+    };
+}
+
 /** Sessions on the machine in the bot's folder and its subfolders, newest first; `exclude` are the bots' sessions. */
 export async function listVscodeSessions(folder: string, exclude: Set<string>, otherBots: string[] = []): Promise<VscodeSession[]> {
     const folders = sessionFolders(folder, otherBots);
@@ -269,30 +304,28 @@ export async function listVscodeSessions(folder: string, exclude: Set<string>, o
     for (const { s, o } of list) {
         if (r.length >= MAX_LIST) break;
         if (exclude.has(s.sessionId)) continue;
-        const file = transcriptPath(o, s.sessionId);
-        const h = origin(file);
-        if (!h) continue;
-        let working = false;
-        try {
-            const size = fs.statSync(file).size;
-            const tail = linesFrom(readBytes(file, Math.max(0, size - TAIL_BYTES), TAIL_BYTES));
-            const isOpen = open.has(s.sessionId);
-            working = workingFrom(tail) && (isOpen || Date.now() - s.lastModified < WORKING_MAX_MIN * 60_000);
-        } catch {
-            continue;
-        }
-        r.push({
-            id: s.sessionId,
-            title: oneLine(s.customTitle || s.summary || s.firstPrompt || t('vscode.untitled'), 80),
-            firstPrompt: oneLine(s.firstPrompt ?? '', 140),
-            lastModified: new Date(s.lastModified).toISOString(),
-            size: s.fileSize ?? 0,
-            origin: h,
-            open: open.has(s.sessionId),
-            working,
-            branch: s.gitBranch || undefined,
-            folder: o === path.resolve(folder) ? undefined : o.replace(/\\/g, '/'),
-        });
+        const entry = describe(s, o, open);
+        if (entry) r.push({ ...entry, folder: o === path.resolve(folder) ? undefined : o.replace(/\\/g, '/') });
+    }
+    return r;
+}
+
+/**
+ * Sessions of every folder on the machine, newest first, each with its working folder. The SDK lists across all
+ * project folders; the transcript's path follows from the session's `cwd`, named as Claude Code named it when it wrote
+ * there. The bots' sessions are the larger part on a busy machine, so more candidates than for one folder.
+ */
+export async function listMachineSessions(exclude: Set<string>): Promise<VscodeSession[]> {
+    const [list, open] = await Promise.all([
+        listSessions({ includeProgrammatic: false, includeWorktrees: false, limit: MAX_LIST * 4 }),
+        openSessions(),
+    ]);
+    const r: VscodeSession[] = [];
+    for (const s of list) {
+        if (r.length >= MAX_LIST) break;
+        if (exclude.has(s.sessionId) || !s.cwd) continue;
+        const entry = describe(s, s.cwd, open);
+        if (entry) r.push({ ...entry, folder: s.cwd.replace(/\\/g, '/') });
     }
     return r;
 }

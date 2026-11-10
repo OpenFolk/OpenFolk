@@ -3,10 +3,10 @@ import { t, tn } from './i18n.js';
 import { el, md, node, state, closest } from './core.js';
 import { codeBlocks } from './code-blocks.js';
 import { activePane, paneFor, paneOf } from './panes.js';
-import { bot, botIdOf, clockTime, colorOf, duration, fileSize, fillAvatar, isGroup, isPerson, openApprovals, responsibleMachine, send, senderName, showImageLarge, upper } from './e2e.js';
+import { bot, botIdOf, clockTime, colorOf, conversationTitle, duration, fileSize, fillAvatar, isGroup, isPerson, openApprovals, responsibleMachine, send, senderName, showImageLarge, upper } from './e2e.js';
 import { setLast } from './connection.js';
 import { chatStatus, renderChatList } from './list.js';
-import { machineToWake } from './chat.js';
+import { machineToWake, openChat } from './chat.js';
 import { isRead, renderEntry, scroll, setReply } from './chat-features.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
@@ -39,9 +39,41 @@ export function displayTime(e) {
     return e.role === 'user' && e.readAt ? e.readAt : e.ts;
 }
 
+/**
+ * The jobs this chat gave other bots and waits for (message_bot): who works on it since when, a tap opens that chat,
+ * and the user can stop waiting or cancel the job. Their results come into the chat by themselves. @param {Pane} p
+ */
+export function renderJobs(p) {
+    if (!p) return;
+    const jobs = Object.entries(state.jobs).flatMap(([machine, list]) => list.map((j) => ({ ...j, machine }))).filter((j) => j.from.chatId === p.chatId);
+    p.el.jobs.hidden = jobs.length === 0;
+    p.el.jobs.replaceChildren(...jobs.map((j) => {
+        const target = bot(j.to.botId);
+        const name = (target ? target.name : j.to.botId) + (j.to.chatId !== j.to.botId ? ` · ${conversationTitle(j.to.chatId)}` : '');
+        const row = node('div', 'job');
+        row.dataset.job = j.id;
+        const open = node('button', 'job-text', '⏳ ' + (j.state === 'queued' ? t('jobs.queued', { bot: name, machine: upper(j.to.machine), time: clockTime(j.ts) }) : t('jobs.waiting', { bot: name, time: clockTime(j.ts) })));
+        open.type = 'button';
+        open.title = j.text;
+        open.addEventListener('click', () => openChat(j.to.chatId));
+        const stop = node('button', 'job-stop', t('jobs.stopWaiting'));
+        stop.type = 'button';
+        stop.title = t('jobs.stopWaitingTitle');
+        stop.addEventListener('click', () => send({ type: 'job_stop', id: j.id }, j.machine));
+        const cancel = node('button', 'job-stop job-cancel', t('jobs.cancel'));
+        cancel.type = 'button';
+        cancel.addEventListener('click', () => send({ type: 'job_stop', id: j.id, cancel: true }, j.machine));
+        const actions = node('span', 'job-actions');
+        actions.append(stop, cancel);
+        row.append(open, actions);
+        return row;
+    }));
+}
+
 /** Re-render the bar and append messages that no longer wait to the end of the history. @param {Pane} p */
 export function renderQueue(p, settled = false) {
     if (!p) return;
+    renderJobs(p);
     const id = p.chatId;
     const entries = id ? state.history[id] || [] : [];
     const waiting = [];

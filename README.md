@@ -8,6 +8,13 @@ Every **bot** is a colleague with its own picture, name, role, tone and model, a
 for example one bot per repository. Bots keep working when the app is closed and notify you by push when they
 are done or need an approval.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-dark.png">
+  <img src="docs/screenshots/desktop.png" alt="OpenFolk on the desktop: the list of bots on the left, a chat with an approval card in the middle, the bot's page with its open changes on the right." width="940">
+</picture>
+
+<img src="docs/screenshots/phone-list.png" alt="The list of bots on a phone, with the ones working right now at the top" width="230"> <img src="docs/screenshots/phone-chat.png" alt="A chat on a phone with an answer, a code block and an approval card" width="230"> <img src="docs/screenshots/phone-changes.png" alt="Open changes of all bots on a phone" width="230"> <img src="docs/screenshots/demo.gif" alt="A bot asks for approval before it pushes; one tap allows it, and its answer follows" width="230">
+
 OpenFolk is not an IDE and is not built on one: at your desk you keep working in VS Code, Cursor or the terminal.
 OpenFolk is a web app of its own that carries the same agents on when you are away from the machine, and hands a chat
 back to the IDE when you ask.
@@ -31,8 +38,9 @@ Tailscale restricts the backend connection further (`docs/tailscale.md`).
 
 > **Status:** early open-source release. The backend is developed and tested on **Windows 11** and runs as a
 > Linux container (`docs/running.md`). Machine control is configurable (same page, "Machine settings"): waking
-> via Wake-on-LAN, a wake service or your own command, shutting down on Windows, macOS and Linux; the automatic
-> sign-in is Windows-only. The relay runs anywhere Node 22 or Docker runs.
+> via Wake-on-LAN, a wake service or your own command, shutting down on Windows, macOS and Linux. A woken machine
+> runs its bots without anyone signing in on Windows and Linux; a Mac needs a sign-in, and the automatic sign-in
+> of the desktop session is Windows-only. The relay runs anywhere Node 22 or Docker runs.
 
 **Try it in two minutes:** install the desktop app from the [releases](https://github.com/OpenFolk/OpenFolk/releases)
 (Windows, macOS, Linux) and choose "Start on this computer", or from source with Node 22:
@@ -46,9 +54,13 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
 
 ## Features
 
-- **Bots and templates.** Create a bot with "+", optionally from a template. Per bot: folder, model (default,
+- **Bots and templates.** Create a bot with "+", optionally from a template. The default, "Set up in the chat", needs
+  only a name and a folder: the bot looks at the folder, asks a few questions with options in its chat and fills in
+  field of work, role and working instructions itself (`set_profile`); a bot from another template skips what that set.
+  Its chat opens right after saving; everything stays editable in its settings. Per bot: folder, model (default,
   Opus, Sonnet, Haiku, Codex, Cursor, Copilot, Antigravity, OpenCode or a custom id), approval level, tone and the
-  voice that reads its answers aloud (guessed from the name unless chosen).
+  voice that reads its answers aloud (guessed from the name unless chosen): male or female, and a voice of its own of
+  the provider reading right now (OpenAI's 13, Gemini's 30, Piper's per language) with "Listen" for a sample.
   "AI avatar" opens a set of ready-made portraits (drawn, in `webapp/avatars/`; `npm run avatar-set` redraws them) with
   the image model as the last entry.
   "Suggest" proposes names (a first name with a field of work, kept in a field of its own), a role or a profile
@@ -90,16 +102,24 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
 - **Folders.** "+" → "New folder" adds a folder to the chat list; a bot or group goes into one from its menu
   ("Folder") or its settings. A tap on the heading folds the folder, a long press renames or deletes it. Running
   bots and unread answers sit at the top of the list meanwhile, whatever folder they are in; folders sync like bots.
-- **Bot to bot.** Every bot has the tools `message_bot` and `list_bots`, can give other bots jobs and wait
-  for the answer; cycles are detected. Which bots a bot can reach is set in its settings under "Can give jobs to"
-  (all, selected or none); group chats are not limited by it.
+- **Bot to bot.** With `message_bot`, `list_bots` and `list_conversations` a bot gives another bot a job, or a
+  specific conversation (also another one of its own, say from brainstorming to coding), also on another machine.
+  The call returns at once, and the result comes back into the conversation that gave the job by itself, however
+  long it takes: the bot there carries on with it and you get a notification. A bar above the input says whom the
+  chat waits for since when; a tap opens that chat, and "Stop waiting" or "Cancel job" end it. Open jobs survive a
+  restart, a job to a sleeping machine goes out once it wakes, and a result for a sleeping machine waits on the
+  target's machine. Loops are refused. Which bots a bot can reach is set in its settings under "Can give jobs to"
+  (all, selected or none, each with all its conversations); group chats are not limited by it.
 - **Chats with people.** "+" → "Person" opens a chat with someone on the same relay, a team member or a customer
   (see Accounts). Text, files and voice messages go both ways, with notifications, unread, favorite, mute and search
   like any chat. A bot with "Hand over to" set in its settings gets the tool `hand_over`: it sends that person its
   summary, they get a notification, and the user gets a "Continue with …" button in the bot's chat. Bots do not read
   the chats between people.
 - **Files.** Attach, paste or drop files; images and PDFs go straight to the model. Bots send files with
-  `send_file`. Secrets (`.env`, keys) and the backend's data are never handed out.
+  `send_file`. Secrets (`.env`, keys) and the backend's data are never handed out. Asked to, a bot sets its own
+  profile picture from an image in its folder with `set_avatar` (PNG, JPEG, WebP or GIF up to 300 KB) or makes one with
+  `make_avatar` like the editor's "AI avatar" (a photo with the image model's key, else a drawn portrait); its chat says
+  so, and the editor puts another one back.
 - **Knowledge.** Bots build a memory of single facts with `remember_fact` and related tools, scoped to the bot,
   its folder, a group or everyone. Only an index goes into the system prompt; the bot reads the full text on demand.
   With `search_history` and `read_history` bots also search the earlier messages of all chats on their machine
@@ -110,7 +130,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   with Python 3.9 or newer on the machine, "Set up voice messages" in its settings installs the rest
   (`local/tools/requirements-voice.txt`, also by hand), with the CUDA libraries where there is an NVIDIA card, and
   loads the model: about 1.6 GB for the default `large-v3-turbo` (without a graphics card `small`, about 0.5 GB). A
-  Python that has faster-whisper already is used as it is.
+  Python that has faster-whisper already is used as it is. The same environment reads answers aloud with Piper
+  (`local/tools/speak.py`): free and offline, a male and a female voice per language (German: Thorsten and Kerstin),
+  loaded by the setup or with the first use; a little flatter than the cloud voices.
 - **Voice conversation.** The button next to the microphone opens a page where you talk with a bot hands-free: the
   recording goes out by itself after a pause, the transcript and what the bot is doing are shown, the answer is read
   aloud (what the bot says before a tool runs right away) and the microphone opens again. A tap on the picture sends
@@ -137,7 +159,11 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   It never merges, rebases or resets, and leaves a repo alone while a bot works in it; what it cannot take over shows
   in "Open changes" with the reason. A switch in the settings turns it off.
 - **VS Code and terminal.** Lists sessions you ran in VS Code or with `claude` in the terminal in the bot's
-  folder, follows them live and branches them into a conversation. The other way round, "Open this chat in the IDE"
+  folder, follows them live and branches them into a conversation. "Machine sessions" in the "+" menu lists them
+  for every folder of each awake machine, newest first; "Continue here" there takes the bot whose folder holds the
+  session. Codex threads from its VS Code extension and CLI are listed too; continuing one runs the conversation on
+  Codex and needs the ChatGPT sign-in (with an API key the bots keep their threads apart). Cursor, Copilot,
+  Antigravity and OpenCode have no list of their sessions to read. The other way round, "Open this chat in the IDE"
   and "… in a terminal" above that list hand a chat's session to its machine: by default VS Code with Claude Code for
   VS Code, or a terminal with `claude --resume`; `HANDOVER_IDE` and `HANDOVER_TERMINAL` set other commands, the
   settings of the machine turn either off. A backend
@@ -147,16 +173,16 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   and works in a folder there; while that machine sleeps, the bot sleeps and the app offers to wake it. Every machine
   has a folder for bots (its settings, "Folder for bots"; the first allowed folder unless chosen), and a bot's machine
   writes down where the bot lives below it, with its repository. Moving a bot is a tap on the other machine on the
-  bot's page and one confirmation: the bot goes to the same place below that machine's folder for bots, the
-  repository is cloned there if it is missing, a folder without one is created, and the sessions come along with full
-  context. Only when that place is taken by something else, or the folder lies outside the allowed folders, the app
-  asks for folder and repository. Work that is not on the git server yet (uncommitted changes, new files, unpushed
-  commits) goes along on request, end-to-end encrypted through the relay, without a push; the new machine applies
+  bot's page, nothing else: the bot goes to the same place below that machine's folder for bots, the repository is
+  cloned there if it is missing, a folder without one is created, a sleeping machine is woken for it, and the sessions
+  come along with full context. Only when that place is taken by something else, or the folder lies outside the
+  allowed folders, the app asks for folder and repository. Work that is not on the git server yet (uncommitted changes,
+  new files, unpushed commits) comes along by itself, end-to-end encrypted through the relay, without a push; the new machine applies
   what fits cleanly and parks the rest in the repo's `.git/openfolk-work/`.
 - **Settings.** Language, theme, notifications, devices and security; per device whether the answer to a voice
   message is read aloud by itself once it is done (on by default). Shared by all machines: the AI services (the API
   keys of OpenAI and Google Gemini as a list), the image model for profile pictures, how the voice conversation runs (in the app or over OpenAI Realtime), the voice for reading answers aloud (with one of those keys an OpenAI or Gemini
-  voice, otherwise the device's own; the text then goes to that provider), the language of voice messages, what app
+  voice, else the bot's machine where voice messages are set up, otherwise the device's own; with a cloud voice the text goes to that provider), the language of voice messages, what app
   notifications show, keeping the repos current. Per machine (main account only): the AI providers that run there, each on its subscription or a key,
   shutting down with its countdown and
   what happens after wake routines, automatic sign-in, "Open in the IDE / in a terminal", the speech model. A browser
@@ -188,6 +214,7 @@ openfolk/
 ├── deploy/unraid/       Unraid template for the relay
 ├── tests/browser/       Playwright tests of the web app against a scripted relay and backend
 ├── scripts/             test runner, desktop bundle and smoke test, screenshots, a WebSocket test client
+├── wake-agent/          one file for a Raspberry Pi at home that wakes the machines for a relay on a server
 ├── docs/                running.md, tailscale.md, README.de.md, architecture.svg, internals/ (architecture decisions)
 └── AGENTS.md            read first when changing OpenFolk
 ```
@@ -285,9 +312,9 @@ For your phone from anywhere, push and machines that wake for their routines, ru
 app (first steps, or settings → "Devices and security" → "Move to a relay on a server"), where the backend moves over
 and the page follows it, signed in there; or in the terminal with `npm run claim`. The desktop app joins a computer to
 that relay with the link from "Add machine" ("Connect this computer to my server"), or by a QR code on its setup page
-that a signed-in phone scans, and, on Windows, runs its backend
+that a signed-in phone scans, and, on Windows and Linux, runs its backend
 without signing in ("Run without signing in" in the tray menu). Backends from a checkout start with their machine (a
-scheduled task on Windows) or run as a container that never sleeps (`ghcr.io/openfolk/openfolk-local`);
+scheduled task on Windows, a systemd user service on Linux) or run as a container that never sleeps (`ghcr.io/openfolk/openfolk-local`);
 `docker-compose.server.yml` puts relay and backend on one server (`docker-compose.coolify.yml` in Coolify), and its
 first device signs in with the code the backend prints to its log, or with one set beforehand (`FIRST_DEVICE_CODE`)
 for someone who starts with nothing but a phone. Waking (Wake-on-LAN, your own command, a wake service) is set on the relay, shutting down
@@ -313,7 +340,7 @@ main account; nothing changes until a second one exists.
   account, a pairing link of another relay, or just a relay's address (then it asks for account and password); an
   admin also creates a new person there ("Create account and invitation link"). The invitation is a pairing link with
   a QR code, valid for 15 minutes; whoever opens it is signed in to the new account and may set a password of their own
-  afterwards. What is signed in stays; signing out is under "Devices and security". The main account always is an admin.
+  afterwards. The main account always is an admin.
 - **Order when inviting:** the invitation signs the person's device in to the new account at once, and there the
   setup checklist waits with the Claude sign-in for that account (a command for a terminal on the machine, see below),
   which cannot be done on a phone. So create the account first and open the invitation on your own PC (a signed-in
@@ -323,6 +350,11 @@ main account; nothing changes until a second one exists.
   or scan the code, not both.
 - **Switching:** the name next to the title in the sidebar names the active account and switches between the
   accounts and relays of this device; an invitation link opened on a signed-in device adds its account too.
+- **Signing out:** "Sign out" in that menu (or at the very bottom of the settings) leads to a choice of the accounts on this device;
+  a tap signs in again without a password, "Sign in with another account" opens the form. An account not used as the
+  active one for 30 days loses its key on this device and asks for its password again. The "⋮" menu of a row forgets
+  the account on this device. An admin creates a new account from the same menu or the choice ("New account"), and
+  this device is signed in to it at once. Signing a device out for good stays under "Devices and security".
 - **One list:** the chat list shows the bots of every account the device is signed in to, those of the other
   accounts with the account's name as a badge (the active account's without), with what they do, their last message and what is new. A tap opens
   the chat in its account; notifications of every account arrive. "Show all accounts in one list" under Accounts
@@ -346,6 +378,36 @@ main account; nothing changes until a second one exists.
   no Claude sign-in; while it has no bots, the app shows it the people it can write to instead of the checklist. Each
   side keeps its own copy: deleting the chat deletes one's own. A customer's support bot hands over to you when your
   account is set under "Hand over to" in its settings.
+
+### Setting a person up on their own computer
+
+An employee or customer can run their bots on their own computer, with their own Claude subscription, while you set
+those bots up from your OpenFolk. They install the desktop app (Windows or macOS) and sign in to Claude there; you
+prepare everything and send them one link.
+
+1. **Prepare:** create an account for the person (settings → Accounts → "Add"), then "Set up" in its row. Choose the
+   bots: a support bot that only reads (level "only reads", it answers questions about the project from the code
+   and changes nothing) and a development bot that changes the project and pushes, each with the https address of
+   the repository and a token of its own for it (read-only for the support bot). Tick whom the person can write to
+   (you and further team members) and whom the bots hand a conversation over to. Save.
+2. **Link:** "Make setup link" gives a link valid for 7 days, once; a new one replaces it, "Revoke link" ends it. It
+   carries the key of your chats, so send it only to that person.
+3. **The person opens it:** the relay's page has "Open in OpenFolk"; the desktop app asks once and then joins your
+   relay as a machine bound to that account. It clones each repository into a folder of its own with its token and
+   makes the bots. The person sees their bots and the people they may write to, nothing else.
+
+What the binding means: a machine joined by a setup link serves only its account, and that account runs only on such
+machines. Your bots, chats and machines never reach it, and its chats do not reach your machines: person chats and
+the setup travel between the machines through the relay, which stores nothing (a message waits on the sending
+machine until the other one is online, for up to a week). The person cannot change or delete the bots of the setup;
+you change them in the same dialog, and the change reaches their computer the next time it is online. The tokens lie
+in the account's data on their computer, outside the bots' folders, in files the bots' tools refuse; still, a write
+token is on their computer, so give each person a token of their own for that one repository. A support bot's clone
+follows the repository: it fetches and fast-forwards before answering, at most every five minutes.
+
+The way back: deleting the account logs its computer out, and its data there goes to `deleted-accounts/` like on every machine; the person can use "Disconnect
+from …" in the app's File menu, after which the app runs on their computer alone again. A setup link only goes into an
+OpenFolk that is new: one with bots of its own, or joined to a relay, refuses it with the reason.
 
 ## Security
 
@@ -407,6 +469,7 @@ npm run check         # all three in a row, what CI runs
 npm run test:browser  # browser tests only; single file: node tests/browser/run.mjs <name>
 npm test -w local -- push   # backend tests whose file name contains "push" (scripts/test.mjs)
 npm run mobile        # copy the web app into the mobile apps (mobile/README.md)
+npm run screenshots   # redraw docs/screenshots/ with demo data (the GIF needs ffmpeg)
 ```
 
 No build step in development: Node 22.18 or newer runs the TypeScript itself (the code keeps to erasable syntax,

@@ -108,7 +108,7 @@ export function renderChatList() {
         setBadge(otherUnreadCount());
         return;
     }
-    // Order: finished chats with something unread (not muted), then running or waiting ones, then favorites, then the
+    // Order: finished chats with something unread (not muted), then running or waiting ones, then the
     // folders by name and the rest (each newest message first); a bot counts as running or unread if one of its
     // conversations is, and takes them all along. A folder is listed even while nothing is in it.
     const cats = sortedCategories();
@@ -122,14 +122,17 @@ export function renderChatList() {
         });
         if (running) return 1;
         if (!isMuted(id) && chats.some(isUnread)) return 0;
-        if (isFavorite(id)) return 2;
         const k = cats.findIndex((c) => c.id === categoryOf(id));
         return k >= 0 ? 3 + k : REST;
     };
     const sorted = [
         ...ids.map((id, i) => ({ id, i, s: section(id), ts: latest(id), foreign: null })),
-        ...foreign.map((r, i) => ({ id: r.id, i: ids.length + i, s: r.section === 3 ? REST : r.section, ts: r.ts, foreign: r })),
+        ...foreign.map((r, i) => ({ id: r.id, i: ids.length + i, s: r.section >= 2 ? REST : r.section, ts: r.ts, foreign: r })),
     ].sort((x, y) => x.s - y.s || y.ts.localeCompare(x.ts) || x.i - y.i);
+    // Favorites stand as large tiles at the very top as well; in the list they have no section of their own but stay
+    // where they belong (running, unread, their folder)
+    const favorites = ids.filter(isFavorite);
+    if (favorites.length) el.chatList.appendChild(favoriteStrip(favorites));
     const titles = [t('list.unreadDone'), t('list.running'), t('list.favorites'), ...cats.map((c) => c.name), cats.length ? t('list.unfiled') : t('list.all')];
     const several = cats.length > 0 || new Set(sorted.map((x) => x.s)).size > 1;
     const rows = {};
@@ -213,6 +216,41 @@ export function renderChatList() {
         }
     }
     setBadge(allChats().filter(isUnread).length + otherUnreadCount());
+}
+
+/**
+ * The favorites as large round tiles in a row at the top of the list, scrolling sideways when they do not fit: a dot
+ * for something unread, a ring while the bot works or waits for you, the number of open questions. A tap opens the
+ * chat, a long press its menu (both through the list's handlers: every tile is an li with data-chat).
+ */
+function favoriteStrip(ids) {
+    const strip = node('li', 'fav-strip');
+    const row = node('ul', 'fav-row');
+    for (const id of ids) {
+        const g = isGroup(id) ? group(id) : null;
+        const who = g || bot(id) || (isPerson(id) ? person(id) : null);
+        if (!who) continue;
+        const subs = bot(id) ? conversationsOf(bot(id)) : [];
+        const chats = [id, ...subs];
+        const st = chats.map((c) => chatStatus(c).state);
+        const busy = st.includes('waiting') ? 'waiting' : st.includes('thinking') || chats.some((c) => backgroundOf(c).length) ? 'thinking' : '';
+        const tile = node('li', 'fav-tile' + (busy ? ' ' + busy : ''));
+        tile.dataset.chat = id;
+        markOpen(tile, id);
+        const av = node('div', 'avatar' + (g ? ' group' : isPerson(id) ? ' person' : ''));
+        fillAvatar(av, who, id);
+        const ring = node('div', 'fav-ring');
+        ring.appendChild(av);
+        const open = chats.reduce((n, c) => n + openApprovals(c).length, 0);
+        if (open) ring.appendChild(node('span', 'badge', String(open)));
+        else if (!isMuted(id) && chats.some(isUnread)) ring.appendChild(node('i', 'dot new'));
+        tile.append(ring, node('span', 'fav-name', who.name));
+        tile.title = who.name;
+        openOnClick(tile, id);
+        row.appendChild(tile);
+    }
+    strip.appendChild(row);
+    return strip;
 }
 
 /** The start of an account without bots or chats: whom it can write to. */
@@ -336,7 +374,8 @@ export function setupListSwipe() {
     el.chatList.addEventListener('touchstart', (ev) => {
         g = null;
         const li = closest(ev, 'li[data-chat]');
-        if (!li || ev.touches.length !== 1) return;
+        // the favorite tiles scroll sideways instead
+        if (!li || li.classList.contains('fav-tile') || ev.touches.length !== 1) return;
         const touch = ev.touches[0];
         g = { li, x: touch.clientX, y: touch.clientY, dx: 0, horizontal: null, strip: null };
     }, { passive: true });

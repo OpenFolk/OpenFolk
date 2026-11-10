@@ -17,19 +17,23 @@ import {
     chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, newCategory, openGitPage, openMachinesPage,
     renderGitTotal, renderPageTitle, submitText, toggleHeaderSwitch,
 } from './menus.js';
-import { adoptVscodeSession, renderVscodeAdoptButton, renderVscodeSub, showInVscode, showVscodeList, vs } from './vscode.js';
+import { adoptVscodeSession, openVscode, renderVscodeAdoptButton, renderVscodeSub, showInVscode, showVscodeList, vs } from './vscode.js';
 import {
     canMessageChanged, chooseFolder, createPickerFolder, editorValues, folderChanged, folderTyped, knowledgeSection, machineChanged, openEditor, openFolderPicker, openGroupEditor,
     openAvatarPicker, openInfo, openKnowledgeEditor, openRoutineEditor, renderEditorAvatar, renderKnowledge, renderRoutines,
-    repoChanged, repoTyped, requestSuggestion, routineCron, routineFields, submitEditor,
+    repoChanged, repoTyped, requestSuggestion, routineCron, routineFields, submitEditor, renderVoiceChoice, chooseVoiceName, listenToVoice,
 } from './editors.js';
 import { checkPush, renderPushSettings, subscribePush } from './push.js';
 import { askMachineJoin, chooseAllAccounts, chooseBubble, chooseLanguage, chooseShared, closeAiForm, openAiForm, openReleaseNotes, openSettings, renderAiServices, renderSettings, saveAiKey, showE2eStatus } from './settings.js';
-import { cancelAddAccount, createAccount, joinAny, openAccountMenu, openAccounts, redeemLink, saveOwnAccount, scanAny, showAccountField, showNewAccountForm, switchAccount } from './accounts.js';
+import {
+    backToChooser, cancelAddAccount, closeChooserMenus, createAccount, joinAny, newAccount, openAccountMenu, openAccounts, redeemLink, saveOwnAccount, scanAny, showAccountField, showLoginForm,
+    showNewAccountForm, signOut, switchAccount,
+} from './accounts.js';
 import { openRelay, switchRelay } from './relays.js';
 import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, startQrLogin, stopQrLogin } from './qr-login.js';
 import { VERSION } from './release.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
+import { showSetupLanding } from './setups.js';
 
 // The first pane exists from the start; on phones and laptops it stays the only one
 createPane();
@@ -116,8 +120,15 @@ el.accountMenu.addEventListener('click', (ev) => {
     el.accountMenu.hidden = true;
     if (b.dataset.account) switchAccount(b.dataset.account);
     else if (b.dataset.relay) switchRelay(b.dataset.relay);
+    else if (b.dataset.accountAction === 'new') newAccount();
     else openAccounts();
 });
+el.accountsSignOut.addEventListener('click', signOut);
+// The start page's choice of accounts
+el.loginChooseOther.addEventListener('click', showLoginForm);
+el.loginChooseBack.addEventListener('click', backToChooser);
+el.loginChooseNew.addEventListener('click', newAccount);
+el.login.addEventListener('click', closeChooserMenus);
 el.accountsJoin.addEventListener('click', joinAny);
 el.accountsScan.addEventListener('click', () => void scanAny());
 el.accountsOwnSave.addEventListener('click', saveOwnAccount);
@@ -150,8 +161,8 @@ el.keyForm.addEventListener('submit', async (ev) => {
     else connect();
 });
 
-// "+" menu: entries like the other menus, icon before the label
-const NEW_ENTRIES = [['conversation', 'conversation', 'conversation.new'], ['bot', 'bot', 'editor.newBot'], ['group', 'group', 'group.new'], ['category', 'folder', 'category.new']];
+// "+" menu: entries like the other menus, icon before the label; last the VS Code sessions of every folder
+const NEW_ENTRIES = [['conversation', 'conversation', 'conversation.new'], ['bot', 'bot', 'editor.newBot'], ['group', 'group', 'group.new'], ['category', 'folder', 'category.new'], ['vscode', 'monitor', 'newMenu.vscode']];
 let newEntries = [];
 
 function buildNewMenu() {
@@ -222,6 +233,7 @@ el.newMenu.addEventListener('click', (ev) => {
     }
     el.newMenu.hidden = true;
     if (kind === 'category') newCategory();
+    if (kind === 'vscode') openVscode(null);
     if (kind === 'person_with') openChat('p:' + k.dataset.person);
     if (kind === 'conversation_with') {
         const b = bot(k.dataset.bot);
@@ -488,7 +500,7 @@ el.sidebarResize.addEventListener('keydown', (ev) => {
 
 // Dialogs: "Cancel"/"×", Escape and a click on the backdrop close them. The backdrop only counts if the pointer
 // was also pressed there – otherwise selecting text that ends outside would close it.
-for (const o of [el.editor, el.folderPicker, el.avatarPicker, el.gEditor, el.info, el.rEditor, el.kEditor, el.keyDialog, el.vscode, el.textDialog, el.settingsDialog, el.settings]) {
+for (const o of [el.editor, el.folderPicker, el.avatarPicker, el.gEditor, el.info, el.rEditor, el.kEditor, el.keyDialog, el.vscode, el.archive, el.textDialog, el.settingsDialog, el.settings]) {
     let pressedOnBackdrop = false;
     o.addEventListener('pointerdown', (ev) => { pressedOnBackdrop = ev.target === o; });
     o.addEventListener('click', (ev) => {
@@ -504,7 +516,7 @@ document.addEventListener('keydown', (ev) => {
     if (large && !large.hidden) { large.hidden = true; return; }
     // the docked info panel is a column, not a dialog: Escape closes it only from inside
     const docked = el.app.classList.contains('info-docked') && !el.info.contains(document.activeElement);
-    for (const o of [el.textDialog, el.keyDialog, el.settingsDialog, el.settings, el.rEditor, el.kEditor, el.folderPicker, el.avatarPicker, el.editor, el.gEditor, el.info, el.vscode]) {
+    for (const o of [el.textDialog, el.keyDialog, el.settingsDialog, el.settings, el.rEditor, el.kEditor, el.folderPicker, el.avatarPicker, el.editor, el.gEditor, el.info, el.vscode, el.archive]) {
         if (o.hidden || (o === el.info && docked)) continue;
         closeDialog(o);
         return;
@@ -532,6 +544,12 @@ el.infoActions.addEventListener('click', (ev) => {
     const k = closest(ev, '[data-action]');
     if (k) infoAction(k.dataset.action);
 });
+// "New conversation", "Move to a conversation" and "Rename conversation" stand above the switches (the switches handle
+// their own taps)
+el.infoSwitches.addEventListener('click', (ev) => {
+    const k = closest(ev, '[data-action="conversation_new"], [data-action="main_to_conversation"], [data-action="rename"]');
+    if (k) infoAction(k.dataset.action);
+});
 el.gActions.addEventListener('click', async (ev) => {
     const k = closest(ev, '[data-action]');
     const g = state.groupEditorGroup;
@@ -555,7 +573,7 @@ function fillTemplateOptions() {
     for (const tpl of TEMPLATES) {
         const o = document.createElement('option');
         o.value = tpl.id;
-        o.textContent = tpl.id ? `${t(tpl.name)} – ${t(tpl.role)}` : t('editor.noTemplate');
+        o.textContent = tpl.id === 'ask' ? t('editor.askTemplate') : tpl.id ? `${t(tpl.name)} – ${t(tpl.role)}` : t('editor.noTemplate');
         el.editorTemplate.appendChild(o);
     }
     el.editorTemplate.value = chosen;
@@ -583,7 +601,11 @@ el.editorForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
     submitEditor();
 });
-el.editorMachine.addEventListener('change', machineChanged);
+el.editorMachine.addEventListener('change', () => { machineChanged(); renderVoiceChoice(); });
+// The voice: the list follows the provider reading for the machine; the kind shows in its first entry
+el.editorVoice.addEventListener('change', renderVoiceChoice);
+el.editorVoiceName.addEventListener('change', chooseVoiceName);
+el.editorVoiceListen.addEventListener('click', listenToVoice);
 el.editorFolder.addEventListener('input', folderTyped);
 el.editorFolder.addEventListener('change', folderChanged);
 el.editorRepo.addEventListener('input', repoTyped);
@@ -819,6 +841,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 applyI18n();
+// the app is up: boot.js no longer reloads the page
+window.openfolkStarted = true;
 applyTheme(storage.get(THEME_KEY) || 'auto');
 showScanButtons();
 if (platformKind === 'desktop') setSidebarWidth(Number(storage.get(SIDEBAR_WIDTH_KEY)) || SIDEBAR_PX);
@@ -827,4 +851,5 @@ layoutPanes();
 buildNewMenu();
 fillTemplateOptions();
 el.agentStatus.querySelector('span').textContent = t('status.connecting');
-e2eStart().finally(connect);
+// A setup link is for the desktop app: its page hands the link over instead of signing in
+if (!showSetupLanding()) e2eStart().finally(connect);

@@ -5,6 +5,108 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-10
+
+### Added
+- Setting a person up on their own computer with one link: an admin chooses in settings → Accounts → "Set up" the
+  bots of an account (each with a repository, a token of its own and its approval level), whom the person can write
+  to and whom the bots hand over to, and makes a setup link (7 days, once, revocable). The person installs the desktop
+  app, signs in to Claude and opens the link ("Open in OpenFolk", the app registers `openfolk://`); the app joins the
+  relay as a machine bound to that account (`/setup-invite`, `/setup`), clones each repository with its token behind a
+  credential helper and makes the bots, which the person cannot change or delete (`Bot.managed`). A bound machine
+  serves its account only, and the account runs only on such machines; person chats and the setup cross between the
+  machines through the relay's new person route (`person` with the sender's `id`, `person_result`), kept in an outbox
+  until delivered and taken once by the receiver (`person-seen.json`), however often it is sent again. The
+  account owns the machine (its own Claude sign-in, its settings). "Disconnect from …" in the desktop app's menu is the
+  way back. New frames `setups`, `setup_save`, `setup_delete`, `setup_link`; new peer data `person_message`, `setup`,
+  `setup_request`.
+- Approval level "only reads" (`read`): a bot that reads and answers, and is refused writing, commands and foreign
+  services without a card. A support bot of a setup fetches and fast-forwards its clone before answering, at most
+  every five minutes.
+- Reach "chosen contacts" (`listed`, with `contacts` in `account_update`): an account reaches exactly the accounts it
+  names.
+- A new bot sets itself up in its chat: the template "Set up in the chat" (the default) needs only a name and a folder;
+  once saved, the bot looks at the folder, asks a few questions with options and fills in field of work, role and
+  working instructions itself with the new tool `set_profile` (also for the user's later wishes), with a line in the
+  chat and everything editable in its settings (optional `setup` in `bot_save`). Last it offers a profile picture:
+  `make_avatar` runs the editor's generator for the bot itself (a 512-pixel photo with the image model's key, from
+  Nano Banana 2 on; otherwise the drawn SVG, kept as it is), with a wish for the picture (`wish` in the suggestion).
+  Every new bot does this, also one from another template (it skips what the template set), and its chat opens
+  right after saving.
+- Jobs between bots come back by themselves: `message_bot` returns at once, and the result arrives in the conversation
+  that gave the job as a new message the bot there carries on with, with a notification, however long the job takes;
+  `wait_for_reply=true` still waits up to 20 minutes. A bar above the input names whom the chat waits for since when,
+  opens that chat, and stops waiting or cancels the job. Open jobs survive a restart, a job to a sleeping machine goes
+  out once it wakes, and a result for a sleeping machine waits on the target until it is confirmed (new peer data
+  `job_feedback`, `job_ack`, `job_cancel`; an older target's `job_done` counts as well). `list_conversations` and
+  `message_bot`'s `conversation` give a specific conversation a job, also another one of the same bot; loops are told
+  by the chats along the chain (#43).
+- "Machine sessions" in the "+" menu (VS Code and terminal): the sessions of every folder on each awake machine, newest first, to read,
+  follow live and continue with the bot whose folder holds them. The list on a bot's page keeps to its folder.
+  `vscode_sessions` and `vscode_open` work without `botId` for this; an older backend answers with an error, which the
+  list shows for that machine.
+- Codex sessions from its VS Code extension and CLI in both lists, marked "Codex": read and follow them live, and
+  continue one as a branch in a conversation on Codex (the app-server lists, reads and forks them; optional `engine`
+  in `vscode_open`, `vscode_adopt` and the list entries).
+- "Open changes" says since when a repo has something open: the newest change of its files, for one with only
+  unpushed commits the last commit (`since` in `GitRepo`, optional; older backends send none) (#46).
+- A clone that git refuses for want of credentials (a private repository) says where the git token goes, with a
+  button to the settings of the bot's machine at "Pushing with git" (`credentials` in `folder_cloned`) (#38).
+- Deleting a bot can delete its working folder too: the delete dialog asks the bot's machine first and offers
+  "Also delete the working folder" when no other bot of any account there works in it, inside it or around it, it is
+  no allowed folder or folder for bots itself and holds no work that is not on a git server; otherwise the box stays
+  off with the reason (`folder_delete_check`, `deleteFolder` in `bot_delete`; an older backend keeps the folder) (#36).
+- `set_avatar`: asked to, a bot sets its own profile picture from a PNG, JPEG, WebP or GIF of its folder (up to 300 KB,
+  told apart by its bytes, no SVG); its chat says so (#44).
+- Screenshots and a short demo GIF in both READMEs, drawn from demo data by `npm run screenshots` (#12).
+- Desktop app on Linux: "Run without signing in" runs the backend as the systemd user service `openfolk-backend`
+  with lingering, so a woken machine reports without a sign-in (the .deb package; the AppImage cannot). `docs/running.md`
+  shows the same service for a checkout and why a Mac needs a sign-in (#11).
+- A wake agent for a relay on a server: `WAKE_METHOD=agent` with `WAKE_AGENT_TOKEN`, and `wake-agent/wake-agent.mjs` on
+  a small device in the home network (a Raspberry Pi, a NAS) that connects to the relay by itself and sends the
+  Wake-on-LAN packet there, without a port opened on the router. It only ever gets "wake <MAC>" for the machines in
+  `WAKE_MACHINES`; one file, Node 22, no npm packages, setup in `wake-agent/README.md`. The Compose files pass the wake
+  settings to the relay (#45).
+
+### Changed
+- The settings page without its explanatory texts below the fields; notices of a state stay (all machines asleep,
+  no provider switched on, no shutdown in this setup, the iPhone's home screen app). "About" without the emoji, and
+  its release notes use the width of a wide screen.
+- Signing out leads to a choice of the accounts on this device: a tap signs in again without a password, "Sign in with
+  another account" opens the form. An account not used as the active one for 30 days loses its key on the device and
+  asks for its password again; the "⋮" menu of a row forgets the account. "Sign out" sits at the very bottom of the
+  settings, below the account signed in to. The account menu of the sidebar is now shown on every relay with accounts; an
+  admin creates a new account from that menu or the choice, and the device is signed in to it at once.
+- The list of accounts looks like the list of devices, with at most two buttons on the right: "Switch" or "Create
+  invitation link", and "Set up". "Set up" holds the account itself (its name, now changeable by an admin, admin
+  rights, "Only admins", delete) and, for an account that is no admin, its bots on the person's own computer, each
+  closed to a line with its repository and level. "Add an account or relay" asks for the new person's name first, and
+  creating an account no longer opens its invitation at once. Dialogs use more of a wide screen.
+- Desktop app: Ctrl and + or - zooms with every keyboard layout (the + key of a German keyboard did nothing), on the
+  number pad and with Ctrl and the mouse wheel; Ctrl+0 resets. The level stays across starts and pages.
+- Moving a bot to another machine asks nothing any more: a tap on the machine moves it, a sleeping machine is woken
+  for it, and work not on the git server yet comes along by itself (put aside on the previous machine with git stash);
+  the toast says what happened. The app no longer sends `bot_move` with `dryRun`.
+
+### Fixed
+- Deleting an account could end the backend of a machine that served it: traffic of the account still on its way (its
+  browsers closing) made the backend serve it again, whose data was gone. Such traffic now finds nobody.
+- A test run of the desktop app (`scripts/desktop-smoke.mjs`) no longer registers itself for `openfolk://` links in
+  place of the installed app.
+- Opening the web app sometimes left only an empty page with a bare search field: when one of its modules did not
+  load (a network gap as the phone wakes, the relay restarting during a deploy), nothing started. `boot.js` now loads
+  the page again, up to three times within two minutes, and then says so with a "Reload" button.
+- Desktop app: the "Update ready" dialog opens once per version; the six-hourly checks and "Check for updates" no
+  longer stack one on top of the other (#58).
+- Desktop app on Windows: the "Update ready" dialog says that the install asks for administrator rights, also when it
+  runs on quit (#58).
+- Desktop app: a failed "Check for updates" says in two short lines why each source failed (openfolk.app and GitHub)
+  instead of electron-updater's whole message with response headers and the feed (#57, #58).
+
+### Security
+- The desktop apps are built with minimatch 11 where electron-builder pulled 9.x and 10.x (GHSA-g3hv-75wg-m249, a
+  denial of service through a crafted pattern); it only ever ran at build time, not in the app.
+
 ## [0.4.0] - 2026-11-08
 
 ### Added
@@ -32,6 +134,15 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 - With "OpenAI Realtime" in the settings and an OpenAI key, the voice conversation runs over `gpt-realtime-2.1` (or
   mini) like ChatGPT's: interrupting works, OpenAI speaks the bot's answer. The backend opens the connection with the
   stored key; this needs backends of this version.
+- Reading aloud on the bot's machine: "The bot's machine" as the voice in the settings reads with Piper, free and
+  offline, a male and a female voice per language; "Automatic" takes it when no key is stored. It needs voice
+  messages set up on the machine, whose setup now installs `piper-tts` and loads the voices; an environment of
+  one's own needs `pip install piper-tts`, which the machine's row in the settings says.
+- A voice of its own per bot: the editor lists the voices of the provider reading right now (OpenAI's 13, Gemini's 30,
+  Piper's per language) with "Listen" for a sample; it is kept per provider, another provider reads with the kind
+  (male or female). The voice conversation over OpenAI Realtime takes it too where the Realtime models have it.
+- Reading aloud with the device's voice picks one of the bot's kind (male or female) by the names of the system's
+  voices; without one of that kind another reads with a changed pitch, and a hint says how to load one.
 
 ### Changed
 - The code for a first device works once only: after a device of the main account has talked to the backend it opens
@@ -314,7 +425,8 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.0...v0.2.1

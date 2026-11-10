@@ -5,9 +5,12 @@ import { AVATAR_EDGE, TEMPLATES, el, node, state, templateValues, toast } from '
 import { layoutPanes } from './panes.js';
 import { bot, clockTime, fillAvatar, group, isConversation, responsibleMachine, send, upper } from './e2e.js';
 import { shrinkImage } from './voice.js';
+import { backendVoice, guessVoice, previewVoice, stopPreview } from './read-aloud.js';
+import { VOICE_CATALOG } from './voices.js';
 import { chatMenuButtons, closeDialog, gitOpenOf, menuButton, renderInfoChat, showGitChanges } from './menus.js';
 import { sortedCategories } from './connection.js';
-import { alertDialog, confirmDialog } from './dialogs.js';
+import { alertDialog } from './dialogs.js';
+import { openGitSettings } from './settings.js';
 
 // ================================================================ Bot editor
 
@@ -16,6 +19,11 @@ import { alertDialog, confirmDialog } from './dialogs.js';
  * in from the bot's repository where that works; the rest of the bot stays as it is.
  */
 export function openEditor(b, machine) {
+    // A bot of an admin's setup changes through the setup; its machine refuses the save anyway
+    if (b && b.managed) {
+        toast(t('setup.managedBot', { name: b.name }), 5000);
+        return;
+    }
     state.editorBot = b || null;
     moving = Boolean(b && machine);
     // From the bot's page, the editor takes the place of that page in the side panel instead of opening over everything
@@ -31,7 +39,7 @@ export function openEditor(b, machine) {
     el.editorMachine.value = '';
     el.editorTitle.textContent = moving ? t('editor.moveTitle', { name: b.name, machine: upper(machine) }) : b ? t('editor.editBot') : t('editor.newBot');
     el.editorTemplateField.hidden = !!b;
-    el.editorTemplate.value = '';
+    el.editorTemplate.value = TEMPLATES[0].id;
     editorValues(b || templateValues(TEMPLATES[0]));
     el.editorError.hidden = true;
     el.editorNameSuggestions.hidden = true;
@@ -66,12 +74,14 @@ export function editorValues(v) {
     el.editorApproval.value = v.approval || 'risky';
     el.editorTone.value = v.tone || '';
     el.editorVoice.value = v.voice || '';
+    editorVoices = { ...v.voices };
     fillCategoryOptions(el.editorCategory, v.category);
     canMessageValues(v);
     contactValues(v);
     allowedToolValues(v);
     // A template keeps the machine already chosen; a new bot starts on the first machine awake
     machineOptions(v.machine || (v.id ? responsibleMachine(v) : '') || el.editorMachine.value || [...state.online].sort()[0] || '');
+    renderVoiceChoice();
 }
 
 /** The folders of the list to choose from ('' = none); a folder that no longer exists counts as none. */
@@ -398,15 +408,22 @@ function saveBot(folder, to) {
     const b = state.editorBot;
     const model = el.editorModel.value === 'custom' ? el.editorModelCustom.value.trim() || 'default' : el.editorModel.value;
     // Only now that the new machine took the folder: the previous one packs once the move reaches it
-    if (b && takeWork && takeWork.botId === b.id) send({ type: 'work_take', botId: b.id, machine: el.editorMachine.value, folder: takeWork.folder }, takeWork.from);
+    if (b && takeWork && takeWork.botId === b.id) {
+        send({ type: 'work_take', botId: b.id, machine: el.editorMachine.value, folder: takeWork.folder }, takeWork.from);
+        toast(t('move.workAlong', { from: upper(takeWork.from), repos: takeWork.repos }), 5000);
+    }
     takeWork = null;
+    if (!b) state.openNewBot = { known: state.bots.map((x) => x.id), until: Date.now() + 60_000 };
     send({
         type: 'bot_save',
+        // Every new bot sets itself up in its chat (a template only fills in a part): its machine starts the setup
+        // conversation once it is saved, and that chat opens here as soon as the bot list names the new bot
+        ...(!b ? { setup: true } : {}),
         bot: {
             id: b ? b.id : '',
             name: el.editorName.value.trim(), area: el.editorArea.value.trim(), role: el.editorRole.value.trim(), folder,
             model, tone: el.editorTone.value.trim(), avatar: state.editorAvatar, approval: el.editorApproval.value, machine: el.editorMachine.value,
-            voice: el.editorVoice.value, category: el.editorCategory.value, canMessage: canMessageInput(), allowedTools: allowedToolsInput(), contact: contactInput(),
+            voice: el.editorVoice.value, voices: { ...editorVoices }, category: el.editorCategory.value, canMessage: canMessageInput(), allowedTools: allowedToolsInput(), contact: contactInput(),
         },
     }, to);
     setSaving(false);
@@ -427,15 +444,8 @@ export async function submitEditor() {
     const repo = el.editorRepo.value.trim();
     el.editorError.hidden = true;
     if (repo && !isRepository(repo)) { showEditorError(t('editor.repoInvalid')); el.editorRepo.focus(); return; }
-    // Its sessions follow the bot to the new machine; what is not on the git server yet goes along only on request
-    takeWork = null;
-    if (b && b.machine && b.machine !== machine) {
-        const unpushed = unpushedOf(b);
-        if (unpushed.length) {
-            if (!(await confirmDialog(t('editor.takeWork', { name: b.name, from: upper(b.machine), to: upper(machine), repos: unpushed.map((r) => r.name).join(', ') })))) return;
-            takeWork = { botId: b.id, from: b.machine, folder: b.folder };
-        }
-    }
+    // Its sessions follow the bot to the new machine, and so does what is not on the git server yet
+    takeWork = b && b.machine && b.machine !== machine ? workToTake(b) : null;
     if (!state.online.includes(machine)) {
         if (b && b.machine === machine && b.folder === asked && state.online.length) { saveBot(asked, undefined); return; }
         showEditorError(t('editor.machineAsleep', { machine: upper(machine) }));
@@ -477,7 +487,11 @@ export function receiveCloned(f) {
     if (!cloning || f.url !== cloning.url) return;
     setSaving(false);
     if (el.editor.hidden) return;
-    if (!f.ok) { showEditorError(f.message || t('editor.noAnswer'), f.refused); return; }
+    if (!f.ok) {
+        showEditorError(f.message || t('editor.noAnswer'), f.refused);
+        if (f.credentials) credentialsHint(el.editorMachine.value, f.url);
+        return;
+    }
     el.editorFolder.value = f.folder;
     if (f.push === false) {
         let host = '';
@@ -486,6 +500,23 @@ export function receiveCloned(f) {
         return;
     }
     checkThenSave(f.folder);
+}
+
+/**
+ * A clone that git refused for want of credentials: where the token goes, and a button there. The settings are a page
+ * below the editor, so the editor closes; the bot is saved again once the token is in.
+ */
+function credentialsHint(machine, url) {
+    let host = '';
+    try { host = new URL(url).host; } catch { /* SSH form: a key of the machine, not a token */ }
+    el.editorError.append(node('span', 'error-hint', t(host ? 'editor.cloneCredentials' : 'editor.cloneCredentialsSsh', { machine: upper(machine), host })));
+    const go = node('button', 'btn small', t('editor.openGitSettings', { machine: upper(machine) }));
+    go.type = 'button';
+    go.addEventListener('click', () => {
+        closeDialog(el.editor);
+        openGitSettings(machine);
+    });
+    el.editorError.append(go);
 }
 
 export function receiveFolderChecked(f) {
@@ -518,22 +549,35 @@ let move = null;
 const unpushedOf = (b) => gitOpenOf(b).filter((r) => r.files.length || r.more || r.ahead);
 
 /**
- * Moving a bot to `host` without questions about folders: the machine there puts it at its place (Bot.place) under
- * its folder for bots, after one confirmation that names the folder. Without a place, with a place that is taken
- * there or with a backend before bot_move, the small move dialog asks for folder and repository as before.
+ * Work not on the git server yet goes along to the new machine (work-transfer.ts in the backend): the bot's machine,
+ * its folder there and the repos concerned; null when everything is on the server.
+ */
+function workToTake(b) {
+    const unpushed = b.machine ? unpushedOf(b) : [];
+    return unpushed.length ? { botId: b.id, from: b.machine, folder: b.folder, repos: unpushed.map((r) => r.name).join(', ') } : null;
+}
+
+/**
+ * Moving a bot to `host` without a question: the machine there puts it at its place (Bot.place) under its folder for
+ * bots, clones or creates what is missing and saves the bot there; work not on the git server yet comes along. Without
+ * a place, with a place that is taken there or with a backend before bot_move, the small move dialog asks for folder
+ * and repository as before.
  */
 export function moveBot(b, host) {
     if (!b.place) { openEditor(b, host); return; }
-    move = { botId: b.id, host, waiting: !state.online.includes(host), work: null };
+    move = { botId: b.id, host, waiting: !state.online.includes(host), work: workToTake(b) };
     if (move.waiting) { toast(t('move.waiting', { machine: upper(host) }), 4000); return; }
-    send({ type: 'bot_move', botId: b.id, dryRun: true }, host);
+    toast(t('move.started', { name: b.name, machine: upper(host) }), 4000);
+    send({ type: 'bot_move', botId: b.id }, host);
 }
 
-/** The machine of a move woke up: ask it where the bot would go. */
+/** The machine of a move woke up: move the bot there now. */
 export function continueMove() {
     if (!move || !move.waiting || !state.online.includes(move.host)) return;
     move.waiting = false;
-    send({ type: 'bot_move', botId: move.botId, dryRun: true }, move.host);
+    const b = bot(move.botId);
+    if (b) toast(t('move.started', { name: b.name, machine: upper(move.host) }), 4000);
+    send({ type: 'bot_move', botId: move.botId }, move.host);
 }
 
 function moveByDialog(message, refused) {
@@ -545,35 +589,17 @@ function moveByDialog(message, refused) {
     if (message) showEditorError(message, refused);
 }
 
-export async function receiveMoved(f) {
+export function receiveMoved(f) {
     if (!move || f.botId !== move.botId) return;
     const b = bot(f.botId);
-    const host = move.host;
+    const { host, work } = move;
     if (!b) { move = null; return; }
     if (!f.ok) { moveByDialog(f.message, f.refused); return; }
-    if (f.dryRun) {
-        const request = move;
-        const question = { use: 'move.confirmUse', clone: 'move.confirmClone', create: 'move.confirmCreate' }[f.action] || 'move.confirmUse';
-        const yes = await confirmDialog(t(question, { name: b.name, machine: upper(host), folder: f.folder, repo: b.place?.repo || '' }));
-        // answered late: another move may have taken its place meanwhile
-        if (move !== request) return;
-        if (!yes) { move = null; return; }
-        // Its sessions follow the bot; what is not on the git server yet goes along only on request
-        const unpushed = b.machine ? unpushedOf(b) : [];
-        if (unpushed.length) {
-            const take = await confirmDialog(t('editor.takeWork', { name: b.name, from: upper(b.machine), to: upper(host), repos: unpushed.map((r) => r.name).join(', ') }));
-            if (move !== request) return;
-            if (!take) { move = null; return; }
-            move.work = { from: b.machine, folder: b.folder };
-        }
-        if (f.action === 'clone') toast(t('move.cloning', { machine: upper(host) }), 4000);
-        send({ type: 'bot_move', botId: b.id }, host);
-        return;
-    }
     // Only now that the new machine took the bot: the previous one packs once the move reaches it
-    if (move.work) send({ type: 'work_take', botId: b.id, machine: host, folder: move.work.folder }, move.work.from);
+    if (work) send({ type: 'work_take', botId: b.id, machine: host, folder: work.folder }, work.from);
     move = null;
-    toast(t('move.done', { name: b.name, machine: upper(host), folder: f.folder }), 4000);
+    const done = t('move.done', { name: b.name, machine: upper(host), folder: f.folder });
+    toast(work ? `${done} ${t('move.workAlong', { from: upper(work.from), repos: work.repos })}` : done, work ? 6000 : 4000);
 }
 
 /** A backend before bot_move, or a bot it does not know: the dialog asks instead. */
@@ -796,7 +822,7 @@ export function openGroupEditor(g) {
 
 // ================================================================ Info panel
 
-const APPROVAL_LABELS = { never: 'approval.policy.never', risky: 'approval.policy.risky', write: 'approval.policy.write' };
+const APPROVAL_LABELS = { never: 'approval.policy.never', risky: 'approval.policy.risky', write: 'approval.policy.write', read: 'approval.policy.read' };
 
 /**
  * The bot's page: on top what the ⋮ menu held (model, machine, open changes, actions) for its main chat or for the
@@ -1029,4 +1055,70 @@ export function routineCron() {
         case 'hourly': return '0 * * * *';
         default: return el.rCron.value.trim();
     }
+}
+
+// ================================================================ The bot's voice
+
+/** The bot's own voice per provider while the editor is open; saved with the bot. */
+let editorVoices = {};
+
+/** The bot the editor shows, as far as the voice needs it: its machine (also a new one's) and name. */
+function editedBot() {
+    const b = state.editorBot;
+    return { ...b, machine: el.editorMachine.value || (b && b.machine) || '', name: el.editorName.value.trim() };
+}
+
+/**
+ * The voices of the provider that reads for this bot right now, with "as the kind above" first. Without a voice of
+ * the backend (no key, no machine that reads aloud) only a hint: the device reads and has nothing to choose.
+ */
+export function renderVoiceChoice() {
+    stopPreview();
+    const where = backendVoice(editedBot());
+    el.editorVoiceChoice.hidden = !where;
+    el.editorVoiceHint.hidden = Boolean(where);
+    el.editorVoiceHint.textContent = where ? '' : t('editor.voiceDeviceOnly');
+    if (!where) return;
+    el.editorVoiceWhere.textContent = t(`editor.voiceWhere.${where.provider}`, { machine: upper(where.machine) });
+    const language = (state.settings && state.settings.language) || 'en';
+    const kindText = (k) => (k ? t(k === 'male' ? 'editor.voiceKindMale' : 'editor.voiceKindFemale') : '');
+    const kind = el.editorVoice.value || guessVoice(el.editorName.value);
+    const options = [['', t('editor.voiceOwnDefault', { voice: kindText(kind) })]];
+    for (const v of VOICE_CATALOG[where.provider]) {
+        if (v.lang && v.lang !== language) continue;
+        const name = where.provider === 'local' ? v.id.split('-')[1].replace(/_/g, ' ') : v.id;
+        options.push([v.id, `${name[0].toUpperCase()}${name.slice(1)}${v.kind ? ` · ${kindText(v.kind)}` : ''}`]);
+    }
+    el.editorVoiceName.replaceChildren(...options.map(([value, text]) => {
+        const o = /** @type {HTMLOptionElement} */ (node('option', '', text));
+        o.value = value;
+        return o;
+    }));
+    const chosen = editorVoices[where.provider] || '';
+    el.editorVoiceName.value = options.some(([value]) => value === chosen) ? chosen : '';
+}
+
+/** A voice chosen: kept for this provider; its kind becomes the bot's kind, so the other voices match it. */
+export function chooseVoiceName() {
+    const where = backendVoice(editedBot());
+    if (!where) return;
+    const id = el.editorVoiceName.value;
+    if (id) editorVoices[where.provider] = id;
+    else delete editorVoices[where.provider];
+    const v = VOICE_CATALOG[where.provider].find((x) => x.id === id);
+    if (v && v.kind) el.editorVoice.value = v.kind;
+    renderVoiceChoice();
+}
+
+/** "Listen": a sample sentence in the chosen voice, or in the kind's when none is chosen. */
+export function listenToVoice() {
+    const where = backendVoice(editedBot());
+    if (!where) return;
+    const button = el.editorVoiceListen;
+    button.disabled = true;
+    const kind = el.editorVoice.value || guessVoice(el.editorName.value);
+    previewVoice(where, el.editorVoiceName.value, /** @type {'female' | 'male'} */ (kind), (error) => {
+        button.disabled = false;
+        if (error) toast(t('editor.voiceListenFailed', { error }));
+    });
 }

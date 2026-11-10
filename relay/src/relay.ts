@@ -1,6 +1,6 @@
 // Relay: serves the web app and passes WebSocket frames between browsers (/ws/client, login with the password)
 // and the backends of the user's machines (/ws/agent, Authorization: Bearer <agent token>, X-Machine: <name>).
-// Wakes machines as set in WAKE_METHOD (wake service, Wake-on-LAN or a command; see wakeup.ts).
+// Wakes machines as set in WAKE_METHOD (wake service, Wake-on-LAN, a command or the wake agent on /ws/wake; see wakeup.ts).
 //
 // startRelay() runs it in any process: server.ts (the relay on its own, in the container) and a backend without
 // RELAY_URL (the relay embedded on 127.0.0.1). Without tokens the relay starts unclaimed (owner.ts): it waits for
@@ -24,7 +24,7 @@ import { Devices, newTotpSecret, TotpStore, totpUri, totpVerify, totpVerifyOnce 
 import { MachinesSeen } from './machines-seen.ts';
 import { migrateRelayData } from './migrate.ts';
 import { MachineTokens, Owner, UNCLAIMED_PAGE, type Credentials } from './owner.ts';
-import { handleWakeRequest, setWakeConfig, wake, wakeConfigured, wakeSummary, wakeableMachines, type WakeConfig } from './wakeup.ts';
+import { acceptWakeAgent, handleWakeRequest, setWakeConfig, wake, wakeConfig, wakeConfigured, wakeSummary, wakeableMachines, type WakeConfig } from './wakeup.ts';
 import { WakeScheduler } from './wake-schedule.ts';
 import { nativeChannels, sendNative } from '../../shared/push-native.ts';
 
@@ -155,6 +155,7 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
     const accounts = new Accounts(dataDir);
     const totp = new TotpStore(dataDir, o.totpSecret ?? '', log);
     const machineTokens = new MachineTokens(dataDir);
+    const machinesSeen = new MachinesSeen(dataDir);
     /** Secrets being set up, per device, until confirmed with a code from the app (10 minutes). */
     const totpPending = new Map<string, { secret: string; until: number }>();
     const timers: NodeJS.Timeout[] = [];
@@ -203,6 +204,11 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 res.writeHead(401).end();
                 return;
             }
+            // A machine bound to an account belongs to someone else: it brings no further machines in
+            if (machineTokens.accountOf(auth)) {
+                res.writeHead(403).end();
+                return;
+            }
             const invite = machineTokens.invite();
             log(`Invitation for a new machine minted for ${ip}, valid until ${invite.expiresAt}`);
             res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(invite));
@@ -230,6 +236,66 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
             });
             return;
         }
+        // An admin's backend mints (or with `revoke` voids) the setup link of an account; from then on the account runs
+        // only on machines bound to it
+        if (req.method === 'POST' && url.pathname === '/setup-invite') {
+            const ip = clientIp(req);
+            const auth = String(req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+            const c = creds();
+            if (!c || !ipAllowed(ip, agentAllowedFrom) || isBlocked(ip) || !agentOk(c, auth) || machineTokens.accountOf(auth)) {
+                recordFailure(ip);
+                res.writeHead(401).end();
+                return;
+            }
+            void readJson(req, 1024).then((body) => {
+                const account = accounts.get(String(body?.account ?? ''));
+                const by = String(body?.by ?? '');
+                if (!account || account.id === MAIN || account.admin || account.id === by || !accounts.isAdmin(by)
+                    || (account.setupBy && account.setupBy !== by)) {
+                    res.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'not_allowed' }));
+                    return;
+                }
+                if (body?.revoke === true) {
+                    machineTokens.revokeSetup(account.id);
+                    log(`Setup link of account ${account.id} revoked (by account ${by})`);
+                    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify({ ok: true }));
+                    return;
+                }
+                const first = !account.setupBy;
+                accounts.markSetUp(account.id, by);
+                // The machines that served the account so far let go of it (it had nothing yet: setups are for new accounts)
+                if (first) bridge.accountSetUp(account.id);
+                const invite = machineTokens.setupInvite(account.id);
+                log(`Setup link for account ${account.id} minted (by account ${by}), valid until ${invite.expiresAt}`);
+                res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(invite));
+            });
+            return;
+        }
+        // A machine redeems a setup link (desktop app, npm run join): an agent token bound to the link's account
+        if (req.method === 'POST' && url.pathname === '/setup') {
+            const ip = clientIp(req);
+            if (!creds() || !ipAllowed(ip, agentAllowedFrom) || isBlocked(ip) || isGloballyBlocked()) {
+                res.writeHead(creds() ? 429 : 503).end();
+                return;
+            }
+            void readJson(req, 2048).then((body) => {
+                const wanted = String(body?.machine ?? '').toLowerCase();
+                const taken = (name: string) => bridge.online().includes(name) || name in machinesSeen.gone([]);
+                const r = body ? machineTokens.joinSetup(String(body.token ?? ''), wanted, taken) : 'invalid';
+                if (r === 'invalid') {
+                    recordFailure(ip);
+                    log(`Setup from ${ip} refused`);
+                    res.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'invalid_invitation' }));
+                    return;
+                }
+                recordSuccess(ip);
+                const account = accounts.get(r.account);
+                log(`Machine ${r.machine} joined from ${ip}, bound to account ${r.account}`);
+                res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+                    .end(JSON.stringify({ agentToken: r.token, machine: r.machine, account: { id: r.account, name: account?.name ?? r.account } }));
+            });
+            return;
+        }
         // A backend mints a one-time pairing token for a new device (it builds the link and adds the end-to-end key)
         if (req.method === 'POST' && url.pathname === '/pair') {
             const ip = clientIp(req);
@@ -242,7 +308,14 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
             }
             // The body names the account the device will belong to; none (backends before accounts) = 'main'
             void readJson(req, 1024).then((body) => {
-                const account = typeof body?.account === 'string' ? body.account : MAIN;
+                // A machine bound to an account signs in devices of that account only, whatever it asks for (the desktop
+                // app asks without one); an account set up runs on its own machines, so no other mints for it
+                const bound = machineTokens.accountOf(auth);
+                const account = bound ?? (typeof body?.account === 'string' ? body.account : MAIN);
+                if (!bound && accounts.setupBy(account)) {
+                    res.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'not_allowed' }));
+                    return;
+                }
                 if (!accounts.get(account)) {
                     res.writeHead(404, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'unknown_account' }));
                     return;
@@ -350,8 +423,11 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
             return;
         }
         void handleWakeRequest(request, reply, (host) => bridge.markWoken(host));
-    }, new MachinesSeen(dataDir));
+    }, machinesSeen);
     bridge.accountList = () => ({ ids: accounts.ids(), deleted: accounts.deletedIds(), people: accounts.people() });
+    bridge.setupBy = (id) => accounts.setupBy(id);
+    bridge.mayRoute = (from, to) => accounts.mayRoute(from, to);
+    bridge.boundMachines = () => machineTokens.bound();
 
     const isReach = (x: unknown): x is Reach => (REACHES as readonly unknown[]).includes(x);
 
@@ -394,10 +470,14 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 if (request.admin !== undefined && (self || typeof request.admin !== 'boolean')) return refuse();
                 if (request.reach !== undefined && (self || !isReach(request.reach))) return refuse();
                 if (request.name !== undefined && typeof request.name !== 'string') return refuse();
-                const r = accounts.update(id, { name: request.name, password: request.password, admin: request.admin, reach: request.reach });
+                const contacts = request.contacts;
+                if (contacts !== undefined && (self || !Array.isArray(contacts) || contacts.length > 100 || !contacts.every((c) => typeof c === 'string'))) return refuse();
+                // An account set up runs on someone else's machine: it is no admin
+                if (request.admin === true && accounts.setupBy(id)) return refuse();
+                const r = accounts.update(id, { name: request.name, password: request.password, admin: request.admin, reach: request.reach, contacts });
                 if (r !== 'ok') return refuse(r === 'name_taken' ? 'account_name_taken' : 'not_allowed');
                 log(`Account ${id} changed (by account ${own})`);
-                if (request.name !== undefined || request.admin !== undefined || request.reach !== undefined) bridge.peopleChanged(accounts.people());
+                if (request.name !== undefined || request.admin !== undefined || request.reach !== undefined || contacts !== undefined) bridge.peopleChanged(accounts.people());
                 list();
                 return;
             }
@@ -405,9 +485,12 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 const id = String(request.id ?? '');
                 if (!admin || id === own || !accounts.remove(id)) return refuse();
                 devices.removeAccount(id);
-                log(`Account ${id} deleted (by account ${own})`);
+                // Its machines hear of it first, so they remove its data, then lose their token
+                const machines = machineTokens.removeAccount(id);
+                log(`Account ${id} deleted (by account ${own})${machines.length ? `, machines logged out: ${machines.join(', ')}` : ''}`);
                 list();
                 bridge.accountDeleted(id);
+                for (const m of machines) bridge.disconnectAgent(m);
                 bridge.peopleChanged(accounts.people());
                 return;
             }
@@ -559,9 +642,24 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
             }
             recordSuccess(ip);
             const withAccounts = req.headers['x-accounts'] === '1';
+            const bound = machineTokens.accountOf(auth.replace(/^Bearer\s+/i, ''), machine);
             wss.handleUpgrade(req, socket, head, (ws) => {
                 wss.emit('connection', ws, req);
-                void bridge.connectAgent(ws, ip, machine, withAccounts);
+                void bridge.connectAgent(ws, ip, machine, withAccounts, bound);
+            });
+            return;
+        }
+
+        // The wake agent (wake-agent/): only with WAKE_METHOD=agent; it signs in with its first message
+        if (url.pathname === '/ws/wake') {
+            if (wakeConfig().method !== 'agent' || isBlocked(ip)) {
+                socket.write(`HTTP/1.1 ${isBlocked(ip) ? '429 Too Many Requests' : '404 Not Found'}\r\n\r\n`);
+                socket.destroy();
+                return;
+            }
+            wss.handleUpgrade(req, socket, head, (ws) => {
+                wss.emit('connection', ws, req);
+                acceptWakeAgent(ws, ip, () => recordFailure(ip), log);
             });
             return;
         }

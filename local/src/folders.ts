@@ -203,6 +203,14 @@ export function listFolder(folder: string): { folder: string; parent?: string; f
 }
 
 /**
+ * Whether git refused a clone for want of credentials. Hosts answer a private repository without them with "not
+ * found" (GitHub) or 403, so these count too; the hint says "if the repository is private".
+ */
+export function needsCredentials(message: string): boolean {
+    return /could not read (Username|Password)|terminal prompts disabled|Authentication failed|Access denied|Permission denied \(publickey|Repository not found|\b40[13]\b/i.test(message);
+}
+
+/**
  * Clones `url` into `folder` (new or empty, inside the allowed folders) or, without one, where proposeFolder() says.
  * A folder that already holds a clone of the same repository is used as it is.
  */

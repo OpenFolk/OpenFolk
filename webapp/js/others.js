@@ -3,7 +3,7 @@
    needs (bots, state, last message, unread); a tap opens the chat in that account, which loads the page again
    (accounts.js). The active account keeps its one full connection (connection.js), and nothing of another account goes
    beyond the list. */
-import { DEVICE_KEY, accountScopeOf, deviceAccounts, deviceRelays, loadedAccount, relayScope, storage } from './core.js';
+import { DEVICE_KEY, accountScopeOf, deviceAccounts, deviceRelays, expireAccounts, loadedAccount, relayScope, storage } from './core.js';
 import { botIdOf, decrypt, e2e, isGroup, loadKey, newChannel, sendOn } from './e2e.js';
 import { socketUrl } from './platform.js';
 import { preview } from './connection.js';
@@ -37,8 +37,10 @@ const idOf = (o) => (o.relay ? `${o.relay.url}|${o.account.id}` : o.account.id);
  * @param {{ scope: string }} relay
  */
 export function accountsOf(relay) {
+    // An account whose key expired on this device has nothing to connect with
+    expireAccounts(relay.scope);
     const list = deviceAccounts(relay.scope);
-    if (list.length) return list;
+    if (list.length) return list.filter((a) => a.device);
     const device = storage.get('openfolk-device' + relay.scope);
     return device ? [{ id: 'main', name: '', admin: true, device }] : [];
 }
@@ -58,7 +60,7 @@ export function setShowAllAccounts(on) {
 /** After the active account signed in: one connection for each other account of this device, on every relay. */
 export function connectOthers() {
     if (!showAllAccounts()) return;
-    for (const a of deviceAccounts()) if (a.id !== loadedAccount && a.device !== storage.get(DEVICE_KEY)) add(a, null);
+    for (const a of deviceAccounts()) if (a.device && a.id !== loadedAccount && a.device !== storage.get(DEVICE_KEY)) add(a, null);
     if (!relaysPossible()) return;
     for (const r of deviceRelays()) if (r.scope !== relayScope) for (const a of accountsOf(r)) add(a, r);
 }

@@ -10,7 +10,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 
 /** Starts main.js against a profile folder; returns what the stand-in recorded. */
 function startApp(profile, config) {
-    const state = { handlers: {}, whenReady: null, win: null, tray: null, menu: null, restarts: 0 };
+    const state = { handlers: {}, whenReady: null, win: null, tray: null, menu: null, restarts: 0, appEvents: {}, protocols: [], dialogs: [], answer: 0 };
     if (config) fs.writeFileSync(path.join(profile, 'config.json'), JSON.stringify(config));
     class Win {
         constructor() {
@@ -42,7 +42,8 @@ function startApp(profile, config) {
     const electron = {
         app: {
             name: 'OpenFolk', isPackaged: false, getPath: () => profile, getLocale: () => 'en', getVersion: () => '0.0.0',
-            setPath: () => undefined, requestSingleInstanceLock: () => true, on: () => undefined, quit: () => undefined,
+            setPath: () => undefined, requestSingleInstanceLock: () => true, on: (name, fn) => { state.appEvents[name] = fn; }, quit: () => undefined,
+            setAsDefaultProtocolClient: (scheme) => { state.protocols.push(scheme); return true; },
             whenReady: () => new Promise((resolve) => { state.whenReady = resolve; }),
             getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings: () => undefined,
         },
@@ -52,7 +53,7 @@ function startApp(profile, config) {
         shell: { openExternal: () => undefined },
         ipcMain: { handle: (name, fn) => { state.handlers[name] = fn; } },
         nativeImage: { createFromPath: () => ({ resize: () => ({}) }) },
-        dialog: { showMessageBox: async () => ({ response: 0 }), showOpenDialog: async () => ({ canceled: true }) },
+        dialog: { showMessageBox: async (w, o) => { state.dialogs.push(o); return { response: state.answer }; }, showOpenDialog: async () => ({ canceled: true }) },
         session: { defaultSession: { setPermissionRequestHandler: () => undefined } },
         protocol: { registerSchemesAsPrivileged: () => undefined, handle: () => undefined },
     };
@@ -113,6 +114,45 @@ export default async function ({ check }) {
         check('main: saving an empty list falls back to the own folder', fs.readFileSync(path.join(profile, '.env'), 'utf8').includes(`ALLOWED_ROOTS=${path.join(home, 'OpenFolk')}`));
         const info = await app.handlers['folders-info'](fromSetup);
         check('main: the folder pages learn the own folder', info.defaultRoot === path.join(home, 'OpenFolk'), info.defaultRoot);
+
+        // Setup links: the app takes openfolk:// links, and a setup link only into an OpenFolk that is new
+        check('main: the app registers for openfolk:// links', app.protocols.includes('openfolk'), app.protocols);
+        const setupLink = 'https://relay.example.test/#setup=abc&e2e=key';
+        const viaBrowser = ['openfolk.exe', `openfolk://setup?link=${encodeURIComponent(setupLink)}`];
+        const bots = path.join(profile, 'data', 'accounts', 'main', 'bots.json');
+        fs.mkdirSync(path.dirname(bots), { recursive: true });
+        fs.writeFileSync(bots, JSON.stringify([{ id: 'own' }]));
+        app.appEvents['second-instance']({}, viaBrowser);
+        await settle();
+        check('main: a setup link into an OpenFolk with bots of its own is refused with the reason', /bots of its own/.test(app.dialogs.at(-1)?.message ?? ''), app.dialogs.at(-1));
+        const pasted = await app.handlers['join-server'](fromSetup, setupLink);
+        check('main: so is one pasted on the setup page', /bots of its own/.test(pasted.error ?? ''), pasted);
+        fs.writeFileSync(bots, '[]');
+        app.answer = 1;
+        const shown = app.dialogs.length;
+        app.appEvents['second-instance']({}, viaBrowser);
+        await settle();
+        const ask = app.dialogs[shown];
+        check('main: a new OpenFolk asks first, naming the relay', ask?.type === 'question' && ask.message.includes('relay.example.test') && app.dialogs.length === shown + 1, ask);
+        check('main: cancelled, nothing joined', !fs.readFileSync(path.join(profile, '.env'), 'utf8').includes('RELAY_URL'));
+        app.answer = 0;
+
+        // Joined a relay (by invitation or setup link): the way back
+        fs.appendFileSync(path.join(profile, '.env'), ['RELAY_URL=wss://relay.example.test/ws/agent', 'AGENT_TOKEN=abc', 'E2E_KEY=def', 'MACHINE_NAME=desk-2', ''].join('\n'));
+        app.appEvents['second-instance']({}, viaBrowser);
+        await settle();
+        check('main: a setup link into an OpenFolk joined elsewhere says to disconnect first', /connected to relay\.example\.test/.test(app.dialogs.at(-1)?.message ?? ''), app.dialogs.at(-1));
+        app = startApp(profile, { mode: 'local', localPort: 4711, paired: 'http://127.0.0.1:4711/' });
+        app.whenReady();
+        await settle();
+        const fileMenu = app.menu?.[0]?.submenu ?? [];
+        const disconnect = fileMenu.find((i) => /Disconnect from relay\.example\.test/.test(i.label ?? ''));
+        check('main: the menu offers to disconnect from the relay', !!disconnect, fileMenu.map((i) => i.label));
+        await disconnect?.click();
+        await settle();
+        const after = fs.readFileSync(path.join(profile, '.env'), 'utf8');
+        check('main: disconnected, the lines of the relay leave the .env, the folders stay', !/RELAY_URL|AGENT_TOKEN|E2E_KEY|MACHINE_NAME/.test(after) && after.includes('ALLOWED_ROOTS='), after);
+        check('main: … and the app runs on this computer again', !app.menu?.[0]?.submenu?.some((i) => /Disconnect/.test(i.label ?? '')));
 
         // Connected to a relay: a display-only window
         app = startApp(profile, { mode: 'relay', url: 'https://relay.example.test/' });

@@ -76,8 +76,29 @@ function setCounting(on) {
 }
 
 /**
+ * What went wrong, in one short line: electron-updater's messages carry the response headers (cookies included) and
+ * the whole feed, which belong in no dialog.
+ */
+function reason(e) {
+    const message = e instanceof Error ? e.message : String(e);
+    const status = /(?:HttpError: |status(?:Code)?[ :=]+)(\d{3})\b/i.exec(message);
+    if (status) return `HTTP ${status[1]}`;
+    const line = message.split('\n').map((l) => l.trim()).find(Boolean) || '?';
+    return line.length > 120 ? `${line.slice(0, 119)}…` : line;
+}
+
+/** Both sources failed; `feed` and `github` are their reasons. */
+class CheckFailed extends Error {
+    constructor(feed, github) {
+        super(`openfolk.app: ${feed}; GitHub: ${github}`);
+        this.feed = feed;
+        this.github = github;
+    }
+}
+
+/**
  * One check: openfolk.app first, with the active header on the first check of the day; GitHub when that fails.
- * Rejects only when both fail.
+ * Rejects only when both fail, with both reasons.
  */
 async function check() {
     const today = new Date().toISOString().slice(0, 10);
@@ -89,21 +110,36 @@ async function check() {
         const result = await updater.checkForUpdates();
         if (count) saveCountState({ ...state, day: today });
         return result;
-    } catch {
+    } catch (first) {
         updater.requestHeaders = null;
         updater.setFeedURL(GITHUB);
-        return updater.checkForUpdates();
+        try {
+            return await updater.checkForUpdates();
+        } catch (second) {
+            throw new CheckFailed(reason(first), reason(second));
+        }
     } finally {
         updater.requestHeaders = null;
     }
 }
 
+/** The "Update ready" dialog while it is open: the six-hourly checks and the menu must not stack a second one. */
+let asking = false;
+
 async function askRestart() {
-    const { response } = await dialog.showMessageBox(opts.window() || undefined, {
-        type: 'info', title: 'OpenFolk', message: text('updateReadyTitle'), detail: text('updateReadyText', ready),
-        buttons: [text('updateRestart'), text('updateLater')], defaultId: 0, cancelId: 1,
-    });
-    if (response === 0) restart();
+    if (asking) return;
+    asking = true;
+    try {
+        // The Windows installer is per machine: installing, now or on quit, asks for administrator rights
+        const detail = text(process.platform === 'win32' ? 'updateReadyTextAdmin' : 'updateReadyText', ready);
+        const { response } = await dialog.showMessageBox(opts.window() || undefined, {
+            type: 'info', title: 'OpenFolk', message: text('updateReadyTitle'), detail,
+            buttons: [text('updateRestart'), text('updateLater')], defaultId: 0, cancelId: 1,
+        });
+        if (response === 0) restart();
+    } finally {
+        asking = false;
+    }
 }
 
 /** Quits like the user would (the backend ends first, bots finish), then installs and starts the new version. */
@@ -127,10 +163,12 @@ function startUpdates(o) {
     updater.logger = null;
     // An automatic check stays quiet when it fails (offline, GitHub's rate limit); a check from the menu reports it
     updater.on('error', () => undefined);
+    // Asked once per version: a later check finds the same download again and stays quiet; the menu keeps the entry
     updater.on('update-downloaded', (info) => {
+        const fresh = info.version !== ready;
         ready = info.version;
         opts.onChange();
-        void askRestart();
+        if (fresh) void askRestart();
     });
     schedule(FIRST_CHECK);
     // will-quit comes after guardQuit let the quit through, i.e. after the backend has ended
@@ -169,7 +207,8 @@ async function checkNow() {
         if (!result?.isUpdateAvailable) return box(text('updateNone', app.getVersion()));
         return box(text('updateDownloading', result.updateInfo.version));
     } catch (e) {
-        return box(text('updateFailed').replace('{error}', e instanceof Error ? e.message : String(e)), 'warning');
+        const both = e instanceof CheckFailed ? e : new CheckFailed(reason(e), reason(e));
+        return box(text('updateFailed').replace('{feed}', both.feed).replace('{github}', both.github), 'warning');
     }
 }
 

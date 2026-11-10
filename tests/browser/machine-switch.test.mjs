@@ -42,8 +42,7 @@ export default async function ({ start, check }) {
     const saves = () => h.sent.filter((f) => f.type === 'bot_save');
     const editorOpen = () => p.locator('#editor').isVisible();
     let dialog = null;
-    let decline = false;
-    await onDialog(p, (d) => { dialog = d.message(); return decline ? d.dismiss() : d.accept(); });
+    await onDialog(p, (d) => { dialog = d.message(); return d.accept(); });
 
     await h.openChat('Skool Sven');
     await page();
@@ -104,20 +103,13 @@ export default async function ({ start, check }) {
     check('other fields unchanged, no machineOnly', f && f.bot.id === 'skool' && f.bot.model === 'opus' && f.bot.tone === 'brief' && !('machineOnly' in f.bot), f);
     check('editor closed', !(await editorOpen()));
 
-    // Sleeping machine: woken only after asking; declined, nothing is woken and no editor opens
+    // Sleeping machine: woken right away, without a question; nothing can be saved there until it is awake
     await page();
-    decline = true;
     dialog = null;
     await chip('LAPTOP');
     await h.wait(200);
-    decline = false;
-    check('asked before waking LAPTOP', dialog === 'LAPTOP is asleep. Wake it now to move Skool Sven there?', dialog);
-    check('declined: not woken, no editor', !h.sent.some((x) => x.type === 'wake') && !(await editorOpen()));
-    // Confirmed: woken, and nothing can be saved there until it is awake
-    await chip('LAPTOP');
-    await h.wait(200);
     const wake = h.sent.find((x) => x.type === 'wake');
-    check('LAPTOP is woken', wake && wake.host === 'laptop', wake);
+    check('LAPTOP is woken without a question', wake && wake.host === 'laptop' && dialog === null, { wake, dialog });
     check('the editor says LAPTOP is asleep', (await p.textContent('#editor-error')).includes('LAPTOP is asleep'));
     const before = saves().length;
     await p.click('#editor-form button[type=submit]');

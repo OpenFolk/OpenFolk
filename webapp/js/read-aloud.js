@@ -19,7 +19,7 @@ const speech = {
     active: null, chatId: null, botId: null, silentHintShown: false,
     parts: [], starts: [], total: 0, index: 0, partStart: 0, boundary: 0, playing: false, dragging: false, timer: 0, gen: 0,
     utterances: [], silentTicks: 0,
-    cloud: false, session: 0, clips: [], waiting: -1, loaded: -1, from: 0, audio: /** @type {HTMLAudioElement | null} */ (null),
+    cloud: false, provider: '', machine: '', session: 0, clips: [], waiting: -1, loaded: -1, from: 0, audio: /** @type {HTMLAudioElement | null} */ (null),
 };
 
 /** Whether this message is being read. */
@@ -85,30 +85,80 @@ function botVoice() {
     return (b && b.voice) || guessVoice(b ? b.name : '');
 }
 
+// Names of the systems' own voices (Apple, Microsoft) the name rule above gets wrong or cannot know; Apple's
+// "Grandpa" and "Eddy" end in a vowel, "Google Deutsch" has no name at all and counts as neither.
+const MALE_VOICES = new Set('martin markus yannick viktor stefan conrad killian jonas reed rocko eddy flo grandpa daniel aaron fred ralph albert junior thomas arthur rishi gordon oliver'.split(' '));
+const FEMALE_VOICES = new Set('anna helena petra sandy shelley grandma katja amala hedda vicki samantha karen moira tessa kathy seraphina'.split(' '));
+
+/** Male, female or '' (unknown) for a voice of the device, by its name. */
+export function voiceSex(name) {
+    const first = String(name || '').replace(/^(microsoft|google|apple)\s+/i, '').trim().toLowerCase().split(/[\s(-]+/)[0] || '';
+    if (MALE_VOICES.has(first)) return 'male';
+    if (FEMALE_VOICES.has(first)) return 'female';
+    if (!first || /^(deutsch|english|german|us|uk)$/.test(first)) return '';
+    return guessVoice(first);
+}
+
 /** Best voice for the UI language and the bot: premium/enhanced/natural voices first (German systems call them
- *  "erweitert"), then local ones; among them one whose name fits the bot's voice. */
+ *  "erweitert"), then local ones; among them one whose name fits the bot's voice. `fits`: false when the device has
+ *  no voice of the bot's kind in this language (an iPhone has mostly female German voices until others are loaded). */
 function speechVoice() {
     const lang = new RegExp(`^${i18n.language}(-|_|$)`, 'i');
     const all = (window.speechSynthesis.getVoices() || []).filter((v) => lang.test(v.lang));
     const who = botVoice();
-    const fitting = all.filter((v) => guessVoice(v.name.replace(/^(microsoft|google|apple)\s+/i, '')) === who);
+    const fitting = all.filter((v) => voiceSex(v.name) === who);
     const pick = (voices) => voices.find((v) => /premium|enhanced|erweitert|natural|neural/i.test(v.name)) || voices.find((v) => v.localService) || voices[0] || null;
-    return pick(fitting) || pick(all);
+    const voice = pick(fitting);
+    return voice ? { voice, fits: true, who } : { voice: pick(all), fits: false, who };
+}
+
+/** A hint once per device and kind when no voice of that kind exists. */
+const MISSING_VOICE_KEY = 'openfolk-missing-voice-hint';
+
+function missingVoiceHint(who) {
+    const shown = storage.get(MISSING_VOICE_KEY).split(',');
+    if (shown.includes(who)) return;
+    storage.set(MISSING_VOICE_KEY, [...shown.filter(Boolean), who].join(','));
+    showEvent(t(IOS ? 'speak.noVoiceIos' : 'speak.noVoice', { kind: t(who === 'male' ? 'speak.kindMale' : 'speak.kindFemale') }));
 }
 
 /** The machine that makes the cloud voice: the bot's own, otherwise any awake one (the keys are synced). */
-function speechMachine() {
-    const b = bot(speech.botId);
+function speechMachine(b = bot(speech.botId)) {
     return (b && responsibleMachine(b)) || state.online[0] || null;
 }
 
-/** Same rule as speechProvider() in local/src/speech.ts: a cloud voice when the chosen provider has a key. */
-function cloudVoice() {
+/** Whether a machine can read aloud itself (Piper; known from its machine settings, which only the main account gets). */
+function speaksItself(machine) {
+    const v = machine && state.machineSettings[machine] && state.machineSettings[machine].voice;
+    return Boolean(v && v.state === 'ready' && v.speech);
+}
+
+/** The machine for the voice on the bot's machine: its own if it speaks, else any awake one that does, else its own. */
+function localMachine(b) {
+    const own = speechMachine(b);
+    if (speaksItself(own)) return own;
+    return state.online.find(speaksItself) || own;
+}
+
+/**
+ * Same rule as speechProvider() in local/src/speech.ts: a voice of the backend when the chosen provider has a key or
+ * the bot's machine speaks itself; "auto" takes a key first, then a machine that speaks. Null: the device reads.
+ * `b`: the bot read (or edited), a new one in the editor has none yet.
+ * @returns {{ provider: 'openai' | 'gemini' | 'local', machine: string } | null}
+ */
+export function backendVoice(b = bot(speech.botId)) {
     const s = state.settings || {};
     const keys = s.apiKeys || {};
     const choice = s.readAloud || 'auto';
-    const has = choice === 'auto' ? Boolean(keys.openai || keys.gemini) : choice !== 'device' && Boolean(keys[choice]);
-    return has && Boolean(speechMachine());
+    if (choice === 'device') return null;
+    const machine = speechMachine(b);
+    if (!machine) return null;
+    if (choice === 'local') return { provider: 'local', machine: localMachine(b) };
+    const cloud = choice === 'auto' ? (keys.openai ? 'openai' : keys.gemini ? 'gemini' : '') : keys[choice] ? choice : '';
+    if (cloud) return { provider: cloud, machine };
+    // "auto" without a key: a machine that speaks itself, if any is known
+    const local = state.online.find(speaksItself);
+    return choice === 'auto' && local ? { provider: 'local', machine: local } : null;
 }
 
 /** Marks the message being read and shows the bar below everything; without a message both go away. */
@@ -296,12 +346,17 @@ export function readAloud(e, chatId) {
     if (wasActive === e.id) return;
     const text = speechText(e.text);
     speech.botId = e.botId || botIdOf(chatId);
-    speech.cloud = cloudVoice();
+    const backend = backendVoice();
+    speech.cloud = Boolean(backend);
+    speech.provider = backend ? backend.provider : '';
+    speech.machine = backend ? backend.machine : '';
     if (!speech.cloud && !('speechSynthesis' in window)) {
         void alertDialog(t('speak.unsupported'));
         return;
     }
-    const parts = speech.cloud ? chunks(text, 220, 700) : chunks(text, 220, 220);
+    // Piper on a machine's processor needs about a third of the audio's length: shorter parts, so the first comes soon
+    // and each next one is ready before the one playing ends
+    const parts = speech.provider === 'local' ? chunks(text, 160, 400) : speech.cloud ? chunks(text, 220, 700) : chunks(text, 220, 220);
     if (!parts.length) return;
     if (!speech.cloud && IOS && !speech.silentHintShown) {
         speech.silentHintShown = true;
@@ -348,7 +403,9 @@ function fetchClip(i) {
     const clip = { state: 'loading', url: '', error: '' };
     speech.clips[i] = clip;
     const session = speech.session;
-    send({ type: 'speech_get', id: `${session}:${i}`, text: speech.parts[i].trim(), voice: botVoice() }, speechMachine());
+    const b = bot(speech.botId);
+    const name = b && b.voices && b.voices[speech.provider];
+    send({ type: 'speech_get', id: `${session}:${i}`, text: speech.parts[i].trim(), voice: botVoice(), ...(name ? { name } : {}) }, speech.machine || speechMachine());
     setTimeout(() => {
         if (session === speech.session && clip.state === 'loading') clipArrived(i, { error: 'timeout' });
     }, CLOUD_WAIT_MS);
@@ -356,6 +413,7 @@ function fetchClip(i) {
 
 /** The backend's answer to "speech_get" (connection.js). */
 export function speechAudio(f) {
+    if (String(f.id).startsWith('preview:')) { previewArrived(f); return; }
     const [session, i] = String(f.id).split(':').map(Number);
     if (session === speech.session) clipArrived(i, f);
 }
@@ -408,7 +466,7 @@ function cloudFrom(i, from = 0) {
 
 /** Without the cloud voice the browser's voice reads on from this part. */
 function cloudFailed(i, error) {
-    showEvent(t('speak.cloudFailed', { error: error || '?' }), true);
+    showEvent(speech.provider === 'local' ? t('speak.localFailed', { machine: String(speech.machine || '').toUpperCase(), error: error || '?' }) : t('speak.cloudFailed', { error: error || '?' }), true);
     speech.cloud = false;
     speech.loaded = -1;
     if (!('speechSynthesis' in window)) { finishReading(); return; }
@@ -427,7 +485,10 @@ function deviceFrom(index, secondTry = false) {
     speech.from = 0;
     speech.partStart = 0;
     speech.playing = true;
-    const voice = speechVoice();
+    const { voice, fits, who } = speechVoice();
+    // no voice of the bot's kind: the pitch says it at least, and the user learns how to load one
+    const pitch = fits ? 1 : who === 'male' ? 0.7 : 1.25;
+    if (!fits && voice) missingVoiceHint(who);
     let started = false;
     // Chrome drops utterances nothing refers to before they end, and with them their onend
     speech.utterances = [];
@@ -437,6 +498,7 @@ function deviceFrom(index, secondTry = false) {
         u.lang = locale();
         if (voice) u.voice = voice;
         u.rate = 1.05;
+        u.pitch = pitch;
         u.onstart = () => {
             if (gen !== speech.gen) return;
             started = true;
@@ -519,4 +581,44 @@ export function readWaitingAnswer() {
     if (!chatId || !entry) return;
     dropExpected(chatId);
     if (Date.now() - doneAt < AUTO_READ_FRESH_MS) readAloud(entry, chatId);
+}
+
+// ---------------------------------------------------------- Hearing a voice in the editor
+
+const PREVIEW_WAIT_MS = 30_000;
+const preview = { id: '', audio: /** @type {HTMLAudioElement | null} */ (null), done: /** @type {((error: string) => void) | null} */ (null) };
+let previewCount = 0;
+
+/**
+ * Plays a sample sentence in a voice of the provider reading for this bot (the editor's "Listen"). Called in the tap,
+ * which unlocks the sound on iOS. `done` gets '' once it plays, or why it does not.
+ * @param {{ provider: string, machine: string }} where @param {string} name @param {'female' | 'male'} kind
+ * @param {(error: string) => void} done
+ */
+export function previewVoice(where, name, kind, done) {
+    stopPreview();
+    preview.audio = preview.audio || new Audio();
+    preview.audio.src = silence || (silence = silentWav());
+    preview.audio.play().catch(() => undefined);
+    preview.id = `preview:${++previewCount}`;
+    preview.done = done;
+    const id = preview.id;
+    send({ type: 'speech_get', id, text: t('editor.voiceSample'), voice: kind, name }, where.machine);
+    setTimeout(() => { if (preview.id === id) previewArrived({ id, error: 'timeout' }); }, PREVIEW_WAIT_MS);
+}
+
+export function stopPreview() {
+    preview.id = '';
+    if (preview.audio) preview.audio.pause();
+}
+
+function previewArrived(f) {
+    if (f.id !== preview.id) return;
+    preview.id = '';
+    const done = preview.done || (() => undefined);
+    if (f.error || !f.data) { done(f.error || '?'); return; }
+    const bytes = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0));
+    const a = /** @type {HTMLAudioElement} */ (preview.audio);
+    a.src = URL.createObjectURL(new Blob([bytes], { type: f.mime || 'audio/mpeg' }));
+    a.play().then(() => done(''), (e) => done(e.message));
 }

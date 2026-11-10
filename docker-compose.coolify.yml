@@ -25,6 +25,13 @@ services:
       RELAY_SETUP_CODE: ${SERVICE_PASSWORD_SETUPCODE}
       TRUST_PROXY: ${TRUST_PROXY:-}
       TOTP_SECRET: ${TOTP_SECRET:-}
+      # Waking (relay/.env.sample); with WAKE_AGENT_TOKEN a wake agent at home does it (wake-agent/README.md)
+      WAKE_METHOD: ${WAKE_METHOD:-}
+      WAKE_MACHINES: ${WAKE_MACHINES:-}
+      WAKE_AGENT_TOKEN: ${WAKE_AGENT_TOKEN:-}
+      WAKEUP_URL: ${WAKEUP_URL:-}
+      WAKEUP_API_TOKEN: ${WAKEUP_API_TOKEN:-}
+      WAKE_COMMAND: ${WAKE_COMMAND:-}
       APNS_KEY: ${APNS_KEY:-}
       APNS_KEY_ID: ${APNS_KEY_ID:-}
       APNS_TEAM_ID: ${APNS_TEAM_ID:-}

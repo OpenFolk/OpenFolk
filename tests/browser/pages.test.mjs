@@ -50,7 +50,8 @@ export default async function ({ start, check }) {
     const actions = (await p.locator('#info-actions button[data-action]').evaluateAll((bs) => bs.map((b) => b.dataset.action))).join(' ');
     check('the page: model switch, open changes, the chat\'s entries', (await p.locator('#info-switches .model-switch .chip.on').count()) === 1
         && h.sent.some((f) => f.type === 'git_changes' && f.botId === 'pdf') && (await p.locator('#info-git .git-repo').count()) === 1
-        && actions === 'search conversation_new vscode edit favorite mute category restart delete', actions);
+        && actions === 'search vscode edit favorite mute category restart delete'
+        && (await p.locator('#info-switches > button[data-action]').evaluateAll((bs) => bs.map((b) => b.dataset.action))).join(' ') === 'conversation_new main_to_conversation', actions);
     await p.click('#info-actions button[data-action="search"]');
     await h.wait(200);
     check('"Search in chat" leaves the page, the chat search is open', !(await shown('#info')) && (await shown('[data-el=chat-search]')) && (await p.evaluate(() => window.activePane().chatId)) === 'pdf');
@@ -60,7 +61,7 @@ export default async function ({ start, check }) {
     await p.evaluate(() => window.openEditor(window.bot('pdf')));
     await h.wait(300);
     const wide = await box('#editor .dialog');
-    check('PC: the editor stays a dialog without arrow', wide && wide.width <= 460 && !(await shown('#editor [data-page-back]')), wide);
+    check('PC: the editor stays a dialog without arrow', wide && wide.width <= 760 && !(await shown('#editor [data-page-back]')), wide);
     await p.click('#editor [data-close]');
     await p.click('[data-el=chat-title]');
     await h.wait(200);

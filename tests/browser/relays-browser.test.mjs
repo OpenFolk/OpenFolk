@@ -10,7 +10,6 @@ export default async function ({ start, check }) {
     await p.evaluate(() => openSettings());
     await h.wait(100);
     check('the block is there, with the page\'s own relay first and its sign-in marked', await p.isVisible('#settings-accounts') && JSON.stringify(await rows()) === JSON.stringify(['test.local: Rename', 'Main *: ']), await rows());
-    check('the browser text explains the links', (await p.textContent('#accounts-intro')).includes('links'));
 
     await p.click('#accounts-join');
     await p.fill('#text-input', 'customer.example.com');

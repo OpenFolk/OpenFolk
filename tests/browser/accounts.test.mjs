@@ -28,9 +28,9 @@ export default async function ({ start, check }) {
         && await old.page.isHidden('#accounts-own') && (await old.page.locator('#accounts-list li').count()) === 2 && await old.page.isHidden('#settings-all-accounts-field'));
     await old.close();
 
-    // ---- only main: the page exists, the switch does not
+    // ---- only main: the switch is there all the same, it holds signing out
     const one = await start({ auth: byDevice({ test: MAIN }) });
-    check('only main: no switch in the sidebar', await one.page.isHidden('#account-switch'));
+    check('only main: the switch names the account', await one.page.isVisible('#account-switch') && (await one.page.textContent('#account-switch')).trim() === 'Alex');
     check('… and remembered with its key', await one.page.evaluate(() => JSON.parse(localStorage.getItem('openfolk-accounts')).map((a) => `${a.id}:${a.device}`).join() === 'main:test'));
     await one.close();
 
@@ -47,7 +47,7 @@ export default async function ({ start, check }) {
     check('switch shows the current account', await p.isVisible('#account-switch') && (await p.textContent('#account-switch')).trim() === 'Alex');
     await p.click('#account-switch');
     const entries = await p.locator('#account-menu button').allTextContents();
-    check('menu: both accounts and the way to the settings', entries.length === 3 && entries[0].includes('Alex') && entries[1].includes('Work'), entries);
+    check('menu: both accounts, new account (admin) and the settings, no signing out', entries.length === 4 && entries[0].includes('Alex') && entries[1].includes('Work') && entries[2].includes('New account') && entries[3].includes('Accounts') && !entries.some((e) => e.includes('Sign out')), entries);
     check('current account marked', (await p.getAttribute('#account-menu button[data-account="main"]', 'class') || '').includes('current'));
     await p.click('#account-menu button[data-account="work"]');
     await afterReload(h);
@@ -179,22 +179,38 @@ export default async function ({ start, check }) {
     await m.evaluate(() => openAccounts());
     await admin.wait(200);
     const rows = () => m.evaluate(() => [...document.querySelectorAll('#accounts-list li')].map((li) => `${li.querySelector('strong').firstChild.textContent}${li.querySelector('.tag') ? ' *' : ''}: ${[...li.querySelectorAll('button')].map((b) => b.textContent).join(',')}`));
-    check('admin: the relay, then every account on it; the one not signed in here gets the invitation, admin and delete, main and oneself nothing',
-        JSON.stringify(await rows()) === JSON.stringify(['test.local: Rename', 'Alex *: ', 'Work: Create invitation link,Make admin,Delete']), await rows());
+    check('admin: the relay, then every account on it; the one not signed in here gets the invitation and "Set up", main and oneself nothing',
+        JSON.stringify(await rows()) === JSON.stringify(['test.local: Rename', 'Alex *: ', 'Work: Create invitation link,Set up']), await rows());
+    check('… in a row like the devices: text left, the buttons right of it', await m.evaluate(() => {
+        const li = document.querySelectorAll('#accounts-list li')[2];
+        const text = li.querySelector('.d-text').getBoundingClientRect();
+        const actions = li.querySelector('.account-actions').getBoundingClientRect();
+        return actions.left >= text.right - 1 && Math.abs(actions.top - text.top) < text.height;
+    }));
     check('main: nothing of its own to edit (its password is the relay setup)', await m.isHidden('#accounts-own'));
     check('the admin\'s form waits behind "Add"', await m.isHidden('#accounts-new-form') && await m.isVisible('#accounts-join'));
     await m.click('#accounts-join');
     check('… and opens with it in the settings dialog: a link to redeem, a new person', await m.isVisible('#settings-dialog') && await m.evaluate(() => document.getElementById('accounts-new-form').parentElement.id === 'settings-dialog-body')
         && await m.isVisible('#accounts-link') && await m.isVisible('#accounts-new-name') && await m.isHidden('#settings-dialog-actions'));
+    check('… the name comes first and has the focus', await m.evaluate(() => {
+        const name = document.getElementById('accounts-new-name');
+        const link = document.getElementById('accounts-link');
+        return document.activeElement === name && !!(name.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }));
     await m.fill('#accounts-new-name', 'Kunde');
     await m.click('#accounts-create');
     await admin.wait(300);
     check('created: the form is back in its block, hidden', await m.isHidden('#accounts-new-form') && await m.evaluate(() => document.getElementById('accounts-new-form').parentElement.id === 'settings-accounts'));
     check('create goes to the relay', admin.sent.some((f) => f.type === 'account_create' && f.name === 'Kunde' && f.admin === false));
+    check('… no invitation popping up: no link asked for, no dialog, the list fresh', !admin.sent.some((f) => f.type === 'pair_link')
+        && await m.isHidden('#settings-dialog') && await m.isHidden('#invite-box') && admin.sent.filter((f) => f.type === 'accounts').length >= 2);
+    // The invitation from the account's row
+    await m.locator('#accounts-list li').nth(2).locator('button').first().click();
+    await admin.wait(300);
     const wrap = admin.sent.find((f) => f.type === 'pair_link');
-    check('a backend wraps the relay\'s token, it mints none', wrap?.token === 'tok-kunde', wrap);
-    check('invitation with link and QR code in the dialog, with a Close row', await m.isVisible('#invite-box') && (await m.inputValue('#invite-box input')).includes('pair=tok-kunde') && (await m.textContent('#invite-box')).includes('Kunde')
-        && (await m.textContent('#settings-dialog-title')) === 'Invitation for Kunde' && await m.isVisible('#settings-dialog-actions'));
+    check('a backend wraps the relay\'s token, it mints none', wrap?.token === 'tok-work', wrap);
+    check('invitation with link and QR code in the dialog, with a Close row', await m.isVisible('#invite-box') && (await m.inputValue('#invite-box input')).includes('pair=tok-work') && (await m.textContent('#invite-box')).includes('Work')
+        && (await m.textContent('#settings-dialog-title')) === 'Invitation for Work' && await m.isVisible('#settings-dialog-actions'));
     await m.click('#settings-dialog [data-close]');
     await admin.wait(100);
     check('closed: the box is back in its block, hidden', await m.isHidden('#settings-dialog') && await m.isHidden('#invite-box') && await m.evaluate(() => document.getElementById('invite-box').parentElement.id === 'settings-accounts'));
@@ -203,9 +219,20 @@ export default async function ({ start, check }) {
     await admin.wait(300);
     check('new invitation for an existing account', admin.sent.some((f) => f.type === 'account_invite' && f.id === 'work'));
     check('a backend that ignores the token: no link for main to a stranger', (await m.textContent('#accounts-error')).includes('too old'), await m.textContent('#accounts-error'));
-    await m.locator('#accounts-list li').nth(2).locator('button').nth(1).click();
+    // "Set up" of an account without reach (a relay from before person chats): the account itself, no bots
+    await m.locator('#accounts-list li').nth(2).locator('button', { hasText: 'Set up' }).click();
     await admin.wait(200);
-    check('refusal of the relay shown on the page', (await m.textContent('#accounts-error')).includes('may not'), await m.textContent('#accounts-error'));
+    const setupButtons = await m.locator('#setup-box button').allTextContents();
+    check('"Set up": name, admin and delete in the dialog, no bots without reach', await m.isVisible('#setup-box') && await m.locator('#setup-box .setup-account input').inputValue() === 'Work'
+        && JSON.stringify(setupButtons) === JSON.stringify(['Save name', 'Make admin', 'Delete', 'Close']) && await m.locator('#setup-box .setup-bot').count() === 0, setupButtons);
+    await m.locator('#setup-box button', { hasText: 'Make admin' }).click();
+    await admin.wait(200);
+    check('refusal of the relay shown above the dialog', (await m.textContent('#toast')).includes('may not'), await m.textContent('#toast'));
+    await m.fill('#setup-box .setup-account input', 'Werk');
+    await m.locator('#setup-box button', { hasText: 'Save name' }).click();
+    await admin.wait(100);
+    check('the name of another account changes from there', admin.sent.some((f) => f.type === 'account_update' && f.id === 'work' && f.name === 'Werk'));
+    await m.locator('#setup-box button', { hasText: 'Close' }).click();
 
     // A relay from before person chats names no reach and would drop "customer": the choice is not offered
     await m.click('#accounts-join');
@@ -217,10 +244,17 @@ export default async function ({ start, check }) {
     list[1] = { ...WORK, created: '2026-10-01T08:00:00Z', reach: 'admins' };
     await m.evaluate(() => send({ type: 'accounts' }));
     await admin.wait(200);
-    check('a customer account: tagged, with "Reaches everyone"', (await rows())[2] === 'Work *: Create invitation link,Make admin,Reaches everyone,Delete', await rows());
-    await m.locator('#accounts-list li').nth(2).locator('button', { hasText: 'Reaches everyone' }).click();
+    check('a customer account: tagged, with the same two buttons', (await rows())[2] === 'Work *: Create invitation link,Set up', await rows());
+    await m.locator('#accounts-list li').nth(2).locator('button', { hasText: 'Set up' }).click();
+    await admin.wait(200);
+    check('… "Reaches everyone" in its dialog, and the bots below', await m.locator('#setup-box button', { hasText: 'Reaches everyone' }).isVisible() && await m.locator('#setup-box .setup-bot').count() === 2);
+    await m.locator('#setup-box button', { hasText: 'Reaches everyone' }).click();
     await admin.wait(100);
     check('… which goes to the relay as reach "all"', admin.sent.some((f) => f.type === 'account_update' && f.id === 'work' && f.reach === 'all'));
+    await onDialog(m, (d) => d.accept());
+    await m.locator('#setup-box button', { hasText: 'Delete' }).click();
+    await admin.wait(200);
+    check('"Delete" in the dialog: to the relay, the dialog closed', admin.sent.some((f) => f.type === 'account_delete' && f.id === 'work') && await m.isHidden('#setup-box'));
     await m.click('#accounts-join');
     await m.fill('#accounts-new-name', 'Shop');
     await m.check('#accounts-new-customer');

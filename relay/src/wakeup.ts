@@ -7,6 +7,9 @@
 //            machines and their MAC addresses in WAKE_MACHINES.
 //   command  any command (WAKE_COMMAND) with the placeholders {machine} and {mac}, e.g. ssh to the router or a call
 //            to a home automation system; machines in WAKE_MACHINES.
+//   agent    a small device in the machines' network (wake-agent/, e.g. a Raspberry Pi) that connects to the relay
+//            (/ws/wake, WAKE_AGENT_TOKEN) and sends the magic packet there; nothing to forward on the router. It gets
+//            only "wake <MAC>" for the machines in WAKE_MACHINES, nothing of the chats.
 //   none     no waking.
 //
 // Without WAKE_METHOD the method follows from the other values (WAKEUP_URL -> service, WAKE_COMMAND -> command,
@@ -15,8 +18,9 @@
 import { exec } from 'node:child_process';
 import dgram from 'node:dgram';
 import type { MachineStatus, RelayRequest, ServerFrame } from '../../shared/protocol.ts';
+import { tokenEquals } from './auth.ts';
 
-export type WakeMethod = 'service' | 'wol' | 'command' | 'none';
+export type WakeMethod = 'service' | 'wol' | 'command' | 'agent' | 'none';
 
 export interface WakeConfig {
     method: WakeMethod;
@@ -29,10 +33,12 @@ export interface WakeConfig {
     wolAddress: string;
     wolPort: number;
     command: string;
+    /** The token of the wake agent (agent), at least 32 characters. */
+    agentToken: string;
 }
 
 const MACHINE = /^[a-z0-9-]{1,32}$/;
-const METHODS: readonly WakeMethod[] = ['service', 'wol', 'command', 'none'];
+const METHODS: readonly WakeMethod[] = ['service', 'wol', 'command', 'agent', 'none'];
 
 /** MAC address in the form aa:bb:cc:dd:ee:ff, or null (also accepts - and no separators). */
 export function normalizeMac(raw: string): string | null {
@@ -64,6 +70,7 @@ export function parseWakeConfig(env: NodeJS.ProcessEnv): WakeConfig {
         wolAddress: (env.WOL_ADDRESS ?? '').trim() || '255.255.255.255',
         wolPort: Number(env.WOL_PORT) || 9,
         command: (env.WAKE_COMMAND ?? '').trim(),
+        agentToken: (env.WAKE_AGENT_TOKEN ?? '').trim(),
     };
     const problems: string[] = invalid.length ? [`WAKE_MACHINES: invalid entries ${invalid.join(', ')}`] : [];
     const wanted = (env.WAKE_METHOD ?? '').trim().toLowerCase();
@@ -73,7 +80,8 @@ export function parseWakeConfig(env: NodeJS.ProcessEnv): WakeConfig {
             return { ...c, problem: [`WAKE_METHOD: unknown value "${wanted}" (${METHODS.join(', ')})`, ...problems].join('; ') };
         }
         method = wanted as WakeMethod;
-    } else if (c.serviceUrl) method = 'service';
+    } else if (c.agentToken) method = 'agent';
+    else if (c.serviceUrl) method = 'service';
     else if (c.command) method = 'command';
     else if (Object.values(machines).some(Boolean)) method = 'wol';
     else method = 'none';
@@ -82,6 +90,8 @@ export function parseWakeConfig(env: NodeJS.ProcessEnv): WakeConfig {
     if (method === 'wol' && !Object.values(machines).some(Boolean)) problems.push('wol: WAKE_MACHINES needs at least one machine with a MAC address');
     if (method === 'command' && !c.command) problems.push('command: WAKE_COMMAND is missing');
     if (method === 'command' && !Object.keys(machines).length) problems.push('command: WAKE_MACHINES needs at least one machine');
+    if (method === 'agent' && c.agentToken.length < 32) problems.push('agent: WAKE_AGENT_TOKEN (at least 32 characters) is needed');
+    if (method === 'agent' && !Object.values(machines).some(Boolean)) problems.push('agent: WAKE_MACHINES needs at least one machine with a MAC address');
     if (method !== 'none' && problems.some((p) => p.startsWith(method))) return { ...c, problem: problems.join('; ') };
     return { ...c, method, problem: problems.length ? problems.join('; ') : undefined };
 }
@@ -183,9 +193,10 @@ export async function wake(host: string): Promise<void> {
     } else {
         if (!(host in c.machines)) throw new Error(UNKNOWN_MACHINE);
         const mac = c.machines[host];
-        if (c.method === 'wol') {
+        if (c.method === 'wol' || c.method === 'agent') {
             if (!mac) throw new Error(`No MAC address for ${host} in WAKE_MACHINES.`);
-            await sendMagicPacket(mac, c.wolAddress, c.wolPort);
+            if (c.method === 'wol') await sendMagicPacket(mac, c.wolAddress, c.wolPort);
+            else await agentWake(host, mac);
         } else {
             await runCommand(wakeCommand(c.command, host, mac));
         }
@@ -207,7 +218,9 @@ async function machineStatus(): Promise<ServerFrame> {
     const c = wakeConfig();
     if (c.method !== 'service') {
         const hosts = Object.fromEntries((await wakeableMachines()).map((m) => [m, {} as MachineStatus]));
-        return { type: 'machine_status', configured: true, hosts, at: new Date().toISOString() };
+        // Without a wake agent connected the app says so instead of a wake that fails later
+        const error = c.method === 'agent' && !agents.size ? NO_AGENT : undefined;
+        return { type: 'machine_status', configured: true, hosts, at: new Date().toISOString(), ...(error ? { error } : {}) };
     }
     const { status, data } = await callService('GET');
     return status === 200
@@ -222,7 +235,7 @@ export async function handleWakeRequest(r: Extract<RelayRequest, { type: 'wake_s
         else reply({ type: 'wake_result', host: r.host, ok: false, code: 'wake_not_configured', message: NOT_CONFIGURED });
         return;
     }
-    const via = wakeConfig().method === 'service' ? 'Wake service' : 'Waking';
+    const via = { service: 'Wake service', agent: 'Wake agent' }[wakeConfig().method as string] ?? 'Waking';
     try {
         if (r.type === 'wake_status') {
             if (lastStatus && Date.now() - lastStatus.time < STATUS_CACHE_MS) {
@@ -252,4 +265,87 @@ export async function handleWakeRequest(r: Extract<RelayRequest, { type: 'wake_s
         if (r.type === 'wake_status') reply({ type: 'machine_status', configured: true, hosts: {}, at: new Date().toISOString(), error: text });
         else reply({ type: 'wake_result', host: r.host, ok: false, code: 'wake_failed', message: text });
     }
+}
+
+// ---- The wake agent (WAKE_METHOD=agent, wake-agent/)
+//
+// The device connects to /ws/wake and signs in with its first message, { type: 'auth', token, name? }, so it needs no
+// headers and runs on Node's own WebSocket. The relay then only ever sends { type: 'wake', id, machine, mac } and gets
+// { type: 'woken', id, ok, error? }. Several agents may be connected (one per network); a wake goes to all of them and
+// the first answer counts: the packet is harmless in a network where the machine is not.
+
+const NO_AGENT = 'No wake agent is connected to the relay (wake-agent/, WAKE_AGENT_TOKEN).';
+const AGENT_ANSWER_MS = 10_000;
+
+/** What the relay needs of an agent's socket. */
+export interface AgentSocket {
+    send(text: string): void;
+    close(code?: number, reason?: string): void;
+    on(event: 'message', fn: (data: unknown) => void): unknown;
+    on(event: 'close', fn: () => void): unknown;
+}
+
+const agents = new Map<AgentSocket, string>();
+const waiting = new Map<string, (r: { ok: boolean; error?: string }) => void>();
+let nextId = 0;
+
+/** The names of the wake agents connected now, for the start log and the tests. */
+export const wakeAgents = (): string[] => [...agents.values()];
+
+/**
+ * A device opened /ws/wake: it has 10 s to sign in with WAKE_AGENT_TOKEN, then it gets wake orders. `failed` is
+ * called for a wrong token (the relay's login throttle), `log` names the agent.
+ */
+export function acceptWakeAgent(ws: AgentSocket, ip: string, failed: () => void, log: (text: string) => void): void {
+    const c = wakeConfig();
+    let name = '';
+    const timer = setTimeout(() => ws.close(4001, 'Sign-in timed out'), 10_000);
+    ws.on('message', (data) => {
+        let m: Record<string, unknown>;
+        try { m = JSON.parse(String(data)) as Record<string, unknown>; } catch { return; }
+        if (!name) {
+            clearTimeout(timer);
+            if (c.method !== 'agent' || m.type !== 'auth' || !tokenEquals(String(m.token ?? ''), c.agentToken)) {
+                failed();
+                log(`Wake agent rejected from ${ip}`);
+                ws.close(4003, 'Not signed in');
+                return;
+            }
+            name = String(m.name ?? '').replace(/[^\w .-]/g, '').slice(0, 40) || ip;
+            agents.set(ws, name);
+            ws.send(JSON.stringify({ type: 'welcome' }));
+            log(`Wake agent "${name}" connected from ${ip}`);
+            return;
+        }
+        if (m.type === 'woken' && typeof m.id === 'string') waiting.get(m.id)?.({ ok: m.ok === true, error: typeof m.error === 'string' ? m.error : undefined });
+    });
+    ws.on('close', () => {
+        clearTimeout(timer);
+        if (agents.delete(ws)) log(`Wake agent "${name}" disconnected`);
+    });
+}
+
+/** Asks every connected agent to wake `mac`; resolves on the first that did, throws if none is there or none did. */
+function agentWake(machine: string, mac: string): Promise<void> {
+    if (!agents.size) return Promise.reject(new Error(NO_AGENT));
+    const id = String(++nextId);
+    const frame = JSON.stringify({ type: 'wake', id, machine, mac });
+    let answers = 0;
+    const asked = agents.size;
+    return new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+            waiting.delete(id);
+            reject(new Error('The wake agent did not answer.'));
+        }, AGENT_ANSWER_MS);
+        waiting.set(id, (r) => {
+            answers++;
+            if (r.ok || answers >= asked) {
+                clearTimeout(timer);
+                waiting.delete(id);
+                if (r.ok) resolve();
+                else reject(new Error(`The wake agent could not send the packet: ${r.error ?? 'unknown error'}`));
+            }
+        });
+        for (const ws of agents.keys()) ws.send(frame);
+    });
 }

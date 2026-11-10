@@ -26,7 +26,7 @@ import { foreignMcp, needsApproval, secretRead } from './policy.ts';
 import { transcriptStoreError, transcriptPath } from './vscode.ts';
 import {
     ENGINE_NAMES, OTHER_ENGINES, engineModelId, engineOf, type Attachment, type Bot, type BotState, type Engine, type EngineStatus, type EngineStatuses, type LiveTurn, type ModelInfo, type ModelWindow,
-    type ToolCall,
+    type JobOrigin, type ToolCall,
 } from '../../shared/protocol.ts';
 
 /** Engine of a stored session id: other engines carry their prefix ('codex:…', 'cursor:…'), Claude sessions none. */
@@ -51,6 +51,10 @@ export interface Turn {
     from: string;
     /** Bot ids of the delegation chain, prevents cycles with bot-to-bot messages. */
     chain: string[];
+    /** Chats along the chain waiting for a job's result (TurnSpec.chats). */
+    chats?: string[];
+    /** A job of another bot this turn works on (TurnSpec.job). */
+    job?: JobOrigin;
     /** Forwards within a group. */
     hop: number;
     /** Round of a group conversation (one message of the user and everything passed on from it). */
@@ -923,8 +927,8 @@ export function toolSummary(name: string, input: unknown): string {
         case 'AskUserQuestion':
             return t('tools.questionToYou');
         case 'mcp__openfolk__message_bot':
-            return shorten(t('tools.toBot', { bot: s('bot'), text: s('text') }));
-        case 'mcp__openfolk__send_file':
+            return shorten(t('tools.toBot', { bot: s('bot') || s('conversation'), text: s('text') }));
+        case 'mcp__openfolk__send_file': case 'mcp__openfolk__set_avatar':
             return shorten(s('path'));
         case 'mcp__openfolk__remember_note':
             return shorten(s('note'));

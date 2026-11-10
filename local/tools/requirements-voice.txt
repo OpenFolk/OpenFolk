@@ -1,5 +1,6 @@
-# Optional: local transcription of voice messages (local/tools/transcribe.py). Everything else in OpenFolk is
-# Node; without this, voice messages are still recorded and sent, only not turned into text.
+# Optional: local transcription of voice messages (local/tools/transcribe.py) and the voice that reads answers
+# aloud on the machine (local/tools/speak.py, Piper). Everything else in OpenFolk is Node; without this, voice
+# messages are still recorded and sent, only not turned into text, and reading aloud uses a cloud or device voice.
 #
 # Easiest: "Set up voice messages" in the settings of the machine (local/src/voice-setup.ts) creates an environment
 # in the data folder and installs this list, with the CUDA libraries on a machine with an NVIDIA card. By hand:
@@ -13,6 +14,8 @@ faster-whisper>=1.1
 ctranslate2
 av>=12
 numpy
+# The voice for reading aloud (GPL; the backend runs it as a separate process, see local/tools/speak.py)
+piper-tts>=1.3
 # With an NVIDIA graphics card (WHISPER_DEVICE=cuda or auto), additionally:
 # nvidia-cublas-cu12
 # nvidia-cudnn-cu12==9.*

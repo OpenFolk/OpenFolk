@@ -7,7 +7,7 @@ import { removeTree } from './remove-tree.ts';
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-vscode-'));
 // The Claude folder depends on the current account; the real local/data may hold several
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-vscode-data-'));
-const { Watcher, Transcript, workingFrom, clean, originFrom, projectDir, projectName, listVscodeSessions, transcriptStoreError, transcriptPath } = await import('./vscode.ts');
+const { Watcher, Transcript, workingFrom, clean, originFrom, projectDir, projectName, listMachineSessions, listVscodeSessions, transcriptStoreError, transcriptPath } = await import('./vscode.ts');
 type HistoryPart = import('./vscode.ts').HistoryPart;
 
 let failures = 0;
@@ -105,6 +105,15 @@ check('subfolder: session from the subfolder included, with folder and origin te
     subEntry?.folder === sub.replace(/\\/g, '/') && subEntry?.origin === 'terminal');
 check('subfolder: session in the bot folder without folder', withSub.find((s) => s.id === ID_VS)?.folder === undefined);
 check('subfolder: folder of another bot and neighbour folder not', !withSub.some((s) => s.id === ID_OTHER || s.id === ID_NEIGHBOUR));
+
+// ---- Machine-wide: every folder, each session with its folder, the bots' sessions and the excluded ones not
+const all = await listMachineSessions(new Set([ID_NEIGHBOUR]));
+const slash = (p: string) => p.replace(/\\/g, '/');
+check('machine-wide: sessions of every folder, newest first', [ID_VS, ID_SUB, ID_OTHER].every((id) => all.some((s) => s.id === id))
+    && all.every((s, i) => i === 0 || all[i - 1].lastModified >= s.lastModified));
+check('machine-wide: each with its folder', all.find((s) => s.id === ID_VS)?.folder === slash(folder) && all.find((s) => s.id === ID_SUB)?.folder === slash(sub)
+    && all.find((s) => s.id === ID_OTHER)?.folder === slash(otherBot));
+check('machine-wide: bots\' and excluded sessions missing', !all.some((s) => s.id === ID_BOT || s.id === ID_INHERITED || s.id === ID_NEIGHBOUR));
 
 // ---- Bot folder behind a junction or symlink: Claude Code names the transcript folder after the resolved path
 const link = folder + '-link';

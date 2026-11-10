@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { commitAndPush, fastForward, gitPushCredentials, isSecret, listChanges, openRepos, overlaps, owner, parseStatus, pullRepo, pullRepos, pullText, pushAccess } from './git.ts';
+import { commitAndPush, fastForward, gitPushCredentials, isSecret, listChanges, openRepos, openSince, overlaps, owner, parseStatus, pullRepo, pullRepos, pullText, pushAccess } from './git.ts';
 
 let failures = 0;
 const check = (name: string, ok: boolean, info?: unknown) => { console.log(`${ok ? 'ok    ' : 'FAILED'} ${name}${ok || info === undefined ? '' : ' ' + JSON.stringify(info)}`); if (!ok) failures++; };
@@ -36,6 +36,16 @@ check('finds sub-repos up to depth 2, without node_modules and hidden ones', JSO
 const ra = repos.find((r) => r.name === 'a')!;
 check('changed and new file, umlaut unquoted', JSON.stringify(ra.files) === JSON.stringify([{ status: ' M', path: 'readme.md' }, { status: '??', path: 'new ä.txt' }]), ra.files);
 check('clean repo without files', repos.find((r) => r.name === 'group/b')!.files.length === 0);
+
+// Since when: the newest of the files, not now; a clean repo has none, one with only commits the last commit's time
+const old = new Date('2026-01-02T03:04:05Z');
+fs.utimesSync(path.join(a, 'readme.md'), old, old);
+fs.utimesSync(path.join(a, 'new ä.txt'), old, new Date('2026-02-03T04:05:06.789Z'));
+check('since: the newest listed file, whole seconds', ra.since !== undefined && (await openSince(a, ra)) === '2026-02-03T04:05:06.000Z', await openSince(a, ra));
+check('since: a deleted file is skipped', (await openSince(a, { files: [{ status: ' D', path: 'gone.txt' }], ahead: 0 })) === undefined);
+check('since: a clean repo has none', repos.find((r) => r.name === 'group/b')!.since === undefined);
+const committed = execFileSync('git', ['log', '-1', '--format=%ct'], { cwd: a }).toString().trim();
+check('since: only unpushed commits, the last commit', (await openSince(a, { files: [], ahead: 1 })) === new Date(Number(committed) * 1000).toISOString());
 
 // Folder inside a repo: the surrounding repo counts, name = repo folder
 const inner = path.join(a, 'sub');

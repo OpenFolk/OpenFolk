@@ -83,10 +83,13 @@ export function needsApproval(policy: ApprovalPolicy, tool: string, input: Recor
     const secret = secretRead(tool, input);
     if (secret) return { ask: false, deny: true, reason: secret };
     if (tool.startsWith('mcp__openfolk__')) return { ask: false };
+    const writing = WRITING.has(tool) || foreignMcp(tool);
+    // Reading only: whatever writes, runs commands or reaches a foreign service is refused without a card. Also a tool
+    // the user allowed for good: the level was chosen by whoever set the bot up.
+    if (policy === 'read') return READ_ONLY.has(tool) || !writing ? { ask: false } : { ask: false, deny: true, reason: t('policy.readOnly') };
     if (allowed.includes(tool) && rememberable(tool)) return { ask: false };
     if (policy === 'never' || READ_ONLY.has(tool)) return { ask: false };
 
-    const writing = WRITING.has(tool) || foreignMcp(tool);
     if (policy === 'write') return { ask: writing, reason: t('policy.writing') };
 
     // risky: writing outside the bot folder, risky commands, foreign MCP tools with external effect

@@ -78,7 +78,11 @@ let everyone: Person[] = [];
 
 export function setPeople(list: Person[]): void {
     everyone = list.filter((p) => p && typeof p.id === 'string' && typeof p.name === 'string')
-        .map((p) => ({ id: p.id, name: p.name, admin: p.admin === true, reach: p.reach === 'admins' ? 'admins' : 'all' }));
+        .map((p) => {
+            const reach = p.reach === 'admins' || p.reach === 'listed' ? p.reach : 'all';
+            const contacts = reach === 'listed' && Array.isArray(p.contacts) ? p.contacts.filter((c) => typeof c === 'string') : undefined;
+            return { id: p.id, name: p.name, admin: p.admin === true, reach, ...(contacts ? { contacts } : {}) };
+        });
 }
 
 export function allPeople(): Person[] {

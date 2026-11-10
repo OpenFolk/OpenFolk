@@ -148,6 +148,16 @@ reached it, so a save the new machine refused sends nothing, and sends it end-to
 (`work-transfer.ts`). The new machine applies only what fits without a decision and parks the rest in the repo's
 `.git`, where git ignores it and the bot can still reach it.
 
+Jobs between bots (`message_bot`, `local/src/jobs.ts`) do not block the giving bot: a tool call that waits ties up its
+turn, and the old 20-minute limit lost every longer answer. The turn carries its origin (`TurnSpec.job`), so whichever
+machine runs it hands the result back in `done`, without the giving machine keeping a callback that a restart would
+lose. The source keeps the open job (`open`) and delivers the result once, as a new turn of the source bot in the chat
+that gave it; the target keeps a result for a sleeping source (`outbox`) and sends it again each time that machine
+wakes, until it confirms with `job_ack`. The relay stores none of it (see Trust boundaries). A job is not resumed after
+a restart of its target, whose session is gone; the source hears that it was cut off. Loops are told by the chats
+waiting along the chain (`TurnSpec.chats`), not by bots, because a bot may give a job to another conversation of its
+own.
+
 ## Accounts
 
 An account is a person or role sharing the relay and the machines: its own devices, bots, chats and data. `main` is
@@ -208,6 +218,32 @@ and sees nothing new. Bots never read person chats (`search_history` skips them)
 them for a bot. `hand_over` writes a bot's summary into the person chat between the bot's account and its contact,
 with a push of its own kind that ignores mute; it does not wait for the person, as a session must not hang for hours.
 
+**Machines bound to an account** turn "machines belong to nobody" around for one case: an employee's or customer's
+own computer, joined with a setup link (`/setup-invite`, `/setup` in `relay/src/relay.ts`, `MachineTokens` in
+`owner.ts`). Its token is bound to the account, and the bridge (`serves` in `relay/src/bridge.ts`) lets it serve that
+account only, while the account, once it has a setup link (`setupBy`), is served by no other machine. That is a
+boundary in both directions, because the machine is someone else's: nothing of other accounts may reach it (frames,
+sync, account ids, machine names, the contacts of other people), whatever it sends for another account is dropped, it
+pairs devices of its account only and invites no machines; and the account's chats must not land on the admin's
+machines, where the sync of a shared account would put them. The account is the machine's owner (`ownerAccount` in
+`local/src/store.ts`, kept in `binding.json` so it holds before the relay answers): it runs on the machine's own
+Claude sign-in and changes its settings. A bound backend that does not know accounts is turned away, as it would take
+the account for `main`.
+
+Person chats and setups then cross between machines: the **person route** (`person` in the protocol,
+`local/src/person-route.ts`) hands one message to one awake machine of the other account, if the relay's accounts
+allow it (`mayRoute`: the accounts reach each other, or one set the other up). The relay keeps nothing, so the sender
+keeps what did not arrive in an outbox and sends it again when the machines awake change (not while the relay's answer
+to the last try may still be on its way). A message can still arrive twice, so it keeps the sender's id and the
+receiver drops one it took before (`person-seen.json`). Attachments travel along,
+as the receiving machine cannot fetch files from the sender's. The admin's backend keeps the setup and the tokens per
+bot (`local/src/setups.ts`); the bound machine asks for it on every connect and applies it only from the admin named
+in its binding. Each bot gets a clone of its own with its token behind a credential helper that reads a file in the
+account's data, so two tokens for one repository stay apart and no token lies in a bot's folder or `.git/config`.
+Managed bots (`Bot.managed`) are refused to the account's own `bot_save` and `bot_delete`; only a newer setup changes
+them. A setup link carries the end-to-end key like every invitation; all accounts share it, so the link goes to that
+person only.
+
 In the web app a device keeps its accounts with one device key each (`openfolk-accounts`, `webapp/js/accounts.js`).
 Switching sets the stored key and loads the page again rather than swapping state in place: everything the page
 holds and what it keeps per chat (seen, panes, collapsed groups, keyed per account in `core.js`) then belongs to one
@@ -215,6 +251,13 @@ account without anything to forget. An invitation is built by a backend, because
 end-to-end key; the admin gets the token from the relay and the backend only wraps it, never minting one for another
 account. A backend from before accounts ignores the token and answers with a link into `main`, so the page shows an
 invitation only if the link carries its token.
+
+Signing out keeps the keys: a mark per relay (`openfolk-signed-out`) makes `credentials()` skip them and the start page
+show the choice; a sign-in clears it. The 30 days after which a key is dropped on the device count from its last
+sign-in as the active account (`used`, `expireAccounts` in `core.js`), not from the relay's `lastSeen`, because the
+connections of the shared list keep every key in use there; the relay's own 90 days still end a key nobody uses. A
+dropped key stays valid on the relay until then, as revoking it would need a connection with it. "New account" is the
+admin's `account_create` whose invitation the page redeems itself instead of showing it.
 
 The shared chat list shows the other accounts of the device, also those on its other relays (`webapp/js/relays.js`),
 through one lightweight connection each (`webapp/js/others.js`), signed in with that account's key, so it sees nothing a switch would not show. It asks only

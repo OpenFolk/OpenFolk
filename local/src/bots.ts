@@ -6,9 +6,9 @@ import { t } from './i18n.ts';
 import { personChat } from './people.ts';
 import { rememberable } from './policy.ts';
 import { readJson, readJsonCached, setTombstone, slug, writeJson } from './store.ts';
-import { BOT_VOICES, botIdOf, type ApprovalPolicy, type Bot, type BotInput, type BotPlace, type BotVoice, type Category, type CategoryInput, type Group, type GroupInput } from '../../shared/protocol.ts';
+import { APPROVALS, BOT_VOICES, VOICE_CATALOG, VOICE_PROVIDERS, botIdOf, type ApprovalPolicy, type Bot, type BotInput, type BotPlace, type BotVoice, type Category, type CategoryInput, type Group, type GroupInput } from '../../shared/protocol.ts';
 
-const POLICIES: ApprovalPolicy[] = ['never', 'risky', 'write'];
+const POLICIES: readonly ApprovalPolicy[] = APPROVALS;
 
 /** Session ids belong to this machine (the transcripts live under ~/.claude) and are not synced. */
 function loadSessions(): Record<string, string> {
@@ -106,7 +106,18 @@ function folderElsewhere(existing: Bot | undefined, folder: string, machine: str
     throw new Error(t('bots.folderElsewhere', { machine: machine.toUpperCase() }));
 }
 
-export function saveBot(input: BotInput): Bot {
+/** The voices of a bot as the editor sent them, without ids the catalog does not know; none left = undefined. */
+function cleanVoices(input: Bot['voices']): Bot['voices'] {
+    const out: NonNullable<Bot['voices']> = {};
+    for (const p of VOICE_PROVIDERS) {
+        const id = input?.[p];
+        if (id && VOICE_CATALOG[p].some((v) => v.id === id)) out[p] = id;
+    }
+    return Object.keys(out).length ? out : undefined;
+}
+
+/** `managed`: the key of the admin's setup the bot comes from (setups.ts); only that path sets it, editing keeps it. */
+export function saveBot(input: BotInput, managed?: string): Bot {
     const bots = loadBots();
     const before = input.id ? bots.find((b) => b.id === input.id) : undefined;
     // A bot lives on one machine; without a choice (apps before 0.2) it stays where it is, a new one lives here
@@ -132,6 +143,8 @@ export function saveBot(input: BotInput): Bot {
         approval: POLICIES.includes(input.approval) ? input.approval : 'risky',
         // '' = guess from the name; an app without the field leaves it as it is
         voice: input.voice === undefined ? existing?.voice : BOT_VOICES.includes(input.voice as BotVoice) ? input.voice as BotVoice : undefined,
+        // a voice of its own per provider, only ids the catalog has; an app without the field leaves them as they are
+        voices: input.voices === undefined ? existing?.voices : cleanVoices(input.voices),
         // '' = no folder; an app without the field leaves it as it is
         category: input.category === undefined ? existing?.category : knownCategory(input.category),
         // The editor can only take tools off the list; they come onto it from an approval card (allowTool)
@@ -144,6 +157,7 @@ export function saveBot(input: BotInput): Bot {
         contact: input.contact === undefined || input.contact === null ? existing?.contact : (String(input.contact).trim().toLowerCase() || undefined),
         // Written down by the bot's machine (setPlace); another folder needs a new one
         place: existing?.folder === folder ? existing.place : undefined,
+        managed: managed ?? existing?.managed,
         // Favorite and mute are only set by their own frames; editing leaves them as they are
         favorite: existing?.favorite || undefined,
         muted: existing?.muted || undefined,
@@ -235,6 +249,15 @@ export function renameConversation(chatId: string, title: string): void {
     if (!b || !c) throw new Error(t('bots.conversationNotFound'));
     c.title = title.trim().slice(0, 60);
     b.updatedAt = new Date().toISOString();
+    saveBots(bots);
+}
+
+/** Notes that the main chat was emptied at `ts` (moved into a conversation); the sync carries it to the other machines. */
+export function clearMainChat(botId: string, ts: string): void {
+    const bots = loadBots();
+    const b = botOrThrow(bots, botId);
+    b.mainClearedAt = ts;
+    b.updatedAt = ts;
     saveBots(bots);
 }
 

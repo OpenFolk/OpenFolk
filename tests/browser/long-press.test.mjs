@@ -31,7 +31,7 @@ export default async function ({ start, check }) {
     const entries = (sel) => p.evaluate((sel) => { const m = document.querySelector(sel); return m && !m.hidden ? [...m.querySelectorAll(':scope > button')].map((b) => b.textContent.trim() + (b.disabled ? ' (disabled)' : '')) : null; }, sel);
     const menu = () => entries('#row-menu');
     const chips = () => p.locator('#row-menu .model-switch .chip').allTextContents();
-    const BOT = ['Open changes', 'Search in chat', 'New conversation', 'VS Code', 'Info, routines, knowledge', 'Edit bot', 'Mark as favorite', 'Mute', 'Folder', 'New session (clear context)', 'Delete bot'];
+    const BOT = ['New conversation', 'Move to a conversation', 'Open changes', 'Search in chat', 'Machine sessions', 'Info, routines, knowledge', 'Edit bot', 'Mark as favorite', 'Mute', 'Folder', 'New session (clear context)', 'Delete bot'];
     const open = () => p.evaluate(() => document.getElementById('app').classList.contains('chat-open'));
 
     await hold('Skool Sven', 150);
@@ -56,7 +56,7 @@ export default async function ({ start, check }) {
     check('back closes it, the list stays', (await menu()) === null && !(await open()));
 
     await hold('PDF-Reader', 700);
-    check('sleeping bot: new conversation and changes disabled', JSON.stringify(await menu()) === JSON.stringify(BOT.map((e) => (e === 'Open changes' || e === 'New conversation' ? e + ' (disabled)' : e))), await menu());
+    check('sleeping bot: new conversation and changes disabled', JSON.stringify(await menu()) === JSON.stringify(BOT.map((e) => (['Open changes', 'New conversation', 'Move to a conversation'].includes(e) ? e + ' (disabled)' : e))), await menu());
     await h.swipe(60, 600, 360, 600);
     await h.wait(100);
     check('swipe to the right closes it', (await menu()) === null && !(await open()));
@@ -71,7 +71,8 @@ export default async function ({ start, check }) {
     await h.openChat('Skool Sven');
     await p.click('[data-el=chat-title]');
     await h.wait(200);
-    const onPage = await entries('#info-actions');
+    // "New conversation" stands above the switches, the rest below the open changes
+    const onPage = [...await entries('#info-switches'), ...await entries('#info-actions')];
     const pageChips = await p.locator('#info-switches .model-switch .chip').allTextContents();
     // the page shows open changes and the archive itself and is the info
     const extra = ['Open changes', 'Info, routines, knowledge'];
@@ -88,19 +89,20 @@ export default async function ({ start, check }) {
     check('request to the bot\'s machine', request && request.botId === 'skool' && request.machine === 'desk', request);
     check('new conversation opened, menu closed', await open() && (await p.textContent('[data-el=chat-name]')) === 'New conversation' && (await menu()) === null);
 
-    // bot with an archive: second entry, opens the list in the same menu; tapping brings the conversation back
+    // bot with an archive: an entry with the count opens the archive page; tapping brings the conversation back
     await p.click('[data-el=btn-back]');
     await h.wait(300);
     check('archived conversation is not in the overview', await p.evaluate(() => !document.querySelector('#chat-list li[data-chat="cloud~ee55"]')));
     await hold('Cloud Carlo', 700);
-    check('menu with archive and count', JSON.stringify(await menu()) === JSON.stringify([...BOT.slice(0, 3), 'Archive (1)', ...BOT.slice(3)]), await menu());
+    check('menu with archive and count', JSON.stringify(await menu()) === JSON.stringify([...BOT.slice(0, 4), 'Archive (1)', ...BOT.slice(4)]), await menu());
     await p.locator('#row-menu button', { hasText: 'Archive' }).click();
-    await h.wait(100);
-    check('archive shows title and date', JSON.stringify(await menu()) === '["Old move · 10/9/2026"]', await menu());
-    const head = await p.evaluate(() => { const i = document.querySelector('#row-menu .menu-info'); return i ? [...i.children].map((c) => c.textContent) : []; });
-    check('archive with its heading and the hint below', JSON.stringify(head) === '["Archive","Tap to bring a conversation back"]', head);
-    await p.locator('#row-menu > button').click();
+    await h.wait(200);
+    const rows = await p.locator('#archive-list button').allTextContents();
+    check('archive page with title and date, menu closed', await p.isVisible('#archive') && JSON.stringify(rows) === '["Old move · 10/9/2026"]' && (await menu()) === null, rows);
+    check('archive page names the bot and says what a tap does', (await p.textContent('#archive-sub')).startsWith('Cloud Carlo')
+        && (await p.textContent('#archive .hint')) === 'Tap to bring a conversation back');
+    await p.locator('#archive-list button').click();
     await h.wait(300);
     const back = h.sent.find((f) => f.type === 'conversation_archive');
-    check('brought back and opened', back && back.chatId === 'cloud~ee55' && back.on === false && (await p.textContent('[data-el=chat-name]')) === 'Old move' && (await menu()) === null, back);
+    check('brought back and opened', back && back.chatId === 'cloud~ee55' && back.on === false && (await p.textContent('[data-el=chat-name]')) === 'Old move' && (await menu()) === null && await p.isHidden('#archive'), back);
 }

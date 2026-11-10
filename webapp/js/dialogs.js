@@ -99,8 +99,10 @@ export async function alertDialog(message) {
 /**
  * The "danger zone" for something that cannot be brought back: a warning with what goes, an optional name to type
  * and a red button named after the action that stays disabled until the name matches exactly.
- * @param {{ title: string, items: string[], notes?: string[], name?: string, action: string }} o `items`: what is
- *   deleted; `notes`: what stays, or other hints; `name`: what to type to confirm (none for a smaller loss)
+ * @param {{ title: string, items: string[], notes?: string[], name?: string, action: string,
+ *   option?: { label: string, hint?: string, disabled?: boolean, checked?: boolean } }} o `items`: what is
+ *   deleted; `notes`: what stays, or other hints; `name`: what to type to confirm (none for a smaller loss);
+ *   `option`: a box to tick for something more to delete, its state is written back into `checked`
  * @returns {Promise<boolean>}
  */
 export function dangerDialog(o) {
@@ -114,6 +116,18 @@ export function dangerDialog(o) {
             zone.append(list);
         }
         for (const note of o.notes || []) zone.append(node('span', 'danger-note', note));
+        if (o.option) {
+            const option = o.option;
+            const label = node('label', 'check danger-option');
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.disabled = Boolean(option.disabled);
+            box.checked = option.checked = false;
+            box.addEventListener('change', () => { option.checked = box.checked; });
+            label.append(box, node('span', '', option.label));
+            zone.append(label);
+            if (option.hint) zone.append(node('span', 'danger-note', option.hint));
+        }
         const cancel = node('button', 'btn', t('common.cancel'));
         cancel.type = 'button';
         cancel.dataset.cancel = '1';

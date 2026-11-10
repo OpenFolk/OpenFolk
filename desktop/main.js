@@ -197,9 +197,22 @@ const TEXTS = {
             https: 'The relay server needs HTTPS.',
             unreachable: 'The relay server does not answer: {message}',
             expired: 'The invitation is used up or expired (15 minutes). Create a new one in the app.',
+            setup_expired: 'The setup link is used up, revoked or expired (7 days). Ask the person who sent it for a new one.',
             too_old: 'The relay server is too old for invitations: update it first.',
             too_many: 'Too many attempts from this address; wait an hour.',
         },
+        setupLinkTitle: 'Set up OpenFolk',
+        setupLinkConfirm: 'Set this OpenFolk up with the link from {relay}?',
+        setupLinkDetail: 'This computer then works for your account there: your bots run here, with your own Claude sign-in, and the person who sent you the link sets them up. Nobody else’s bots or chats come to this computer.',
+        setupLinkYes: 'Set up',
+        setupLinkNo: 'Cancel',
+        setupLinkBots: 'This OpenFolk already has bots of its own. A setup link is for an OpenFolk that is new; keep using it as it is, or ask for access as a further device instead.',
+        setupLinkJoined: 'This OpenFolk is connected to {relay} already. Disconnect it first (menu File), then open the link again.',
+        setupLinkFailed: 'The setup did not work: {error}',
+        disconnect: 'Disconnect from {relay} …',
+        disconnectConfirm: 'Disconnect this computer from {relay}?',
+        disconnectDetail: 'Its bots stop running here and the app starts on this computer again, without them. What they did stays in this app’s profile.',
+        disconnectYes: 'Disconnect',
         setupStarting: 'OpenFolk is starting …',
         setupFailed: 'The backend does not start ({error}). Its log: {log}',
         quitWaitTitle: 'A bot is still working',
@@ -211,6 +224,8 @@ const TEXTS = {
         startAtLogin: 'Start at login',
         runWithoutSignIn: 'Run without signing in (for waking)',
         runWithoutSignInFailed: 'The scheduled task could not be changed: {error}',
+        runWithoutSignInFailedLinux: 'The service openfolk-backend could not be changed: {error}',
+        runWithoutSignInLinger: 'This system does not let your services run without a sign-in. An administrator can allow it once with "sudo loginctl enable-linger {user}"; then switch it on again.',
         runWithoutSignInOn: 'The bots of this computer now run from system start, also without signing in. The relay can wake this computer for routines; set that up on the relay (WAKE_METHOD).',
         quit: 'Quit',
         quitApp: 'Quit OpenFolk',
@@ -255,11 +270,12 @@ const TEXTS = {
         updateReadyMenu: 'Restart to update to {version}',
         updateReadyTitle: 'Update ready',
         updateReadyText: 'OpenFolk {version} has been downloaded. Restart now, or it is installed the next time you quit. A working bot finishes first.',
+        updateReadyTextAdmin: 'OpenFolk {version} has been downloaded. Restart now, or it is installed the next time you quit. A working bot finishes first. Windows asks for administrator rights for the install; declined, the update waits for the next time.',
         updateRestart: 'Restart now',
         updateLater: 'Later',
         updateNone: 'OpenFolk {version} is the latest version.',
         updateDownloading: 'OpenFolk {version} is being downloaded. The app asks to restart once it is ready.',
-        updateFailed: 'Could not check for updates: {error}',
+        updateFailed: 'The update servers could not be reached. Try again later, or download the new version from openfolk.app.\n\nopenfolk.app: {feed}\nGitHub: {github}',
         updateNotHere: 'This build of OpenFolk {version} does not update itself. New versions are on openfolk.app.',
         countActive: 'Count this installation anonymously',
     },
@@ -328,9 +344,22 @@ const TEXTS = {
             https: 'Der Relay-Server braucht HTTPS.',
             unreachable: 'Der Relay-Server antwortet nicht: {message}',
             expired: 'Die Einladung ist verbraucht oder abgelaufen (15 Minuten). In der App eine neue erstellen.',
+            setup_expired: 'Der Einrichtungslink ist verbraucht, widerrufen oder abgelaufen (7 Tage). Bitte die Person, die ihn geschickt hat, um einen neuen.',
             too_old: 'Der Relay-Server ist zu alt für Einladungen: erst aktualisieren.',
             too_many: 'Zu viele Versuche von dieser Adresse; eine Stunde warten.',
         },
+        setupLinkTitle: 'OpenFolk einrichten',
+        setupLinkConfirm: 'Dieses OpenFolk mit dem Link von {relay} einrichten?',
+        setupLinkDetail: 'Dieser Computer arbeitet dann für dein Konto dort: Deine Bots laufen hier, mit deiner eigenen Claude-Anmeldung, und wer dir den Link geschickt hat, richtet sie ein. Bots und Chats anderer kommen nicht auf diesen Computer.',
+        setupLinkYes: 'Einrichten',
+        setupLinkNo: 'Abbrechen',
+        setupLinkBots: 'Dieses OpenFolk hat schon eigene Bots. Ein Einrichtungslink ist für ein neues OpenFolk; nutze es weiter wie bisher oder lass dich stattdessen als weiteres Gerät einladen.',
+        setupLinkJoined: 'Dieses OpenFolk ist schon mit {relay} verbunden. Trenne es zuerst (Menü Datei) und öffne den Link dann noch einmal.',
+        setupLinkFailed: 'Die Einrichtung hat nicht geklappt: {error}',
+        disconnect: 'Von {relay} trennen …',
+        disconnectConfirm: 'Diesen Computer von {relay} trennen?',
+        disconnectDetail: 'Seine Bots laufen dann nicht mehr hier, und die App startet wieder auf diesem Computer, ohne sie. Was sie getan haben, bleibt im Profil dieser App.',
+        disconnectYes: 'Trennen',
         setupStarting: 'OpenFolk startet …',
         setupFailed: 'Das Backend startet nicht ({error}). Sein Log: {log}',
         quitWaitTitle: 'Ein Bot arbeitet noch',
@@ -342,6 +371,8 @@ const TEXTS = {
         startAtLogin: 'Beim Anmelden starten',
         runWithoutSignIn: 'Auch ohne Anmeldung laufen (zum Wecken)',
         runWithoutSignInFailed: 'Die geplante Aufgabe ließ sich nicht ändern: {error}',
+        runWithoutSignInFailedLinux: 'Der Dienst openfolk-backend ließ sich nicht ändern: {error}',
+        runWithoutSignInLinger: 'Dieses System lässt deine Dienste nicht ohne Anmeldung laufen. Ein Administrator erlaubt es einmal mit „sudo loginctl enable-linger {user}“; danach noch einmal einschalten.',
         runWithoutSignInOn: 'Die Bots dieses Rechners laufen jetzt ab dem Systemstart, auch ohne Anmeldung. Das Relay kann den Rechner für Routinen wecken; das wird am Relay eingerichtet (WAKE_METHOD).',
         quit: 'Beenden',
         quitApp: 'OpenFolk beenden',
@@ -386,11 +417,12 @@ const TEXTS = {
         updateReadyMenu: 'Neu starten für Version {version}',
         updateReadyTitle: 'Update bereit',
         updateReadyText: 'OpenFolk {version} ist geladen. Jetzt neu starten, oder es wird beim nächsten Beenden installiert. Ein arbeitender Bot macht vorher fertig.',
+        updateReadyTextAdmin: 'OpenFolk {version} ist geladen. Jetzt neu starten, oder es wird beim nächsten Beenden installiert. Ein arbeitender Bot macht vorher fertig. Für die Installation fragt Windows nach Administratorrechten; abgelehnt, wartet das Update bis zum nächsten Mal.',
         updateRestart: 'Jetzt neu starten',
         updateLater: 'Später',
         updateNone: 'OpenFolk {version} ist die aktuelle Version.',
         updateDownloading: 'OpenFolk {version} wird geladen. Die App fragt nach dem Neustart, sobald es fertig ist.',
-        updateFailed: 'Die Suche nach Updates ist fehlgeschlagen: {error}',
+        updateFailed: 'Die Update-Server sind nicht erreichbar. Versuche es später noch einmal oder lade die neue Version auf openfolk.app.\n\nopenfolk.app: {feed}\nGitHub: {github}',
         updateNotHere: 'Dieser Build von OpenFolk {version} aktualisiert sich nicht selbst. Neue Versionen gibt es auf openfolk.app.',
         countActive: 'Installation anonym mitzählen',
     },
@@ -568,6 +600,90 @@ async function joinWith(link) {
     return { machine: r.machine };
 }
 
+/**
+ * The setup link inside `openfolk://setup?link=…` (the button on the relay's page for a setup link) or a setup link
+ * itself (`https://relay/#setup=…`); '' for anything else.
+ */
+function setupLinkOf(arg) {
+    try {
+        const u = new URL(String(arg || ''));
+        if (u.protocol === 'openfolk:' && u.hostname === 'setup') return setupLinkOf(u.searchParams.get('link') || '');
+        if ((u.protocol === 'https:' || u.protocol === 'http:') && new URLSearchParams(u.hash.slice(1)).get('setup')) return u.href;
+    } catch { /* not an address */ }
+    return '';
+}
+
+/** The profile has bots of its own from "on this computer": a setup link must not put them aside unasked. */
+function hasOwnBots() {
+    try {
+        const list = JSON.parse(fs.readFileSync(path.join(dataDir(), 'accounts', 'main', 'bots.json'), 'utf8'));
+        return Array.isArray(list) && list.length > 0;
+    } catch { return false; }
+}
+
+/** Why this OpenFolk cannot take a setup link; '' when it can. A setup link is for an OpenFolk that is new. */
+function setupBlocked(link) {
+    const relay = remoteUrl();
+    if (relay) return t('setupLinkJoined').replace('{relay}', new URL(relay).host);
+    if (hasOwnBots()) return t('setupLinkBots');
+    return link ? '' : t('invalidAddress');
+}
+
+let setupRunning = false;
+/** A setup link from the browser: asked once, then joined like an invitation (the relay binds the machine). */
+async function openSetupLink(link) {
+    if (!link || setupRunning || !win) return;
+    show();
+    const title = t('setupLinkTitle');
+    const blocked = setupBlocked(link);
+    if (blocked) {
+        await dialog.showMessageBox(win, { type: 'info', title, message: blocked });
+        return;
+    }
+    const { response } = await dialog.showMessageBox(win, {
+        type: 'question', title, message: t('setupLinkConfirm').replace('{relay}', new URL(link).host), detail: t('setupLinkDetail'),
+        buttons: [t('setupLinkYes'), t('setupLinkNo')], defaultId: 0, cancelId: 1,
+    });
+    if (response !== 0) return;
+    setupRunning = true;
+    try {
+        const r = await joinWith(link);
+        if (r.error) await dialog.showMessageBox(win, { type: 'error', title, message: t('setupLinkFailed').replace('{error}', r.error) });
+    } finally {
+        setupRunning = false;
+    }
+}
+
+/**
+ * The way back from a relay this computer joined (by invitation or setup link): the backend lets go of it and the app
+ * runs "on this computer" again. The profile keeps what the bots did; the relay's owner removes the machine there.
+ */
+async function disconnectRelay() {
+    const relay = remoteUrl();
+    if (!relay) return;
+    const host = new URL(relay).host;
+    const { response } = await dialog.showMessageBox(win, {
+        type: 'question', title: 'OpenFolk', message: t('disconnectConfirm').replace('{relay}', host), detail: t('disconnectDetail'),
+        buttons: [t('disconnectYes'), t('setupLinkNo')], defaultId: 1, cancelId: 1,
+    });
+    if (response !== 0) return;
+    if (backend) {
+        await backend.stop();
+        backend = null;
+    }
+    // The embedded relay takes its own token and key from the data folder again
+    for (const key of ['RELAY_URL', 'AGENT_TOKEN', 'E2E_KEY', 'MACHINE_NAME']) setProfileEnv(key, '');
+    config.mode = 'local';
+    config.paired = '';
+    saveConfig();
+    createMenu();
+    if (tray) tray.setContextMenu(trayMenu());
+    loadWebApp();
+}
+
+const disconnectItem = () => (config.mode === 'local' && remoteUrl()
+    ? [{ label: t('disconnect').replace('{relay}', new URL(remoteUrl()).host), click: () => void disconnectRelay() }] : []);
+
 /** The window signed itself in at a relay with a pairing link in its address: remembered, so the next start needs no new one. */
 function notePairing(url) {
     if (config.mode !== 'local' || !url.startsWith(APP)) return;
@@ -615,6 +731,7 @@ function createWindow() {
         if (choosing) loadWebApp();
     });
     win.on('closed', () => { win = null; });
+    watchZoom(win);
 
     // Links to other sites (files, docs) open in the default browser, not in the app
     win.webContents.setWindowOpenHandler(({ url }) => {
@@ -638,6 +755,32 @@ function createWindow() {
     });
 
     loadWebApp();
+}
+
+// Chromium keeps a zoom level per origin and only until quit; the app keeps one level for every page it shows
+// (openfolk://app, a relay's page, the setup page) and across starts. Steps of 0.5 like the browser's own (about 10 %).
+const ZOOM_MIN = -3;
+const ZOOM_MAX = 4.5;
+function setZoom(level) {
+    config.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, level));
+    saveConfig();
+    for (const w of [win, foldersWin]) if (w) w.webContents.setZoomLevel(config.zoom);
+}
+const zoomBy = (step) => setZoom((config.zoom || 0) + step);
+
+/** Ctrl and + / - / 0 in every keyboard layout and on the number pad, Ctrl and the mouse wheel; Cmd on the Mac. */
+function watchZoom(w) {
+    w.webContents.on('did-finish-load', () => w.webContents.setZoomLevel(config.zoom || 0));
+    w.webContents.on('zoom-changed', (e, direction) => zoomBy(direction === 'in' ? 0.5 : -0.5));
+    w.webContents.on('before-input-event', (e, input) => {
+        if (input.type !== 'keyDown' || input.alt || !(MAC ? input.meta : input.control)) return;
+        const key = input.code === 'NumpadAdd' ? '+' : input.code === 'NumpadSubtract' ? '-' : input.code === 'Numpad0' ? '0' : input.key;
+        if (key === '+' || key === '=') zoomBy(0.5);
+        else if (key === '-') zoomBy(-0.5);
+        else if (key === '0') setZoom(0);
+        else return;
+        e.preventDefault();
+    });
 }
 
 let boundsTimer = null;
@@ -674,6 +817,7 @@ function openFolders() {
     foldersWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     foldersWin.loadFile(FOLDERS);
     foldersWin.on('closed', () => { foldersWin = null; });
+    watchZoom(foldersWin);
 }
 
 /** Only the backend of "on this computer" has folders to choose; with a server in the browser's place they belong to its machines. */
@@ -723,7 +867,7 @@ function quit() {
     app.quit();
 }
 
-/** "Run without signing in": Windows, the backend in the app, and a relay on a server that can wake this computer. */
+/** "Run without signing in": Windows or Linux (task.js), the backend in the app, and a relay on a server that can wake this computer. */
 const taskOffered = () => task.available() && config.mode === 'local' && Boolean(remoteUrl());
 
 const taskItem = () => (taskOffered() ? [{ label: t('runWithoutSignIn'), type: 'checkbox', checked: Boolean(config.task), click: (m) => void switchTask(m.checked) }] : []);
@@ -750,7 +894,9 @@ async function switchTask(on) {
     }
     refresh();
     if (error) {
-        dialog.showMessageBox(win, { type: 'warning', title: 'OpenFolk', message: t('runWithoutSignInFailed').replace('{error}', error) });
+        const message = error === 'linger' ? t('runWithoutSignInLinger').replace('{user}', os.userInfo().username)
+            : t(process.platform === 'linux' ? 'runWithoutSignInFailedLinux' : 'runWithoutSignInFailed').replace('{error}', error);
+        dialog.showMessageBox(win, { type: 'warning', title: 'OpenFolk', message });
         return;
     }
     if (on) dialog.showMessageBox(win, { type: 'info', title: 'OpenFolk', message: t('runWithoutSignInOn') });
@@ -763,6 +909,7 @@ const trayMenu = () => Menu.buildFromTemplate([
     { label: t('changeAddress'), click: changeAddress },
     ...foldersItem(),
     ...(config.mode === 'local' ? [{ label: t('pairAgain'), click: () => { show(); void pairAgain(); } }] : []),
+    ...disconnectItem(),
     { type: 'separator' },
     { label: t(process.platform === 'win32' ? 'startWithWindows' : 'startAtLogin'), type: 'checkbox', checked: startsAtLogin(), click: (m) => setStartAtLogin(m.checked) },
     ...taskItem(),
@@ -787,9 +934,10 @@ const viewMenu = (label) => ({
         { role: 'reload', label: t('reload') },
         { role: 'forceReload', label: t('forceReload') },
         { type: 'separator' },
-        { role: 'resetZoom', label: t('resetZoom') },
-        { role: 'zoomIn', label: t('zoomIn') },
-        { role: 'zoomOut', label: t('zoomOut') },
+        // The keys themselves go through watchZoom (the roles' Ctrl+Plus misses the + key of a German keyboard)
+        { label: t('resetZoom'), accelerator: 'CmdOrCtrl+0', registerAccelerator: false, click: () => setZoom(0) },
+        { label: t('zoomIn'), accelerator: 'CmdOrCtrl+Plus', registerAccelerator: false, click: () => zoomBy(0.5) },
+        { label: t('zoomOut'), accelerator: 'CmdOrCtrl+-', registerAccelerator: false, click: () => zoomBy(-0.5) },
         { type: 'separator' },
         { role: 'togglefullscreen', label: t('fullscreen') },
         { role: 'toggleDevTools', label: t('devTools') },
@@ -807,6 +955,7 @@ function createMacMenu() {
                 { type: 'separator' },
                 { label: t('changeAddress'), click: changeAddress },
                 ...foldersItem(),
+                ...disconnectItem(),
                 { type: 'separator' },
                 { label: t('startAtLogin'), type: 'checkbox', checked: startsAtLogin(), click: (m) => setStartAtLogin(m.checked) },
                 { type: 'separator' },
@@ -852,6 +1001,7 @@ function createMenu() {
             submenu: [
                 { label: t('changeAddress'), click: changeAddress },
                 ...foldersItem(),
+                ...disconnectItem(),
                 ...(taskOffered() ? [{ type: 'separator' }, ...taskItem()] : []),
                 { type: 'separator' },
                 { label: t('quit'), accelerator: 'Ctrl+Q', click: quit },
@@ -872,11 +1022,37 @@ function createMenu() {
 // Tests (scripts/desktop-smoke.mjs) run with a profile of their own, never the user's
 if (process.env.OPENFOLK_USER_DATA) app.setPath('userData', process.env.OPENFOLK_USER_DATA);
 
-// A second start only brings the existing window to the front
+// openfolk:// links from the browser (the button on a relay's page for a setup link) start this app. Inside the app
+// the same scheme serves the web app (serveWebApp); only links from outside come through the system. A test run keeps
+// the system's registration (the installed app's) as it is.
+if (!process.env.OPENFOLK_USER_DATA) {
+    if (process.defaultApp) {
+        if (process.argv[1]) app.setAsDefaultProtocolClient('openfolk', process.execPath, [path.resolve(process.argv[1])]);
+    } else {
+        app.setAsDefaultProtocolClient('openfolk');
+    }
+}
+
+/** A setup link that came before the window was there (macOS hands it over before ready, the others in argv). */
+let pendingSetupLink = process.argv.map(setupLinkOf).find(Boolean) || '';
+
+// A second start only brings the existing window to the front; Windows and Linux hand a link over this way
 if (!app.requestSingleInstanceLock()) {
     app.quit();
 } else {
-    app.on('second-instance', show);
+    app.on('second-instance', (e, argv) => {
+        show();
+        const link = argv.map(setupLinkOf).find(Boolean);
+        if (link) void openSetupLink(link);
+    });
+    // macOS hands links over as an event, also the one the app was started with
+    app.on('open-url', (e, url) => {
+        e.preventDefault();
+        const link = setupLinkOf(url);
+        if (!link) return;
+        if (win) void openSetupLink(link);
+        else pendingSetupLink = link;
+    });
 
     app.whenReady().then(() => {
         loadConfig();
@@ -905,6 +1081,8 @@ if (!app.requestSingleInstanceLock()) {
         createWindow();
         // In every mode: a backend of this machine without a desktop hands its IDE and terminal windows to the app
         watchHandovers();
+        if (pendingSetupLink) void openSetupLink(pendingSetupLink);
+        pendingSetupLink = '';
     });
 
     // Only the setup page (file://) may change the address, not the web app loaded from the relay
@@ -940,6 +1118,9 @@ if (!app.requestSingleInstanceLock()) {
     });
     ipcMain.handle('join-server', async (e, link) => {
         if (!fromSetup(e)) return { error: 'not allowed' };
+        // A setup link pasted here: the same checks as one from the browser
+        const blocked = setupLinkOf(link) ? setupBlocked(setupLinkOf(link)) : '';
+        if (blocked) return { error: blocked };
         return joinWith(link);
     });
     // The same invitation by QR code: a signed-in device scans it and sends the link back sealed (qr-join.js)

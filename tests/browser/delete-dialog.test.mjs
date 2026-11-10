@@ -1,8 +1,12 @@
 // Deleting a bot, a group or a conversation: a "danger zone" dialog with what goes and what stays. A bot or group is
-// confirmed by typing its name, a conversation by the red button alone. The working folder is not part of it.
+// confirmed by typing its name, a conversation by the red button alone. The backend here is one before the question
+// about the working folder (folder-delete.test.mjs has the newer one): the folder is not part of it.
 
 export default async function ({ start, check }) {
     const h = await start({
+        async onSend(f, push) {
+            if (f.type === 'folder_delete_check') await push({ type: 'error', machine: 'desk', request: 'folder_delete_check', message: 'unknown frame' });
+        },
         bots: [
             { id: 'skool', name: 'Skool Sven', role: 'Test', avatar: '', folder: 'C:/www/skool', model: 'default', approval: 'risky', tone: '', machine: 'desk', conversations: [{ id: 'aa11', title: 'Release', createdAt: '' }, { id: 'bb22', title: 'Notes', createdAt: '' }] },
             { id: 'cloud', name: 'Cloud Carlo', role: 'Test', avatar: '', folder: 'C:/www/cloud', model: 'default', approval: 'risky', tone: '', machine: 'desk' },

@@ -29,7 +29,7 @@ export default async function ({ start, check }) {
     await h.openChat('Skool Sven');
     await p.click('[data-el=chat-title]');
     await h.wait(150);
-    check('entry on the bot\'s page', (await p.locator('#info-actions button').allTextContents()).includes('VS Code'));
+    check('entry on the bot\'s page', (await p.locator('#info-actions button').allTextContents()).includes('Machine sessions'));
     await p.click('#info-actions button[data-action="vscode"]');
     await h.wait(200);
     check('view open, the bot\'s page left', await p.isVisible('#vscode') && await p.isHidden('#info'));

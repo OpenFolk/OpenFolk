@@ -81,6 +81,8 @@ const fake = (account: string) => {
         greet() {}, leave() {}, updateAgents() {}, peerInbound() {}, woken() {}, warning() {}, pushGone() {},
         peopleChanged() { f.calls.push(`people:${currentAccount()}`); },
         fromPerson(from: string) { f.calls.push(`from:${from}:${currentAccount()}`); },
+        boundTo(by: string | undefined) { f.calls.push(`bound:${by}:${currentAccount()}`); },
+        personInbound(from: string, data: { kind: string }) { f.calls.push(`person:${from}:${data.kind}:${currentAccount()}`); },
     });
 };
 const router = new Accounts(fake as never, () => undefined);
@@ -109,6 +111,7 @@ check('deleted: manager closed and no longer served', made[1].closed && router.s
 check('deleted: data moved to deleted-accounts, not removed', !fs.existsSync(path.join(dir, 'accounts', 'work')) && trash.length === 1
     && fs.existsSync(path.join(dir, 'deleted-accounts', trash[0], 'y.json')));
 check('deleted: its data refuses access', throws(() => inAccount('work', () => readJson('y.json', null))).includes('deleted'));
+check('deleted: traffic still on its way finds no handler (no new manager, no crash)', router.handler('work') === null && router.served().join() === 'main');
 router.deleted('main');
 router.deleted('../main');
 check('main and invalid ids are never deleted', router.served().join() === 'main' && fs.existsSync(path.join(dir, 'accounts', 'main')));
@@ -116,6 +119,32 @@ router.hello(['main', 'other'], ['work']);
 check('hello with a deleted account: not served again', router.served().join() === 'main,other');
 router.hello(null, []);
 check('relay without accounts: back to main only', router.served().join() === 'main' && made[made.length - 1].closed);
+
+// A machine joined by a setup link: bound to one account, which owns it
+const { machineBinding, ownerAccount, setMachineBinding } = await import('./store.ts');
+router.hello(['kunde'], [], { account: 'kunde', setupBy: 'main' });
+const kundeManager = made.findLast((m) => m.account === 'kunde');
+check('bound: serves its account only, main stops', router.served().join() === 'kunde' && made[0].closed);
+check('bound: the binding is kept and the account owns the machine', machineBinding()?.account === 'kunde' && machineBinding()?.setupBy === 'main' && ownerAccount() === 'kunde');
+check('bound: the account hears of it in its context (and asks its admin)', kundeManager?.calls.includes('bound:main:kunde') === true);
+check('bound: no handler for another account, whatever arrives', router.handler('main') === null && router.handler('anna') === null && router.handler('kunde') !== null);
+router.added('anna');
+check('bound: a new account on the relay is not served', router.served().join() === 'kunde');
+router.person('main', 'kunde', { kind: 'setup_request' });
+check("person route: to the account's manager in its context", kundeManager?.calls.includes('person:main:setup_request:kunde') === true);
+inAccount('kunde', () => writeJson('z.json', { c: 3 }));
+// Disconnected again ("on this computer"): the embedded relay knows no binding
+router.hello(['main'], []);
+check('unbound again: main served, the bound account rests', router.served().join() === 'main' && kundeManager?.closed === true && machineBinding() === null);
+check('… its data stays', fs.existsSync(path.join(dir, 'accounts', 'kunde')));
+// An account that runs on machines of its own now: this machine lets go, without deleting
+router.hello(['main', 'anna'], []);
+inAccount('anna', () => writeJson('z.json', { d: 4 }));
+router.released('anna');
+check('released: no longer served, its data stays', router.served().join() === 'main' && fs.existsSync(path.join(dir, 'accounts', 'anna')));
+router.released('main');
+check("the owner's account is never released", router.served().join() === 'main');
+setMachineBinding(null);
 
 // The machine and its logins belong to 'main'
 const { BotManager } = await import('./agent.ts');

@@ -10,13 +10,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config, projectRoot } from './config.ts';
 import { machineSettings } from './machine-settings.ts';
-import type { VoiceSetup } from '../../shared/protocol.ts';
+import type { BotVoice, Language, VoiceSetup } from '../../shared/protocol.ts';
 
 const REQUIREMENTS = path.join(projectRoot, 'local', 'tools', 'requirements-voice.txt');
 const CUDA_PACKAGES = ['nvidia-cublas-cu12', 'nvidia-cudnn-cu12==9.*'];
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 /** What the transcription imports; faster-whisper alone loads without its engine. */
 const CHECK = 'import faster_whisper, av, ctranslate2';
+/** What reading aloud on the machine imports (local/tools/speak.py); missing in environments from before it. */
+const SPEECH_CHECK = 'import piper';
+
+/**
+ * The voice that reads aloud on the machine, per language and kind, by the voices Piper offers (rhasspy/piper-voices):
+ * the best German ones are Thorsten (male, "high") and Kerstin (female, "medium"); in English Ryan and Lessac, both
+ * "high". The setup loads the two of the settings' language; the others come with their first use.
+ */
+export const LOCAL_VOICES: Record<Language, Record<BotVoice, string>> = {
+    de: { female: 'de_DE-kerstin-medium', male: 'de_DE-thorsten-high' },
+    en: { female: 'en_US-lessac-high', male: 'en_US-ryan-high' },
+};
+
+/** Where those voices live: per machine, next to the environment. */
+export const piperDataDir = (): string => path.join(config.dataDir, 'voice', 'piper');
 
 const venvPython = (dir: string): string => path.join(dir, process.platform === 'win32' ? path.join('Scripts', 'python.exe') : path.join('bin', 'python3'));
 /** The environment this module sets up. */
@@ -57,7 +72,8 @@ export async function voiceStatus(): Promise<VoiceSetup> {
     const python = voicePython() ?? (systemPython = await installedPython());
     if (!python) return (state = { state: 'missing' });
     const r = await run(python, ['-c', CHECK]);
-    state = r.ok ? { state: 'ready', detail: python } : { state: 'missing', detail: lastLine(r.out) };
+    if (!r.ok) return (state = { state: 'missing', detail: lastLine(r.out) });
+    state = { state: 'ready', detail: python, speech: (await run(python, ['-c', SPEECH_CHECK])).ok };
     return state;
 }
 
@@ -103,10 +119,10 @@ function step(file: string, args: string[]): Promise<void> {
 }
 
 /**
- * Creates the environment and installs the packages. `report` gets every change of state. Only one setup at a time;
- * a running one is not started twice.
+ * Creates the environment and installs the packages. `report` gets every change of state; `language` says which
+ * voices for reading aloud to load. Only one setup at a time; a running one is not started twice.
  */
-export async function setupVoice(report: (s: VoiceSetup) => void): Promise<void> {
+export async function setupVoice(report: (s: VoiceSetup) => void, language: Language = 'en'): Promise<void> {
     if (state.state === 'installing' || process.env.OPENFOLK_CONTAINER === '1' || process.env.WHISPER_PYTHON) return;
     const set = (s: VoiceSetup) => { state = s; report(s); };
     const log = (text: string) => console.log(`${new Date().toTimeString().slice(0, 8)} voice setup: ${text}`);
@@ -141,6 +157,15 @@ export async function setupVoice(report: (s: VoiceSetup) => void): Promise<void>
         set({ state: 'installing', detail: `model:${model}` });
         log(`loading the speech model ${model}`);
         await step(python, ['-c', `from faster_whisper import download_model; download_model(${JSON.stringify(model)})`]);
+        // The voices for reading aloud (speak.py loads a missing one on its first use, which then takes a while)
+        const voices = Object.values(LOCAL_VOICES[language]);
+        set({ state: 'installing', detail: 'voices' });
+        log(`loading the voices for reading aloud: ${voices.join(', ')}`);
+        try {
+            await step(python, ['-m', 'piper.download_voices', '--download-dir', piperDataDir(), ...voices]);
+        } catch (e) {
+            log(`voices not loaded, they come with the first use: ${(e as Error).message}`);
+        }
         checked = false;
         state = { state: 'missing' };
         const done = await voiceStatus();

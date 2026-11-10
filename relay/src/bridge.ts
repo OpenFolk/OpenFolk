@@ -10,14 +10,20 @@
 // Every browser belongs to an account (accounts.ts) and sees only that account's frames. A backend serves every
 // account if it signs in with X-Accounts: 1; an older one does not know the field and would take everything for its
 // own data, so it gets the traffic of 'main' only.
+//
+// A machine joined by a setup link is bound to one account (owner.ts): it serves that account only, and that account
+// is served by no other machine. Such a machine belongs to someone else (an employee, a customer), so nothing of other
+// accounts reaches it, not even machine names, and nothing it sends counts for another account. Person chats and
+// setups cross that line through the person route: one message to one awake machine of the other account, allowed by
+// the relay's accounts (Accounts.mayRoute).
 
 import { randomUUID } from 'node:crypto';
 import type WebSocket from 'ws';
 import { MAIN } from './accounts.ts';
 import type { MachinesSeen } from './machines-seen.ts';
-import type {
-    AgentInbound, AgentOutbound, ClientFrame, ClientMessage, E2eFrame, NativePushChannel, NativePushMessage, NativePushSubscription, PairBox,
-    Person, RelayRequest, ServerFrame, WakeEntry,
+import {
+    reaches, type AgentInbound, type AgentOutbound, type ClientFrame, type ClientMessage, type E2eFrame, type NativePushChannel, type NativePushMessage,
+    type NativePushSubscription, type PairBox, type Person, type RelayRequest, type ServerFrame, type WakeEntry,
 } from '../../shared/protocol.ts';
 
 /** After this many minutes a woken machine that connects no longer counts as "just woken". */
@@ -50,6 +56,8 @@ interface Agent {
     accounts: boolean;
     /** Where it connected from: a second sign-in from the same address is a restart, not an intruder. */
     ip: string;
+    /** Joined by a setup link: serves this account only. */
+    bound?: string;
 }
 
 /** Bytes waiting for a client before the relay gives up on it: a few file downloads (20 MB each, base64). */
@@ -72,6 +80,12 @@ export class Bridge {
     onFirstDevice: (id: string, box: PairBox | undefined, error: string | undefined) => void = () => undefined;
     /** The accounts there are and the deleted ones, for the hello of a backend that knows accounts. */
     accountList: () => { ids: string[]; deleted: string[]; people: Person[] } = () => ({ ids: [MAIN], deleted: [], people: [] });
+    /** The admin who set an account up; such an account runs only on machines bound to it. */
+    setupBy: (account: string) => string | undefined = () => undefined;
+    /** May account `from` send to account `to` through the person route (Accounts.mayRoute). */
+    mayRoute: (from: string, to: string) => boolean = () => false;
+    /** Machines bound to an account, also those not connected: name -> account. */
+    boundMachines: () => Map<string, string> = () => new Map();
     private lastWarning = new Map<string, number>();
     private relayRequest: RelayRequestHandler;
     private seen?: MachinesSeen;
@@ -91,7 +105,7 @@ export class Bridge {
 
     /** Asks one backend of the main account to sign in a first device; false when none is connected. */
     firstDevice(id: string, pk: string): boolean {
-        const agent = [...this.agents.values()][0];
+        const agent = [...this.agents.values()].find((a) => this.serves(a, MAIN));
         if (!agent) return false;
         this.toAgent(agent.ws, { type: 'first_device', id, pk });
         return true;
@@ -118,9 +132,9 @@ export class Bridge {
         const last = this.lastWarning.get(throttleKey) ?? 0;
         if (Date.now() - last < WARNING_INTERVAL_MS) return;
         this.lastWarning.set(throttleKey, Date.now());
-        const target = to ?? this.online().find((m) => serves(this.agents.get(m)!, account));
+        const target = to ?? this.online().find((m) => this.serves(this.agents.get(m)!, account));
         const agent = target ? this.agents.get(target) : undefined;
-        if (agent && serves(agent, account)) this.toAgent(agent.ws, { type: 'warning', code, params, ...(account === MAIN ? {} : { account }) });
+        if (agent && this.serves(agent, account)) this.toAgent(agent.ws, { type: 'warning', code, params, ...(account === MAIN ? {} : { account }) });
     }
 
     /** Disconnects the backend of a machine whose token was removed. */
@@ -145,18 +159,60 @@ export class Bridge {
 
     /** A new account: the backends start serving it. */
     accountAdded(account: string): void {
-        for (const a of this.agents.values()) if (a.accounts) this.toAgent(a.ws, { type: 'account_added', account });
+        for (const a of this.agents.values()) if (a.accounts && this.serves(a, account)) this.toAgent(a.ws, { type: 'account_added', account });
+    }
+
+    /**
+     * The account was set up for machines of its own: the others stop serving it (they started when it was created) and
+     * its browsers see other machines no more.
+     */
+    accountSetUp(account: string): void {
+        for (const a of this.agents.values()) if (a.accounts && !a.bound) this.toAgent(a.ws, { type: 'account_released', account });
+        for (const c of this.clients.values()) if (c.account === account) this.toClient(c.ws, this.agentsFrame(account));
     }
 
     /** Names or reach changed: the backends get the whole list again (person chats). */
     peopleChanged(people: Person[]): void {
-        for (const a of this.agents.values()) if (a.accounts) this.toAgent(a.ws, { type: 'people', list: people });
+        for (const a of this.agents.values()) if (a.accounts) this.toAgent(a.ws, { type: 'people', list: this.peopleFor(a, people) });
+    }
+
+    /**
+     * The people a backend learns of. A bound machine belongs to someone else: it hears of its account and the people
+     * that account can reach, without whom those may reach in turn.
+     */
+    private peopleFor(agent: Agent, people: Person[]): Person[] {
+        if (!agent.bound) return people;
+        const self = people.find((p) => p.id === agent.bound);
+        if (!self) return [];
+        return people.filter((p) => p === self || reaches(self, p) || this.mayRoute(self.id, p.id))
+            .map((p) => (p === self ? p : { id: p.id, name: p.name, admin: p.admin, reach: p.reach === 'listed' ? 'all' : p.reach }));
     }
 
     /** A deleted account: its browsers are disconnected, the backends remove its data. */
     accountDeleted(account: string): void {
         for (const c of this.clients.values()) if (c.account === account) c.ws.close(4004, 'Account deleted');
-        for (const a of this.agents.values()) if (a.accounts) this.toAgent(a.ws, { type: 'account_deleted', account });
+        for (const a of this.agents.values()) if (a.accounts && (a.bound === account || !a.bound)) this.toAgent(a.ws, { type: 'account_deleted', account });
+    }
+
+    /**
+     * Whether a backend serves the account: a bound machine only its own, every other one every account that is not
+     * bound (an old backend 'main' only).
+     */
+    private serves(agent: Agent, account: string): boolean {
+        if (agent.bound) return account === agent.bound;
+        if (this.setupBy(account)) return false;
+        return account === MAIN || agent.accounts;
+    }
+
+    /** Whether the machine `machine` (connected or not) is one an account's browsers see. */
+    private visibleTo(machine: string, account: string): boolean {
+        const bound = this.boundMachines().get(machine);
+        return bound ? bound === account : !this.setupBy(account);
+    }
+
+    /** Whether machine `machine` is one the backend sees: a bound machine sees its own kind, every other the unbound. */
+    private visibleToAgent(machine: string, agent: Agent): boolean {
+        return this.boundMachines().get(machine) === agent.bound;
     }
 
     private log(text: string): void {
@@ -206,18 +262,19 @@ export class Bridge {
 
     /** To every other backend that serves the account; without one to all. */
     private toAllAgents(data: AgentInbound, except?: string, account?: string): void {
-        for (const [name, a] of this.agents) if (name !== except && (account === undefined || serves(a, account))) this.toAgent(a.ws, data);
+        for (const [name, a] of this.agents) if (name !== except && (account === undefined || this.serves(a, account))) this.toAgent(a.ws, data);
     }
 
     private announceOnline(): void {
-        const online = this.online();
-        this.toAllClients(this.agentsFrame());
-        this.toAllAgents({ type: 'agents', online });
+        for (const c of this.clients.values()) this.toClient(c.ws, this.agentsFrame(c.account));
+        for (const a of this.agents.values()) this.toAgent(a.ws, { type: 'agents', online: this.online().filter((m) => this.visibleToAgent(m, a)) });
     }
 
-    private agentsFrame(): ServerFrame {
-        const online = this.online();
-        return { type: 'agents', online, gone: this.seen?.gone(online) ?? {} };
+    /** The machines an account's browsers see, awake and gone. */
+    private agentsFrame(account: string): ServerFrame {
+        const online = this.online().filter((m) => this.visibleTo(m, account));
+        const gone = Object.fromEntries(Object.entries(this.seen?.gone(this.online()) ?? {}).filter(([m]) => this.visibleTo(m, account)));
+        return { type: 'agents', online, gone };
     }
 
     /** Does the connection answer a ping within a short time? */
@@ -238,7 +295,7 @@ export class Bridge {
      * machine is already connected from is a restart overlapping its predecessor (a container being redeployed, the
      * backend started twice): rejected the same way, but only logged, as it would warn about itself.
      */
-    async connectAgent(ws: WebSocket, ip: string, machine: string, accounts = false): Promise<void> {
+    async connectAgent(ws: WebSocket, ip: string, machine: string, accounts = false, bound?: string): Promise<void> {
         const old = this.agents.get(machine);
         if (old) {
             if (await this.isAlive(old.ws)) {
@@ -253,16 +310,28 @@ export class Bridge {
             old.ws.terminate();
         }
         if (ws.readyState !== ws.OPEN) return;
-        const agent: Agent = { ws, accounts, ip };
+        // A bound machine has to know of its account to keep it apart; an old backend would take it for 'main'
+        if (bound && !accounts) {
+            this.log(`Agent ${machine} is bound to account ${bound} but signed in without accounts: rejected`);
+            ws.close(4010, 'Update OpenFolk on this machine');
+            return;
+        }
+        const agent: Agent = { ws, accounts, ip, ...(bound ? { bound } : {}) };
         this.agents.set(machine, agent);
         this.seen?.record([machine]);
-        this.log(`Agent ${machine} connected from ${ip}${accounts ? '' : ' (without accounts, serves main only)'} (${this.online().join(', ')})`);
+        this.log(`Agent ${machine} connected from ${ip}${accounts ? '' : ' (without accounts, serves main only)'}${bound ? ` (bound to account ${bound})` : ''} (${this.online().join(', ')})`);
         const list = this.accountList();
-        this.toAgent(ws, accounts
-            ? { type: 'relay_hello', pushChannels: this.pushChannels, accounts: list.ids, deletedAccounts: list.deleted, people: list.people }
-            : { type: 'relay_hello', pushChannels: this.pushChannels });
+        const setupBy = bound ? this.setupBy(bound) : undefined;
+        this.toAgent(ws, !accounts
+            ? { type: 'relay_hello', pushChannels: this.pushChannels }
+            : bound
+                ? { type: 'relay_hello', pushChannels: this.pushChannels, accounts: [bound], deletedAccounts: [], people: this.peopleFor(agent, list.people), bound, ...(setupBy ? { setupBy } : {}) }
+                : {
+                    type: 'relay_hello', pushChannels: this.pushChannels, accounts: list.ids.filter((id) => !this.setupBy(id)), deletedAccounts: list.deleted,
+                    people: list.people,
+                });
         this.announceOnline();
-        for (const [cid, c] of this.clients) if (serves(agent, c.account)) this.toAgent(ws, { type: 'client_open', cid, account: c.account });
+        for (const [cid, c] of this.clients) if (this.serves(agent, c.account)) this.toAgent(ws, { type: 'client_open', cid, account: c.account });
         const w = this.woken.get(machine);
         if (w && Date.now() - w.since < WAKE_WINDOW_MIN * 60_000) {
             this.toAgent(ws, w.routines.length ? { type: 'woken', routines: w.routines } : { type: 'woken' });
@@ -285,14 +354,20 @@ export class Bridge {
                 this.onWakeSchedule(a.weckplan as WakeEntry[]);
                 return;
             }
+            if ('person' in a) {
+                this.personRoute(agent, machine, a);
+                return;
+            }
             // A backend without accounts speaks for 'main' whatever it sends
             const account = accounts && 'account' in a && typeof a.account === 'string' ? a.account : MAIN;
+            // Nothing a machine sends counts for an account it does not serve: a bound machine is someone else's
+            if (!this.serves(agent, account) && ('peer' in a || 'frame' in a)) return;
             if ('peer' in a) {
                 const inbound: AgentInbound = { type: 'peer', from: machine, data: a.peer, ...(account === MAIN ? {} : { account }) };
                 const to = 'to' in a ? a.to : 'an' in a ? a.an : undefined;
                 if (to) {
                     const target = this.agents.get(to);
-                    if (target && serves(target, account)) this.toAgent(target.ws, inbound);
+                    if (target && this.serves(target, account)) this.toAgent(target.ws, inbound);
                 } else this.toAllAgents(inbound, machine, account);
                 return;
             }
@@ -323,11 +398,26 @@ export class Bridge {
         });
     }
 
+    /**
+     * A message from one account to another on a machine of its own (person chats, setups): to the first awake machine
+     * that serves the receiving account, if the sender serves the sending one and the accounts may reach each other.
+     * The sender learns whether it went out, so it can try again when the other machine wakes; the relay keeps nothing.
+     */
+    private personRoute(agent: Agent, machine: string, a: Extract<AgentOutbound, { person: unknown }>): void {
+        const { from, to, id } = a;
+        if (typeof from !== 'string' || typeof to !== 'string' || typeof id !== 'string' || !agent.accounts) return;
+        const allowed = this.serves(agent, from) && this.mayRoute(from, to);
+        const target = allowed ? this.online().find((m) => m !== machine && this.serves(this.agents.get(m)!, to)) : undefined;
+        if (target) this.toAgent(this.agents.get(target)!.ws, { type: 'person', from, to, id: id.slice(0, 64), data: a.person });
+        else if (!allowed) this.log(`Person message from ${machine} (account ${from}) to account ${to} refused`);
+        this.toAgent(agent.ws, { type: 'person_result', id: id.slice(0, 64), ok: Boolean(target) });
+    }
+
     connectClient(ws: WebSocket, ip: string, device: string, account = MAIN): string {
         const cid = randomUUID();
         this.clients.set(cid, { ws, device, account });
         this.log(`Browser ${cid.slice(0, 8)} (device ${device}${account === MAIN ? '' : `, account ${account}`}) signed in from ${ip} (${this.clients.size} connected)`);
-        this.toClient(ws, this.agentsFrame());
+        this.toClient(ws, this.agentsFrame(account));
         this.toAllAgents({ type: 'client_open', cid, account }, undefined, account);
 
         ws.on('message', (raw) => {
@@ -344,16 +434,17 @@ export class Bridge {
             // `rechner`: web apps still cached from before the English protocol
             const { machine: m, rechner, ...frame } = n as ClientMessage & { rechner?: string };
             const machine = m ?? rechner;
-            const name = machine ?? this.online().find((x) => serves(this.agents.get(x)!, account)) ?? this.online()[0] ?? '';
+            const name = machine ?? this.online().find((x) => this.serves(this.agents.get(x)!, account)) ?? this.online().find((x) => this.visibleTo(x, account)) ?? '';
             const target = this.agents.get(name);
-            if (!target) {
+            // A machine the account does not see is answered like one that is not there
+            if (!target || !this.visibleTo(name, account)) {
                 this.toClient(ws, machine
                     // `machine` names the missing machine, so the web app can render the code with it
                     ? { type: 'error', code: 'machine_not_connected', message: `${machine.toUpperCase()} is not connected.`, machine }
                     : { type: 'error', code: 'no_machine_connected', message: 'No machine is connected.' });
                 return;
             }
-            if (!serves(target, account)) {
+            if (!this.serves(target, account)) {
                 this.toClient(ws, { type: 'error', code: 'machine_outdated', message: `${name.toUpperCase()} runs an OpenFolk without accounts.`, machine: name });
                 return;
             }
@@ -365,10 +456,6 @@ export class Bridge {
         });
         return cid;
     }
-}
-
-function serves(agent: Agent, account: string): boolean {
-    return account === MAIN || agent.accounts;
 }
 
 /** Outbound messages of backends from before the English protocol (still accepted during the transition). */

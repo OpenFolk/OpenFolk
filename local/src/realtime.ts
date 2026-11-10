@@ -10,6 +10,8 @@ import type { Bot, BotVoice, Language, TalkMode } from '../../shared/protocol.ts
 const MODELS: Record<Exclude<TalkMode, 'app'>, string> = { openai: 'gpt-realtime-2.1', 'openai-mini': 'gpt-realtime-2.1-mini' };
 // marin and cedar are the voices OpenAI recommends, the same as for reading aloud (speech.ts)
 const VOICES: Record<BotVoice, string> = { female: 'marin', male: 'cedar' };
+/** The voices of the Realtime models; the bot's own OpenAI voice is used when it is one of them (fable, nova and onyx are not). */
+const REALTIME_VOICES = new Set(['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'marin', 'cedar']);
 const LANGUAGE_NAMES: Record<Language, string> = { en: 'English', de: 'German' };
 const CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
 const TIMEOUT_MS = 20_000;
@@ -17,6 +19,8 @@ const TIMEOUT_MS = 20_000;
 export interface RealtimeOptions {
     mode: Exclude<TalkMode, 'app'>;
     voice: BotVoice;
+    /** The bot's own OpenAI voice (Bot.voices.openai), if any. */
+    voiceId?: string;
     /** Language of the conversation (the shared UI language). */
     language: Language;
     /** Language of the transcription; '' = detect. */
@@ -52,7 +56,7 @@ export function realtimeSession(bot: Bot, o: RealtimeOptions) {
                 noise_reduction: { type: 'near_field' as const },
                 turn_detection: { type: 'semantic_vad' as const, eagerness: 'auto' as const },
             },
-            output: { voice: VOICES[o.voice] },
+            output: { voice: o.voiceId && REALTIME_VOICES.has(o.voiceId) ? o.voiceId : VOICES[o.voice] },
         },
         tools: [{
             type: 'function' as const,

@@ -43,6 +43,15 @@ check('an ACP call stays asking even if listed', needsApproval('risky', 'mcp__ac
 check('risky: writing MCP tool asks', needsApproval('risky', 'mcp__github__create_issue', {}, folder).ask);
 check('own tools free', !needsApproval('write', 'mcp__openfolk__send_file', {}, folder).ask);
 
+// read: a support bot reads and answers, everything else is refused without a card
+const readOnly = (tool: string, input: Record<string, unknown> = {}, allowed: string[] = []) => needsApproval('read', tool, input, folder, allowed);
+check('read: reading tools free', ['Read', 'Grep', 'Glob', 'WebSearch', 'TodoWrite'].every((tool) => { const d = readOnly(tool); return !d.ask && !d.deny; }));
+check('read: writing, shell and foreign services refused without asking',
+    ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'mcp__github__create_issue', 'ReadMcpResourceTool'].every((tool) => { const d = readOnly(tool, { command: 'git status', file_path: path.join(folder, 'a.ts') }); return d.deny && !d.ask; }));
+check('read: a tool allowed for good does not open the level', readOnly('mcp__github__create_issue', {}, ['mcp__github__create_issue']).deny === true);
+check('read: own tools and questions to the user stay', !readOnly('mcp__openfolk__send_file').deny && readOnly('AskUserQuestion').ask);
+check('read: secrets stay unread', readOnly('Read', { file_path: path.join(folder, '.env') }).deny === true);
+
 // ACP: unknown kinds are named after free text and ask; own tools only by name and without a concrete kind
 const listing = acpTool({ toolCallId: 'a', title: 'list and delete old branches', kind: 'other' })!;
 check('ACP unknown kind with a "list" title asks', listing.name.startsWith('mcp__acp__') && needsApproval('risky', listing.name, listing.input, folder).ask, listing.name);

@@ -4,8 +4,8 @@ import { bot } from './harness.mjs';
 export default async function ({ start, check }) {
     const h = await start({ bots: [bot('anna', 'Anna'), bot('cloud', 'Cloud Carlo')] });
     const p = h.page;
-    const row = (name) => p.evaluate((name) => { const r = [...document.querySelectorAll('#chat-list li[data-chat]')].find((l) => l.textContent.includes(name)).getBoundingClientRect(); return { x: r.x, y: r.y + r.height / 2, w: r.width }; }, name);
-    const sections = () => p.evaluate(() => [...document.querySelectorAll('#chat-list li')].map((l) => l.classList.contains('section') ? `[${l.textContent}]` : l.querySelector('.name').firstChild.textContent.trim()).join(' '));
+    const row = (name) => p.evaluate((name) => { const r = [...document.querySelectorAll('#chat-list > li[data-chat]')].find((l) => l.textContent.includes(name)).getBoundingClientRect(); return { x: r.x, y: r.y + r.height / 2, w: r.width }; }, name);
+    const sections = () => p.evaluate(() => [...document.querySelectorAll('#chat-list > li:not(.fav-strip)')].map((l) => l.classList.contains('section') ? `[${l.textContent}]` : l.querySelector('.name').firstChild.textContent.trim()).join(' '));
     const favRequests = () => h.sent.filter((f) => f.type === 'favorite');
     const open = () => p.evaluate(() => document.getElementById('app').classList.contains('chat-open'));
 
@@ -31,14 +31,30 @@ export default async function ({ start, check }) {
     const a = favRequests();
     check('releasing makes Cloud Carlo a favorite', a.length === 1 && a[0].chatId === 'cloud' && a[0].on === true, a);
     check('swiping does not open the chat', !(await open()));
-    check('Cloud Carlo is under favorites', (await sections()) === '[Favorites] Cloud Carlo [All] Anna', await sections());
+    const tiles = () => p.locator('#chat-list .fav-tile .fav-name').allTextContents();
+    check('Cloud Carlo is a tile at the top and stays in the list, no section "Favorites"', JSON.stringify(await tiles()) === '["Cloud Carlo"]' && (await sections()) === 'Anna Cloud Carlo', { tiles: await tiles(), list: await sections() });
+    const tile = await p.locator('#chat-list .fav-tile').boundingBox();
+    check('the tile is large: avatar of 58 px', (await p.locator('#chat-list .fav-tile .avatar').boundingBox()).width === 58 && tile.y < z.y, tile);
     check('row sprang back, strip gone', await p.evaluate(() => !document.querySelector('.swipe-favorite') && [...document.querySelectorAll('#chat-list li[data-chat]')].every((l) => !l.style.transform)));
 
-    z = await row('Cloud Carlo');
-    await h.swipe(z.x + z.w - 40, z.y, z.x + z.w - 170, z.y, 8, 20);
+    // the tile shows what the bot does: a ring while it works, a dot for something unread
+    await h.push({ type: 'state', machine: 'desk', botId: 'cloud', state: 'thinking', chatId: 'cloud' });
+    await h.wait(150);
+    check('working: ring on the tile, in the list under "Running now"', (await p.getAttribute('#chat-list .fav-tile', 'class')).includes('thinking') && (await sections()) === '[Running now] Cloud Carlo [All] Anna', await sections());
+    await h.push({ type: 'state', machine: 'desk', botId: 'cloud', state: 'idle' });
+    await h.wait(150);
+    // long press on the tile: the bot's menu, there it stops being a favorite
+    const tb = await p.locator('#chat-list .fav-tile').boundingBox();
+    await h.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tb.x + tb.width / 2, y: tb.y + tb.height / 2 }] });
+    await h.wait(700);
+    await h.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await h.wait(200);
+    check('long press on the tile: its menu', await p.isVisible('#row-menu') && (await p.locator('#row-menu button[data-action="favorite"]').textContent()) === 'Remove from favorites');
+    await p.click('#row-menu button[data-action="favorite"]');
+    await h.wait(200);
     const b = favRequests();
-    check('swiping again takes it out', b.length === 2 && b[1].on === false, b);
-    check('list without favorites', (await sections()) === 'Anna Cloud Carlo', await sections());
+    check('the menu takes it out again', b.length === 2 && b[1].on === false, b);
+    check('list without favorites, no tiles', (await sections()) === 'Anna Cloud Carlo' && (await tiles()).length === 0, await sections());
     check('no star in the overview any more', (await p.locator('#chat-list .star').count()) === 0);
 
     // to the right: mark as unread and back

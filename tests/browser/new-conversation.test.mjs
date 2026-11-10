@@ -44,5 +44,5 @@ export default async function ({ start, check }) {
     await p.click('[data-el=btn-back]');
     await h.wait(300);
     await p.click('#btn-new');
-    check('opened again: the basic entries again', (await entries()).join('|') === 'New conversation|New bot|New group|New folder', await entries());
+    check('opened again: the basic entries again', (await entries()).join('|') === 'New conversation|New bot|New group|New folder|Machine sessions', await entries());
 }

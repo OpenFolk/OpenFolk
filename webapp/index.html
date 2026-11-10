@@ -12,6 +12,7 @@
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <script src="theme.js"></script>
+<script src="boot.js"></script>
 <link rel="stylesheet" href="chat.css">
 </head>
 <body>
@@ -23,6 +24,13 @@
         <h1>OpenFolk</h1>
         <p class="tagline" data-i18n="login.tagline"></p>
         <p class="start-intro" id="login-intro"></p>
+        <!-- Signed out, or a key expired: the accounts this device knows; the form below only on request (accounts.js) -->
+        <div class="login-choose" id="login-choose" hidden>
+            <ul class="login-accounts" id="login-accounts"></ul>
+            <button type="button" class="btn" id="login-choose-new" data-i18n="login.chooseNew" hidden></button>
+            <button type="button" class="link" id="login-choose-other" data-i18n="login.chooseOther"></button>
+        </div>
+        <button type="button" class="link" id="login-choose-back" data-i18n="login.chooseBack" hidden></button>
         <input type="text" name="username" autocomplete="username" value="openfolk" hidden>
         <label>
             <span data-i18n="login.relay"></span>
@@ -197,6 +205,7 @@
                     <button type="button" class="primary" data-el="sleep-wake"></button>
                 </div>
                 <div class="mention" data-el="mention" role="listbox" data-i18n-aria-label="mention.label" hidden></div>
+                <div class="jobs" data-el="jobs" hidden></div>
                 <div class="queue" data-el="queue" hidden>
                     <button type="button" class="queue-head" data-el="queue-head" aria-expanded="false"></button>
                     <ol class="queue-list" data-el="queue-list" hidden></ol>
@@ -259,13 +268,11 @@
                 <button class="round" data-close data-i18n-aria-label="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </header>
             </div>
-            <!-- What the ⋮ menu of the chat held (renderInfoChat in menus.js): switches, open changes, actions, archive -->
+            <!-- What the ⋮ menu of the chat held (renderInfoChat in menus.js): switches, open changes, actions (the archive behind one) -->
             <div class="menu menu-inline" id="info-switches"></div>
             <h3 data-i18n="git.openChanges"></h3>
             <div class="git-page git-inline" id="info-git"></div>
             <div class="menu menu-inline" id="info-actions"></div>
-            <h3 id="info-archive-head" data-i18n="info.archive" hidden></h3>
-            <div class="menu menu-inline" id="info-archive"></div>
             <dl class="facts" id="info-facts"></dl>
             <h3 data-i18n="info.routines"></h3>
             <ul class="routines" id="info-routines"></ul>
@@ -323,13 +330,11 @@
                     <option value="de" data-i18n="settings.languageDe"></option>
                 </select>
             </label>
-            <p class="hint" data-i18n="settings.languageHint"></p>
             <!-- AI services: the API keys as a list with "add", then what they are used for. Shared by all machines of
                  the account; needs a machine that is awake -->
             <div id="settings-ai" class="settings-block">
                 <h3 data-i18n="ai.title"></h3>
                 <p class="hint" id="settings-ai-asleep" data-i18n="settings.botsAsleep" hidden></p>
-                <p class="hint" data-i18n="ai.hint"></p>
                 <ul class="device-list" id="settings-ai-list"></ul>
                 <div class="actions left" id="settings-ai-add-row">
                     <button type="button" class="btn" id="settings-ai-add" data-i18n="ai.add"></button>
@@ -354,18 +359,16 @@
                         <option value="gpt-image-1" data-i18n="settings.avatarOpenai"></option>
                     </select>
                 </label>
-                <p class="hint" data-i18n="settings.avatarHint"></p>
                 <label><span data-i18n="settings.readAloud"></span>
                     <select id="settings-read-aloud">
                         <option value="auto" data-i18n="settings.readAloudAuto"></option>
                         <option value="device" data-i18n="settings.readAloudDevice"></option>
+                        <option value="local" data-i18n="settings.readAloudLocal"></option>
                         <option value="openai" data-i18n="settings.readAloudOpenai"></option>
                         <option value="gemini" data-i18n="settings.readAloudGemini"></option>
                     </select>
                 </label>
-                <p class="hint" data-i18n="settings.readAloudHint"></p>
                 <label class="check"><input type="checkbox" id="settings-auto-read"> <span data-i18n="settings.autoRead"></span></label>
-                <p class="hint" data-i18n="settings.autoReadHint"></p>
                 <label><span data-i18n="settings.talkMode"></span>
                     <select id="settings-talk-mode">
                         <option value="app" data-i18n="settings.talkModeApp"></option>
@@ -373,7 +376,6 @@
                         <option value="openai-mini" data-i18n="settings.talkModeOpenaiMini"></option>
                     </select>
                 </label>
-                <p class="hint" data-i18n="settings.talkModeHint"></p>
             </div>
             <!-- Shared by all machines of the account; needs a machine that is awake -->
             <div id="settings-bots">
@@ -393,12 +395,9 @@
                         <option value="none" data-i18n="settings.pushPreviewNone"></option>
                     </select>
                 </label>
-                <p class="hint" data-i18n="settings.pushPreviewHint"></p>
                 <label class="check"><input type="checkbox" id="settings-git-pull"> <span data-i18n="settings.gitAutoPull"></span></label>
-                <p class="hint" data-i18n="settings.gitAutoPullHint"></p>
             </div>
             <h3 data-i18n="settings.machines"></h3>
-            <p class="hint" data-i18n-html="settings.autologonHint"></p>
             <ul class="settings-machines" id="settings-machines"></ul>
             <!-- Main account only: an invitation for one more machine (the backend builds the link with the key) -->
             <div class="actions left" id="machine-add-row" hidden>
@@ -414,14 +413,11 @@
                     <button type="button" class="btn" id="push-enable" data-i18n="push.enable" hidden></button>
                 </div>
                 <h4 data-i18n="push.whenTitle"></h4>
-                <p class="hint" data-i18n-html="push.whenHint"></p>
                 <div class="push-kinds" id="push-kinds"></div>
-                <p class="hint" data-i18n="push.muteHint"></p>
             </div>
             <!-- Paired devices, the end-to-end key and the second factor -->
             <div id="settings-devices" class="settings-block">
                 <h3 data-i18n="devices.title"></h3>
-                <p data-i18n="devices.intro"></p>
                 <p class="hint ios-hint" data-i18n="ios.devicesHint" hidden></p>
                 <ul class="device-list" id="device-list"></ul>
                 <div class="actions left">
@@ -429,7 +425,6 @@
                     <button type="button" class="btn" id="devices-scan" data-i18n="qr.scanApprove" hidden></button>
                 </div>
                 <div id="pair-box" class="pair-box" hidden></div>
-                <p class="hint" id="devices-scan-hint"></p>
                 <!-- A backend that runs the relay itself: claim a relay on a server and move there -->
                 <div id="relay-claim-box" hidden>
                     <h4 data-i18n="relayClaim.title"></h4>
@@ -449,41 +444,39 @@
                  person, the shared list switch, one's own account. Devices, key and second factor stay in the block above. -->
             <div id="settings-accounts" class="settings-block">
                 <h3 data-i18n="accounts.title"></h3>
-                <p id="accounts-intro"></p>
                 <ul class="device-list" id="accounts-list"></ul>
                 <div class="actions left" id="accounts-add-row">
                     <button type="button" class="btn" id="accounts-join" data-i18n="accounts.join"></button>
                     <button type="button" class="btn" id="accounts-scan" data-i18n="accounts.scan" hidden></button>
                 </div>
-                <!-- The admin's "Add": a link or address to redeem, or a new person on this relay -->
+                <!-- The admin's "Add": first a new person on this relay (its name), below a link or address to redeem -->
                 <div id="accounts-new-form" class="settings-form" hidden>
-                    <label><span data-i18n="accounts.linkField"></span><input id="accounts-link" autocomplete="off" data-i18n-placeholder="accounts.linkPlaceholder"></label>
-                    <p class="hint" data-i18n="accounts.joinHint"></p>
-                    <div class="actions left">
-                        <button type="button" class="btn" id="accounts-link-go" data-i18n="accounts.redeem"></button>
-                    </div>
                     <h4 data-i18n="accounts.newPerson"></h4>
                     <label><span data-i18n="accounts.name"></span><input id="accounts-new-name" maxlength="60" autocomplete="off" data-i18n-placeholder="accounts.newNamePlaceholder"></label>
                     <label class="check"><input type="checkbox" id="accounts-new-admin"> <span data-i18n="accounts.adminRight"></span></label>
                     <label class="check"><input type="checkbox" id="accounts-new-customer"> <span data-i18n="accounts.customerRight"></span></label>
-                    <p class="hint" data-i18n="accounts.createHint"></p>
                     <div class="actions left">
                         <button type="button" class="btn" id="accounts-create" data-i18n="accounts.createButton"></button>
                         <button type="button" class="btn" id="accounts-new-cancel" data-i18n="common.cancel"></button>
                     </div>
+                    <h4 data-i18n="accounts.redeemTitle"></h4>
+                    <label><span data-i18n="accounts.linkField"></span><input id="accounts-link" autocomplete="off" data-i18n-placeholder="accounts.linkPlaceholder"></label>
+                    <div class="actions left">
+                        <button type="button" class="btn" id="accounts-link-go" data-i18n="accounts.redeem"></button>
+                    </div>
                 </div>
                 <div id="invite-box" class="pair-box" hidden></div>
+                <!-- An admin's setup of a person (setups.js), shown in the settings dialog -->
+                <div id="setup-box" class="settings-form setup-box" hidden></div>
                 <!-- Only on a device signed in to several accounts or relays -->
                 <div id="settings-all-accounts-field" hidden>
                     <label class="check"><input type="checkbox" id="settings-all-accounts"> <span data-i18n="settings.allAccounts"></span></label>
-                    <p class="hint" data-i18n="settings.allAccountsHint"></p>
                 </div>
                 <!-- Hidden on a relay without accounts -->
                 <div id="accounts-own" hidden>
                     <h4 data-i18n="accounts.own"></h4>
                     <label><span data-i18n="accounts.name"></span><input id="accounts-own-name" maxlength="60" autocomplete="off"></label>
                     <label><span data-i18n="accounts.newPassword"></span><input type="password" id="accounts-password" autocomplete="new-password" data-i18n-placeholder="accounts.passwordPlaceholder"></label>
-                    <p class="hint" id="accounts-own-hint"></p>
                     <div class="actions left">
                         <button type="button" class="btn" id="accounts-own-save" data-i18n="common.save"></button>
                     </div>
@@ -492,10 +485,15 @@
             </div>
             <!-- Versions as far as the app learns them: its own, the desktop app's and what each connected backend reports -->
             <div id="settings-about" class="settings-block">
-                <h3>ℹ️ <span data-i18n="about.title"></span></h3>
+                <h3 data-i18n="about.title"></h3>
                 <dl class="about-list" id="about-list"></dl>
                 <!-- What is new in this version: shown in the settings dialog (openReleaseNotes) -->
                 <div class="release-notes" id="release-notes" hidden></div>
+            </div>
+            <!-- Last of all: back to the choice of accounts on this device; the keys stay (accounts.js signOut) -->
+            <div class="settings-block settings-sign-out" id="settings-sign-out" hidden>
+                <p class="hint" id="settings-signed-in"></p>
+                <button type="button" class="btn danger" id="accounts-sign-out" data-i18n="accounts.signOut"></button>
             </div>
         </section>
     </div>
@@ -603,6 +601,7 @@
                     <option value="risky" data-i18n="approval.policy.risky"></option>
                     <option value="write" data-i18n="approval.policy.write"></option>
                     <option value="never" data-i18n="approval.policy.never"></option>
+                    <option value="read" data-i18n="approval.policy.read"></option>
                 </select>
             </label>
         </div>
@@ -614,6 +613,14 @@
                 <option value="male" data-i18n="editor.voiceMale"></option>
             </select>
         </label>
+        <!-- A voice of its own for the provider that reads right now (renderVoiceChoice in editors.js) -->
+        <div class="voice-choice" id="editor-voice-choice">
+            <label><span id="editor-voice-where"></span>
+                <select id="editor-voice-name"></select>
+            </label>
+            <button type="button" class="btn small" id="editor-voice-listen" data-i18n="editor.voiceListen"></button>
+        </div>
+        <p class="hint" id="editor-voice-hint" hidden></p>
         <label><span data-i18n="editor.category"></span><select id="editor-category"></select></label>
         <label><span data-i18n="editor.tone"></span><textarea id="editor-tone" rows="4" data-i18n-placeholder="editor.tonePlaceholder"></textarea></label>
         <p class="hint" data-i18n="editor.riskyHint"></p>
@@ -662,6 +669,22 @@
     </form>
 </div>
 
+
+<!-- A bot's archived conversations; a tap brings one back (openArchive in menus.js) -->
+<div id="archive" class="overlay side page" hidden>
+    <section class="dialog panel vscode">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <header class="vs-head">
+            <div class="vs-title">
+                <h2 data-i18n="info.archive"></h2>
+                <p id="archive-sub"></p>
+            </div>
+            <button type="button" class="round" data-close data-i18n-aria-label="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </header>
+        <p class="hint" data-i18n="menu.archiveHint"></p>
+        <div class="menu menu-inline" id="archive-list"></div>
+    </section>
+</div>
 
 <!-- Sessions from VS Code: list, history to watch along, continue as a conversation -->
 <div id="vscode" class="overlay side page" hidden>
