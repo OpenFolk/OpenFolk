@@ -286,7 +286,9 @@ function showLog(run) {
         check('disconnect: the menu has the entry', clicked);
         check('disconnect: the profile\'s .env no longer points at the relay', await until(() => !/RELAY_URL=|AGENT_TOKEN=/.test(run.env()), 30_000), run.env());
         check('disconnect: the backend left that relay', await until(() => / disconnected/.test(server.log().split('connected from').pop() ?? ''), 30_000), server.log().slice(-400));
-        check('disconnect: back to "on this computer"', run.config().mode === 'local' && !run.config().paired, run.config());
+        // The window pairs with the embedded relay again right away (pairAgain), so `paired` is empty only for a moment
+        const back = (c) => c.mode === 'local' && (!c.paired || !String(c.paired).startsWith(`${server.origin}/`));
+        check('disconnect: back to "on this computer"', await until(() => back(run.config()), 30_000), run.config());
     } catch (e) {
         check(`desktop app took a setup link (${e.message})`, false);
         showLog(run);
