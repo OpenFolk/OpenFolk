@@ -16,6 +16,8 @@ interface IndexedEntry {
     from: string;
     text: string;
     lower: string;
+    /** Names of the files attached to the entry (not a voice message's recording), for the web app's file search. */
+    files: string[];
 }
 
 /** By file, not by chat id: the same chat id can exist in two accounts. */
@@ -41,8 +43,10 @@ function index(chatId: string): IndexedEntry[] {
         } catch {
             continue;
         }
-        if (e.role === 'event' || !e.text || e.deletedAt || e.movedTo) continue;
-        entries.push({ id: e.id!, ts: e.ts, from: e.role === 'assistant' ? (e.botId ?? '') : (e.from ?? 'me'), text: e.text, lower: e.text.toLowerCase() });
+        const files = e.voice ? [] : (e.attachments ?? []).map((a) => a.name).filter(Boolean);
+        if (e.role === 'event' || (!e.text && !files.length) || e.deletedAt || e.movedTo) continue;
+        const text = e.text ?? '';
+        entries.push({ id: e.id!, ts: e.ts, from: e.role === 'assistant' ? (e.botId ?? '') : (e.from ?? 'me'), text, lower: text.toLowerCase(), files });
     }
     indexes.set(file, { mtimeMs: st.mtimeMs, size: st.size, entries });
     return entries;
@@ -90,7 +94,11 @@ export interface SearchOptions {
     max?: number;
     /** rank (default): best match first; time: newest first, as the web app steps through hits in a chat. */
     order?: 'rank' | 'time';
+    /** Match the names of attached files instead of the text; the excerpt is the names that match. */
+    files?: boolean;
 }
+
+const matches = (lower: string, q: Query) => q.terms.every((t) => lower.includes(t)) && q.phrases.every((p) => lower.includes(p));
 
 /** Where a hit starts (for the excerpt): the first phrase or term found. */
 function firstPosition(lower: string, q: Query): { at: number; length: number } {
@@ -136,7 +144,12 @@ export function searchEntries(query: string, o: SearchOptions = {}): SearchHit[]
             if (o.from && e.from !== o.from) continue;
             if (o.since && e.ts < o.since) continue;
             if (o.until && e.ts > o.until) continue;
-            if (!q.terms.every((t) => e.lower.includes(t)) || !q.phrases.every((p) => e.lower.includes(p))) continue;
+            if (o.files) {
+                const names = e.files.filter((n) => matches(n.toLowerCase(), q));
+                if (names.length) ranked.push({ hit: { chatId, id: e.id, ts: e.ts, from: e.from, excerpt: names.join(', ') }, rank: 3 });
+                continue;
+            }
+            if (!e.text || !matches(e.lower, q)) continue;
             const pos = firstPosition(e.lower, q);
             ranked.push({ hit: { chatId, id: e.id, ts: e.ts, from: e.from, excerpt: excerpt(e.text, pos.at, pos.length) }, rank: rank(e.lower, q) });
         }
@@ -148,7 +161,7 @@ export function searchEntries(query: string, o: SearchOptions = {}): SearchHit[]
 
 /** The indexed entries around one entry (`before` earlier, `after` later); empty if the entry is not there. */
 export function entriesAround(chatId: string, id: string, before = 3, after = 3): IndexedEntry[] {
-    const all = index(chatId);
+    const all = index(chatId).filter((e) => e.text);
     const i = all.findIndex((e) => e.id === id);
     if (i < 0) return [];
     return all.slice(Math.max(0, i - before), i + after + 1);

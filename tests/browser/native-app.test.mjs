@@ -101,6 +101,17 @@ export default async function ({ start, check }) {
     const latest = h.sent.findLast((f) => f.type === 'push_subscribe');
     check('renewed token is registered', latest && latest.subscription.token === 'apns-token-2', latest);
 
+    // ---- the app is a phone: quiet while a desktop is in use, unless set to always notify
+    check('the subscription says it is a phone, not always notified', latest && latest.form === 'phone' && latest.always === false, latest);
+    await p.evaluate(() => openSettings());
+    await h.wait(100);
+    check('"always notify" offered in the notifications block', await p.isVisible('#settings-push #push-always') && !(await p.isChecked('#push-always')));
+    await p.check('#push-always');
+    await h.wait(300);
+    const always = h.sent.findLast((f) => f.type === 'push_subscribe');
+    check('switching it on registers again with always', always && always.always === true && always.subscription.token === 'apns-token-2', always);
+    await p.evaluate(() => closeDialog(document.getElementById('settings')));
+
     // ---- tapping a notification opens its chat
     await p.evaluate(() => window.__fire('pushNotificationActionPerformed', { notification: { data: { url: '/?chat=pdf' } } }));
     await h.wait(300);

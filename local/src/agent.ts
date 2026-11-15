@@ -10,12 +10,12 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { forkSession, getSessionInfo, type McpServerConfig, type PermissionResult, type PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
-import { AVATAR_MAX, botToolServer, engineToolsFor, toolText, type BotProfile, type ToolHost, type ToolText } from './bot-tools.ts';
+import { AVATAR_MAX, botToolServer, engineToolsFor, toolText, type BotProfile, type RoutineChange, type ToolHost, type ToolText } from './bot-tools.ts';
 import { e2eEnabled, e2eKeyForLink } from './e2e.ts';
 import { joinDone, joinPending } from './join.ts';
 import { appUrl, newMachineInvite, newPairingLink, newSetupLink, pairingSvg, pairingUrl } from './pairing.ts';
 import { applySetup, deleteSetup, freshen, loadSetups, saveSetup, setupMessage, setupViews } from './setups.ts';
-import { startDeviceLogin } from './engine-login.ts';
+import { startClaudeLogin, startDeviceLogin } from './engine-login.ts';
 import { claudeSignInCommand, engineAvailable } from './engine-home.ts';
 import { checkFolderDeletion, deleteBotFolder } from './folder-delete.ts';
 import { cloneRepository, createFolder, inspectFolder, listFolder, needsCredentials, originOf, placeOf, planMove, prepareMove, proposeFolder } from './folders.ts';
@@ -24,12 +24,12 @@ import type { PersonInbox } from './accounts.ts';
 import { allPeople, canReach, clearPersonChat, contactsOf, loadPersonChats, personName, setPersonFlag } from './people.ts';
 import {
     archiveConversation, botSessionIds, clearMainChat, createConversation, deleteBot, deleteGroup, findBot, findConversation, findGroup, isMuted, isUnder, loadBots, loadGroups, mayMessage,
-    readSessionId, refusalOf, removeConversation, renameConversation, roleLine, saveBot, saveBots, saveGroup, saveCategory, deleteCategory, setCategory, loadCategories, allowTool, setFavorite, setModel, setMuted, setPlace, setSessionId, underAllowedRoot,
+    readSessionId, refusalOf, removeConversation, renameConversation, roleLine, saveBot, duplicateBot, saveBots, saveGroup, saveCategory, deleteCategory, setCategory, loadCategories, allowTool, setFavorite, setModel, setMuted, setPlace, setSessionId, underAllowedRoot,
 } from './bots.ts';
 import { autologon, canAutologon, type AutologonState } from './autologon.ts';
 import { BACKEND_VERSION, config } from './config.ts';
 import { pin, pinnedForBrowser } from './pinned.ts';
-import { applySeen, loadSeen } from './seen.ts';
+import { applySeen, loadSeen, seenSince } from './seen.ts';
 import { chatCommands, folderCommands, isCommand } from './commands.ts';
 import { commitAndPush, listChanges, openRepos, overlaps, pullRepo, pullRepos, pullText, pushAccess } from './git.ts';
 import { changedSince, requestRestart, requested } from './restart.ts';
@@ -48,6 +48,7 @@ import { approvalText, needsApproval, rememberable } from './policy.ts';
 import { apiKey, gitAutoPull, loadSettings, saveApiKeys, saveLanguage, saveSettings, settingsForBrowser, talkMode, voiceLanguage } from './settings.ts';
 import { connectRealtime, realtimeSession } from './realtime.ts';
 import { claudeOnKey, keyFallbackState, onKeyFallbackChange, resetKeyFallback, subscriptionLimit } from './key-fallback.ts';
+import { checkAnthropicKey } from './anthropic-key.ts';
 import {
     anthropicKey, applyGitPush, engineEnabled, engineKey, gitPushToken, machineSettings, noEngine, saveAnthropicKey, saveEngineKey, saveGitPushToken, saveMachineSettings,
 } from './machine-settings.ts';
@@ -56,9 +57,9 @@ import type { VscodeSession } from '../../shared/protocol.ts';
 import { checkClientFrame } from './frames.ts';
 import { noteDeviceSeen } from './first-device.ts';
 import {
-    adoptVapid, publicKey, pushChannels, pushSettings, removeSubscriptions, savePushSettings, saveSubscription, sendPush, vapidKeys, type PushMessage,
+    adoptVapid, attention, publicKey, pushChannels, pushSettings, removeSubscriptions, savePushSettings, saveSubscription, sendPush, vapidKeys, type Presence, type PushMessage,
 } from './push.ts';
-import { deleteBotRoutines, deleteRoutine, loadRoutines, saveRoutine, setStatus, startScheduler, wakeSchedule } from './routines.ts';
+import { copyRoutines, deleteBotRoutines, deleteRoutine, loadRoutines, routinesWithNextRun, runFinished, runStarted, saveRoutine, startScheduler, wakeSchedule } from './routines.ts';
 import {
     BotSession, claudeModels, newTurn, queryModels, type AccountInfo, type RateLimitInfo, type SessionHooks, type Turn, type TurnResult,
 } from './session.ts';
@@ -72,11 +73,12 @@ import { synthesize } from './speech.ts';
 import { transcriber } from './voice.ts';
 import { setupVoice, voiceStatus } from './voice-setup.ts';
 import { isInside, MAX_ENTRIES, MAX_LIST, projectDir, listMachineSessions, listVscodeSessions, transcriptStoreError, transcriptPath, Watcher } from './vscode.ts';
-import { availableTemplate, handOver, handoverTargets, openSignInTerminal, signInCommand } from './handover.ts';
+import { availableTemplate, handOver, handoverTargets, hasDesktop, openSignInTerminal, signInCommand } from './handover.ts';
 import { claimRelay } from './relay-switch.ts';
 
 import {
     botIdOf, isConversation, isGroup, isPerson, personOf, modelDisplayName, engineOf, OTHER_ENGINES, ENGINE_NAMES, KEY_ENGINES, MIN_CLIENT_PROTOCOL, PROTOCOL_VERSION, type ModelInfo,
+    FORWARD_TEXT_MAX, QUOTE_TEXT_MAX,
     type KnowledgeLocation, type BotInfo, type EngineStatuses, type HandoverTarget,
     type AgentFrame, type Approval, type PushKind, type Attachment, type Bot, type BotState, type ClientFrame, type GitRepo, type Group,
     type HistoryEntry, type PushGap, type LiveTurn, type NativePushSubscription, type PeerData, type Question, type Routine, type TurnSpec, type UploadInput, type Usage, type WakeEntry, type Quote,
@@ -134,8 +136,10 @@ const MAIN_ONLY = new Set<string>(['claude_sign_in', 'relay_claim', 'machine_shu
 export class BotManager implements SessionHooks {
     private sessions = new Map<string, BotSession>();
     private approvals = new Map<string, OpenApproval>();
-    private clients = new Map<string, { visible: boolean }>();
+    private clients = new Map<string, Presence>();
     private claudeAccount: AccountInfo | null = null;
+    /** machine_settings_save frames whose Anthropic key Anthropic accepted or could not judge. */
+    private keysChecked = new WeakSet<ClientFrame>();
     /** Accounts of the other engines (Codex, Cursor), once one of them ran */
     private otherAccounts = new Map<string, AccountInfo>();
     /** Which engines can run on this machine (setup checklist); from the last model query, kept across restarts. */
@@ -263,7 +267,7 @@ export class BotManager implements SessionHooks {
         this.send({
             type: 'setup_status', relay: config.relay.mode, container: process.env.OPENFOLK_CONTAINER === '1', engines: this.engines,
             ...(claudeSignInCommand() ? { claudeCommand: claudeSignInCommand() } : {}),
-            // Another account signs in into a folder of its own, with the command; the terminal is the owner's
+            // Another account signs in into a folder of its own, with the command; the browser and the terminal here are the owner's
             ...(this.accountId === ownerAccount() && signInCommand() ? { claudeTerminal: true } : {}),
             ...(noEngine() ? { noEngine: true } : {}),
             ...(this.pushGaps.length ? { push: this.pushGaps } : {}),
@@ -520,7 +524,7 @@ export class BotManager implements SessionHooks {
     }
 
     private sendRoutines(cid?: string): void {
-        this.send({ type: 'routines', routines: loadRoutines() }, cid);
+        this.send({ type: 'routines', routines: routinesWithNextRun() }, cid);
     }
 
     private sendSettings(cid?: string): void {
@@ -844,7 +848,9 @@ export class BotManager implements SessionHooks {
 
     /** Called when a browser connects. */
     greet(cid: string): void {
-        this.clients.set(cid, { visible: true });
+        // Not watching until it says so: the shared list's connections of other accounts (others.js) never send
+        // presence, and a page that does sends it to every machine awake
+        this.clients.set(cid, { visible: false, at: Date.now() });
         this.sendBots(cid);
         this.sendRoutines(cid);
         this.sendSettings(cid);
@@ -1001,8 +1007,19 @@ export class BotManager implements SessionHooks {
 
     /** Push for an answer: not while someone is watching, and not for muted chats. */
     private push(n: PushMessage, kind: PushKind, chatId: string): void {
-        if (this.someoneWatching() || isMuted(chatId)) return;
-        void sendPush(n, kind).catch((e) => console.log(`push: ${(e as Error).message}`));
+        const a = attention(this.clients.values());
+        if (a.others || isMuted(chatId)) return;
+        void sendPush(n, kind, { desk: a.desk }).catch((e) => console.log(`push: ${(e as Error).message}`));
+    }
+
+    /**
+     * Push for a request (approval, hand-over), also for muted chats and while someone watches. While a desktop is in
+     * use a phone gets it later, unless `pending` says it was answered or a device opened the chat meanwhile.
+     */
+    private pushRequest(n: PushMessage, kind: 'approval' | 'handover', chatId: string, pending: () => boolean = () => true): void {
+        const since = new Date().toISOString();
+        const due = () => pending() && !seenSince(chatId, since);
+        void sendPush(n, kind, { desk: attention(this.clients.values()).desk, due }).catch((e) => console.log(`push: ${(e as Error).message}`));
     }
 
     handle(frame: ClientFrame, cid: string): void {
@@ -1026,9 +1043,7 @@ export class BotManager implements SessionHooks {
                     this.send({ type: 'pong' }, cid);
                     break;
                 case 'presence': {
-                    const c = this.clients.get(cid);
-                    if (c) c.visible = frame.visible;
-                    else this.clients.set(cid, { visible: frame.visible });
+                    this.clients.set(cid, { visible: frame.visible, desktop: frame.desktop, active: frame.active, at: Date.now() });
                     break;
                 }
                 case 'machine_shutdown': {
@@ -1075,6 +1090,17 @@ export class BotManager implements SessionHooks {
                     const bot = saveBot(frame.bot);
                     this.botSaved(old, bot);
                     if (!old && frame.setup) this.startSetup(bot);
+                    break;
+                }
+                case 'bot_duplicate': {
+                    const from = findBot(frame.botId);
+                    if (!from) throw new Error(t('bots.botNotFound'));
+                    if (from.managed) throw new Error(t('setup.managedBot', { name: from.name }));
+                    const bot = duplicateBot(from, frame.name);
+                    copyRoutines(from.id, bot.id);
+                    this.botSaved(undefined, bot);
+                    this.sendRoutines();
+                    this.send({ type: 'bot_duplicated', botId: from.id, id: bot.id }, cid);
                     break;
                 }
                 case 'bot_move': {
@@ -1240,6 +1266,21 @@ export class BotManager implements SessionHooks {
                         fs.mkdirSync(wanted, { recursive: true });
                         frame.settings.botFolder = wanted.replace(/\\/g, '/');
                     }
+                    // A new Anthropic key is asked about first; the frame comes back here once Anthropic answered
+                    if (frame.anthropicKey && !this.keysChecked.has(frame)) {
+                        void checkAnthropicKey(frame.anthropicKey).then((result) => {
+                            if (result === 'invalid' || result === 'forbidden') {
+                                console.log(`machine settings: Anthropic refused the key (${result}), not stored`);
+                                this.send({ type: 'error', request: frame.type, message: t(`settings.anthropicKey.${result}`) }, cid);
+                                this.sendMachineSettings(cid);
+                                return;
+                            }
+                            if (result === 'unknown') console.log('machine settings: the Anthropic key could not be checked, stored anyway');
+                            this.keysChecked.add(frame);
+                            this.handle(frame, cid);
+                        });
+                        break;
+                    }
                     if (frame.anthropicKey !== undefined) saveAnthropicKey(frame.anthropicKey);
                     if (frame.gitPushToken !== undefined) saveGitPushToken(frame.gitPushToken);
                     const engineKeys = KEY_ENGINES.filter((e) => frame.engineKeys?.[e] !== undefined);
@@ -1353,6 +1394,9 @@ export class BotManager implements SessionHooks {
                 case 'voice_warmup':
                     transcriber.warmUp();
                     break;
+                case 'transcribe':
+                    void this.dictation(frame.id, frame.chatId, frame.audio, cid);
+                    break;
                 case 'voice_setup':
                     // Every step to all browsers; once ready, the model loads as after a start
                     void setupVoice((s) => {
@@ -1393,8 +1437,8 @@ export class BotManager implements SessionHooks {
                 }
                 case 'search':
                     this.send({
-                        type: 'search_result', text: frame.text, chatId: frame.chatId,
-                        hits: frame.chatId ? searchHistory(frame.text, 500, frame.chatId) : searchHistory(frame.text),
+                        type: 'search_result', text: frame.text, chatId: frame.chatId, since: frame.since, files: frame.files,
+                        hits: searchHistory(frame.text, frame.chatId ? 500 : 50, frame.chatId, { since: frame.since, files: frame.files }),
                     }, cid);
                     break;
                 case 'queue_to_conversation': {
@@ -1674,7 +1718,7 @@ export class BotManager implements SessionHooks {
                     break;
                 }
                 case 'push_subscribe':
-                    saveSubscription(frame.subscription);
+                    saveSubscription(frame.subscription, { form: frame.form, always: frame.always });
                     this.shareConfig();
                     break;
                 case 'setups':
@@ -1736,15 +1780,25 @@ export class BotManager implements SessionHooks {
                         (e: Error) => this.send({ type: 'error', request: 'relay_claim', message: e.message }, cid),
                     );
                     break;
-                case 'claude_sign_in':
-                    openSignInTerminal().then(
-                        () => {
-                            console.log('claude: sign-in terminal opened');
-                            this.send({ type: 'claude_sign_in' }, cid);
-                        },
-                        (e: Error) => this.send({ type: 'error', request: 'claude_sign_in', message: e.message }, cid),
-                    );
+                case 'claude_sign_in': {
+                    const failed = (e: Error) => this.send({ type: 'error', request: 'claude_sign_in', message: e.message }, cid);
+                    // The browser has to appear where someone sees it; without a desktop the desktop app opens a terminal
+                    hasDesktop().then((desktop) => {
+                        if (!desktop) {
+                            return openSignInTerminal().then(() => {
+                                console.log('claude: sign-in terminal opened');
+                                this.send({ type: 'claude_sign_in' }, cid);
+                            });
+                        }
+                        startClaudeLogin((r) => {
+                            console.log(`claude sign-in: ${r.state}${r.state === 'failed' ? ` (${r.message})` : ''}`);
+                            if (r.state === 'browser') this.send({ type: 'claude_sign_in', via: 'browser' }, cid);
+                            else if (r.state === 'done') this.refreshModels();
+                            else if (r.state === 'failed') failed(new Error(r.message));
+                        });
+                    }).catch(failed);
                     break;
+                }
                 default: {
                     // Web app newer than the backend: report instead of silently ignoring
                     const request = String((frame as { type?: unknown }).type);
@@ -1789,9 +1843,9 @@ export class BotManager implements SessionHooks {
         const other = personOf(chatId);
         if (!canReach(this.accountId, other)) throw new Error(t('people.unreachable', { name: personName(other) }));
         text = text.trim();
-        if (!text && !uploads.length) return;
+        const replyTo = storedQuote(quote);
+        if (!text && !uploads.length && !replyTo?.forwarded) return;
         const attachments = uploads.length ? saveUploads(chatId, uploads).map((g) => g.attachment) : [];
-        const replyTo = quote?.id ? { id: String(quote.id), from: String(quote.from || 'me'), text: String(quote.text || '').slice(0, 300) } : undefined;
         const stored = this.record(chatId, {
             role: 'user', text, ts: new Date().toISOString(), from: 'me', ...(attachments.length ? { attachments } : {}),
             ...(uploads.some((u) => u.type.startsWith('audio/')) ? { voice: true } : {}), ...(replyTo ? { replyTo } : {}),
@@ -1833,7 +1887,7 @@ export class BotManager implements SessionHooks {
         const body = entry.text || (entry.voice ? t('people.voiceMessage') : entry.attachments?.length ? t('people.attachment') : '');
         const n = { title: personName(from), body, url: `/?chat=${encodeURIComponent(chatId)}`, tag: chatId };
         // A hand-over is a request like an approval: it arrives also when the chat is muted
-        if (kind === 'handover') void sendPush({ ...n, title: t('push.handover', { name: personName(from) }) }, 'handover').catch((e) => console.log(`push: ${(e as Error).message}`));
+        if (kind === 'handover') this.pushRequest({ ...n, title: t('push.handover', { name: personName(from) }) }, 'handover', chatId);
         else this.push(n, 'message', chatId);
     }
 
@@ -1950,10 +2004,48 @@ export class BotManager implements SessionHooks {
         this.messageFromUser(chatId, text, rest, { transcript, attachments: saved }, replyTo, spoken);
     }
 
+    /**
+     * Dictation (#59): the recording only becomes text for the input field of the device that asked. It is stored
+     * for the transcription alone and deleted again; nothing reaches a bot or the history.
+     */
+    private async dictation(id: string, chatId: string, audio: UploadInput, cid: string | undefined): Promise<void> {
+        let file = '';
+        try {
+            if (!audio.type.startsWith('audio/')) throw new Error(t('errors.voiceEmpty'));
+            file = saveUploads(`dictation-${chatId}`, [audio])[0].attachment.path;
+            const x = await transcriber.transcribe(file, voiceLanguage(), this.speechHints(chatId));
+            this.send({ type: 'transcribed', id, ok: true, text: x.text.trim() }, cid);
+        } catch (e) {
+            this.send({ type: 'transcribed', id, ok: false, message: t('errors.voiceFailed', { error: (e as Error).message }) }, cid);
+        } finally {
+            if (file) fs.rmSync(file, { force: true });
+        }
+    }
+
+    /**
+     * Names Whisper should spell as they are written: the bot's name, its folder and repository, or the members of a
+     * group. Short, because Whisper reads only the end of a long prompt.
+     */
+    private speechHints(chatId: string): string {
+        const bots = isGroup(chatId) ? (findGroup(chatId.slice(2))?.members ?? []).map((m) => findBot(m)) : [findBot(botIdOf(chatId))];
+        const words = new Set<string>();
+        for (const b of bots) {
+            if (!b) continue;
+            words.add(b.name);
+            const folder = b.folder.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+            if (folder) words.add(folder);
+            const repo = b.place?.repo?.replace(/\.git$/, '').split('/').pop();
+            if (repo) words.add(repo);
+        }
+        return [...words].filter(Boolean).join(', ').slice(0, 300);
+    }
+
     private messageFromUser(chatId: string, text: string, uploads: UploadInput[], voice?: { transcript: string; attachments: Attachment[] }, quote?: Quote, spoken = false): void {
         text = text.trim();
-        if (!text && uploads.length === 0 && !voice) return;
-        const replyTo = quote?.id ? { id: String(quote.id), from: String(quote.from || 'me'), text: String(quote.text || '').slice(0, 300) } : undefined;
+        const replyTo = storedQuote(quote);
+        // A forward may go without a word of its own: the forwarded message is the content
+        if (!text && uploads.length === 0 && !voice && !replyTo?.forwarded) return;
+        if (!isGroup(chatId)) this.supersedeApprovals(chatId);
         const ts = new Date().toISOString();
         // For voice messages the history shows the transcript (plus typed text if any), the recording as an attachment;
         // Claude gets the note that the text comes from speech recognition.
@@ -1997,7 +2089,8 @@ export class BotManager implements SessionHooks {
             const c = findConversation(chatId);
             if (!c) throw new Error(t('errors.conversationGone'));
             // Still without a title: the first message names the conversation
-            if (!c.title && display) this.nameConversation(chatId, display);
+            const first = display || (replyTo?.forwarded ? replyTo.text : '');
+            if (!c.title && first) this.nameConversation(chatId, first);
         }
         const note = command ? '' : delegationContext(mentioned(display, loadBots().filter((b) => b.id !== bot.id)));
         const { content, attachments: more } = this.content(chatId, note + forClaude, uploads);
@@ -2092,16 +2185,16 @@ export class BotManager implements SessionHooks {
         const bot = findBot(r.botId);
         if (!bot) return;
         const ts = new Date().toISOString();
-        setStatus(r.id, 'running', ts);
+        const message = this.record(bot.id, { role: 'user', text: r.prompt, ts, from: `routine:${r.name}` }, true);
+        runStarted(r.id, ts, message.id);
         this.sendRoutines();
         this.shareConfig();
-        this.entry(bot.id, { role: 'user', text: r.prompt, ts, from: `routine:${r.name}` });
         this.startTurn(bot, {
             chatId: bot.id, from: `routine:${r.name}`, text: r.prompt, routineId: r.id,
             // a slash command only runs at the very start of the message
             content: isCommand(r.prompt) ? r.prompt : `${t('prompt.routine', { name: r.name, time: new Date().toLocaleString(locale()) })}\n\n${r.prompt}`,
         }, (e) => {
-            setStatus(r.id, e.error ? 'error' : 'ok');
+            runFinished(r.id, ts, e);
             this.sendRoutines();
             this.shareConfig();
             if (this.wakeRoutines.has(r.id)) this.wakeRoutineDone(r.id);
@@ -2177,7 +2270,10 @@ export class BotManager implements SessionHooks {
             tools: e.tools.length ? e.tools : undefined,
             attachments: e.attachments.length ? e.attachments : undefined,
         };
-        if (e.text || e.tools.length || e.attachments.length) entry = this.record(turn.chatId, entry, false);
+        if (e.text || e.tools.length || e.attachments.length) {
+            entry = this.record(turn.chatId, entry, false);
+            e.entryId = entry.id;
+        }
         if (e.stopped) this.record(turn.chatId, { role: 'event', text: isGroup(turn.chatId) ? t('events.botStopped', { bot: s.bot.name }) : t('events.stopped'), ts }, false);
         else if (e.error) this.record(turn.chatId, { role: 'event', text: t('events.botError', { bot: s.bot.name, error: e.error }), ts }, false);
         this.send({ type: 'done', chatId: turn.chatId, botId: s.bot.id, entry, durationMs: e.durationMs });
@@ -2313,13 +2409,14 @@ export class BotManager implements SessionHooks {
 
         return new Promise<PermissionResult>((resolve) => {
             let finished = false;
-            const timer = setTimeout(() => settle({ behavior: 'deny', message: `No answer from the user within ${APPROVAL_TIMEOUT_MIN} minutes.` }, t('approval.noAnswer')), APPROVAL_TIMEOUT_MIN * 60_000);
-            const settle = (r: PermissionResult, text: string) => {
+            const timer = setTimeout(() => settle({ behavior: 'deny', message: `No answer from the user within ${APPROVAL_TIMEOUT_MIN} minutes.` },
+                t('approval.expired', { minutes: APPROVAL_TIMEOUT_MIN }), true), APPROVAL_TIMEOUT_MIN * 60_000);
+            const settle = (r: PermissionResult, text: string, expired = false) => {
                 if (finished) return;
                 finished = true;
                 clearTimeout(timer);
                 this.approvals.delete(approval.id);
-                this.send({ type: 'approval_done', id: approval.id, chatId: approval.chatId, result: text });
+                this.send({ type: 'approval_done', id: approval.id, chatId: approval.chatId, result: text, ...(expired ? { expired } : {}) });
                 const symbol = r.behavior === 'allow' ? '✓' : '✗';
                 this.record(approval.chatId, { role: 'event', text: `${symbol} ${s.bot.name}: ${approval.summary} – ${text}`, ts: new Date().toISOString() }, false);
                 if (s.state === 'waiting') s.setState('thinking');
@@ -2330,13 +2427,28 @@ export class BotManager implements SessionHooks {
             s.setState('waiting', isQuestion ? t('approval.waitingAnswer') : t('approval.waitingApproval'));
             this.send({ type: 'approval', approval });
             const group = isGroup(turn.chatId) ? findGroup(turn.chatId.slice(2)) : undefined;
-            void sendPush({
+            this.pushRequest({
                 title: t(isQuestion ? 'push.asks' : 'push.needsApproval', { bot: `${s.bot.name}${group ? ` ${t('push.inGroupSuffix', { group: group.name })}` : ''}` }),
                 body: isQuestion ? (approval.questions?.[0]?.question ?? t('approval.question')) : approval.summary,
                 url: `/?chat=${encodeURIComponent(turn.chatId)}`,
                 tag: `approval-${approval.id}`,
-            }, 'approval').catch(() => undefined);
+            }, 'approval', turn.chatId, () => this.approvals.has(approval.id));
         });
+    }
+
+    /**
+     * The user wrote in the chat instead of answering its open cards: the bot counts as redirected, nothing it asked
+     * about happens, and the new message (queued behind the turn) is the instruction. Not in groups, where the message
+     * may be meant for another member.
+     */
+    private supersedeApprovals(chatId: string): void {
+        for (const open of this.approvals.values()) {
+            if (open.approval.chatId !== chatId) continue;
+            open.settle({
+                behavior: 'deny',
+                message: 'The user did not answer this request and wrote a new message instead. Do not do what you asked about and do not try another way; end this turn briefly, the new message follows.',
+            }, t('approval.superseded'));
+        }
     }
 
     private answerApproval(f: Extract<ClientFrame, { type: 'approval_reply' }>): void {
@@ -2386,6 +2498,7 @@ export class BotManager implements SessionHooks {
         handOver: (s, summary) => this.handOverToPerson(s, summary),
         setAvatar: (s, avatar) => this.setOwnAvatar(s, avatar),
         setProfile: (s, profile) => this.setOwnProfile(s, profile),
+        setRoutine: (s, change) => this.setOwnRoutine(s, change),
         makeAvatar: (s, wish) => this.makeOwnAvatar(s, wish),
         knowledgeChanged: (locations, by) => this.knowledgeChanged(locations, by),
     };
@@ -2450,6 +2563,47 @@ export class BotManager implements SessionHooks {
         this.entry(s.currentTurn?.chatId ?? b.id, { role: 'event', text: t('events.profile', { name: b.name, what: set.join(', ') }), ts: now });
         this.botSaved(old, b);
         return toolText(`Your profile is set (${set.join(', ')}); the user sees it at once. It applies from the next message on.`);
+    }
+
+    /**
+     * set_routine: only routines of the bot itself, found by name; a new one when none has the name. Saved like a save
+     * from the routine editor; waking the machine stays with the user (a new routine does not wake it).
+     */
+    private setOwnRoutine(s: BotSession, c: RoutineChange): ToolText {
+        const own = loadRoutines().filter((r) => r.botId === s.bot.id);
+        const name = c.name.trim();
+        const r = own.find((x) => x.name === name) ?? own.find((x) => x.name.toLowerCase() === name.toLowerCase());
+        const newName = c.new_name?.trim() || undefined;
+        const cron = c.cron?.trim().replace(/\s+/g, ' ') || undefined;
+        const prompt = c.prompt?.trim() || undefined;
+        if (!r && (!cron || !prompt)) {
+            const names = own.map((x) => `"${x.name}"`).join(', ');
+            return toolText(`You have no routine "${name}"${names ? ` (yours: ${names})` : ''}. A new one needs cron and prompt.`, true);
+        }
+        const what: string[] = [];
+        if (r) {
+            if (newName && newName !== r.name) what.push(t('events.routineRenamed', { name: newName }));
+            if (cron && cron !== r.cron) what.push(t('events.routineCron', { cron }));
+            if (prompt && prompt !== r.prompt) what.push(t('events.routinePrompt'));
+            if (c.enabled !== undefined && c.enabled !== r.enabled) what.push(t(c.enabled ? 'events.routineResumed' : 'events.routinePaused'));
+            if (!what.length) return toolText('Nothing to set: every field was empty or unchanged.', true);
+        }
+        let saved: Routine;
+        try {
+            saved = saveRoutine({
+                id: r?.id ?? '', botId: s.bot.id, name: newName ?? r?.name ?? name, cron: cron ?? r!.cron, prompt: prompt ?? r!.prompt,
+                enabled: c.enabled ?? r?.enabled ?? true, wake: r?.wake,
+            });
+        } catch (e) {
+            return toolText(`Not saved: ${(e as Error).message}`, true);
+        }
+        const text = r
+            ? t('events.routineChanged', { name: s.bot.name, routine: r.name, what: what.join(', ') })
+            : t('events.routineCreated', { name: s.bot.name, routine: saved.name, cron: saved.cron });
+        this.entry(s.currentTurn?.chatId ?? s.bot.id, { role: 'event', text, ts: new Date().toISOString() });
+        this.sendRoutines();
+        this.shareConfig();
+        return toolText(`${r ? 'Changed' : 'Created'}: routine "${saved.name}" (cron ${saved.cron}, ${saved.enabled ? 'active' : 'paused'}). The user sees it on your page.`);
     }
 
     /**
@@ -2899,7 +3053,24 @@ export function mentioned(text: string, candidates: Bot[]): Bot[] {
 export function quoteContext(q: Quote | undefined): string {
     if (!q) return '';
     const who = q.from === 'me' ? t('prompt.quoteOfUser') : t('prompt.quoteOfBot', { name: findBot(q.from)?.name ?? q.from });
+    // A forward is the content itself: whole, with its line breaks (code, lists), and the user's words after it
+    if (q.forwarded) {
+        // Where it came from, so the bot can read what was said around it with read_history
+        const where = q.originChat ? `\n${t('prompt.forwardedRead', { chat: q.originChat, id: q.id })}` : '';
+        return `${t(q.origin ? 'prompt.forwardedFrom' : 'prompt.forwarded', { who, origin: q.origin ?? '' })}\n"""\n${q.text.trim()}\n"""${where}\n\n`;
+    }
     return `${t('prompt.quote', { who, text: q.text.replace(/\s+/g, ' ').trim() })}\n\n`;
+}
+
+/** The quote as it is stored with a message: only known fields, the text cut to what a reply or a forward keeps. */
+export function storedQuote(q: Quote | undefined): Quote | undefined {
+    if (!q?.id) return undefined;
+    const forwarded = q.forwarded === true;
+    return {
+        id: String(q.id), from: String(q.from || 'me'), text: String(q.text || '').slice(0, forwarded ? FORWARD_TEXT_MAX : QUOTE_TEXT_MAX),
+        ...(forwarded ? { forwarded: true } : {}), ...(forwarded && q.origin ? { origin: String(q.origin).slice(0, 120) } : {}),
+        ...(forwarded && q.originChat ? { originChat: String(q.originChat).slice(0, 200) } : {}),
+    };
 }
 
 /** Title of a conversation from its first message: first line, cut at a word boundary. */

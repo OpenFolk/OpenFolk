@@ -181,6 +181,18 @@ export function saveBot(input: BotInput, managed?: string): Bot {
 }
 
 /**
+ * A new bot with the profile of `from` on its machine. History, knowledge, sessions and conversations stay with the
+ * original, and so do favorite, mute and the tools allowed for good: those were decisions about that bot.
+ */
+export function duplicateBot(from: Bot, name: string): Bot {
+    return saveBot({
+        id: '', name, area: from.area, role: from.role, folder: from.folder, model: from.model, tone: from.tone, avatar: from.avatar,
+        voice: from.voice, voices: from.voices, category: from.category, approval: from.approval, canMessage: from.canMessage ?? null,
+        contact: from.contact ?? null, machine: from.machine,
+    });
+}
+
+/**
  * Writes down the place of a bot's folder (Bot.place) if the bot still has that folder; true if it changed. The
  * place travels with the bot to the other machines.
  */

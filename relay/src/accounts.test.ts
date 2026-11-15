@@ -46,6 +46,23 @@ check('accounts without reach count as all', store.people().find((p) => p.id ===
 check('people: main is an admin', store.people().find((p) => p.id === 'main')?.admin === true);
 check('reach changed', store.update('shop', { reach: 'all' }) === 'ok' && store.get('shop')?.reach === 'all');
 check('main keeps reaching all', store.update('main', { reach: 'admins' }) === 'ok' && store.get('main')?.reach === 'all');
+check('without a choice an account runs on every machine of the relay', store.runsOn('shop', 'desk') && store.get('shop')?.machines === undefined);
+check('machines chosen: those only, names in lowercase', store.update('shop', { machines: ['Desk', 'desk'] }) === 'ok' && JSON.stringify(store.get('shop')?.machines) === '["desk"]'
+    && store.runsOn('shop', 'desk') && !store.runsOn('shop', 'cloud'));
+check('null: every machine again', store.update('shop', { machines: null }) === 'ok' && store.get('shop')?.machines === undefined && store.runsOn('shop', 'cloud'));
+check('main runs on every machine, whatever is asked', store.update('main', { machines: [] }) === 'ok' && store.runsOn('main', 'cloud') && !store.get('main')?.machines);
+const picked = store.create('Picked', false, 'all', ['cloud']);
+check('a new account with its machines', typeof picked === 'object' && JSON.stringify(picked.machines) === '["cloud"]');
+store.markSetUp('kunde-mueller-2', 'main');
+check('a setup link takes an account without a choice off the relay\'s machines', store.get('kunde-mueller-2')?.machines?.length === 0
+    && !store.runsOn('kunde-mueller-2', 'desk') && store.ownMachinesOnly('kunde-mueller-2'));
+store.update('kunde-mueller-2', { machines: ['desk'] });
+check('… and the admin can tick machines for it again', store.runsOn('kunde-mueller-2', 'desk') && !store.ownMachinesOnly('kunde-mueller-2'));
+store.markSetUp('picked', 'main');
+check('a setup link keeps a choice made before', store.runsOn('picked', 'cloud'));
+const legacySetup = tmp();
+fs.writeFileSync(path.join(legacySetup, ACCOUNTS_FILE), JSON.stringify({ accounts: [{ id: 'k', name: 'K', admin: false, created: '', setupBy: 'main' }] }));
+check('an account set up before the choice runs on its own computer only', !new Accounts(legacySetup).runsOn('k', 'desk'));
 
 // ---------------------------------------------------------------- the relay with two accounts
 const dataDir = tmp();
@@ -167,6 +184,31 @@ owner.send({ type: 'account_update', id, reach: 'nobody' });
 check('unknown reach refused', !!(await owner.next((m) => m.type === 'error' && m.request === 'account_update')));
 owner.send({ type: 'account_update', id, password: 'owner-sets-it-012345' }); // gitleaks:allow
 check('an admin cannot set someone else\'s password', !!(await owner.next((m) => m.type === 'error' && m.request === 'account_update')));
+
+// The machines an account runs on
+owner.send({ type: 'accounts' });
+const withMachines = await owner.next((m) => m.type === 'accounts');
+check('an admin gets the relay\'s machines with the accounts', ((withMachines?.machines ?? []) as { name: string }[]).map((m) => m.name).join() === 'desk,old,server', withMachines?.machines);
+check('… a guest not', !('machines' in own!));
+guest.send({ type: 'account_update', id, machines: ['desk', 'server'] });
+check('nobody chooses their own machines', !!(await guest.next((m) => m.type === 'error' && m.request === 'account_update')));
+owner.send({ type: 'account_update', id, machines: 'desk' });
+check('machines that are no list refused', !!(await owner.next((m) => m.type === 'error' && m.request === 'account_update')));
+desk.got.length = 0;
+server.got.length = 0;
+guest.got.length = 0;
+owner.send({ type: 'account_update', id, machines: ['desk'] });
+check('untick server: it lets go of the account', !!(await server.next((m) => m.type === 'account_released' && m.account === id)));
+check('… desk keeps it, hears nothing', await none(desk, (m) => m.type === 'account_released' || (m.type === 'account_added' && m.account === id)));
+check('… the account\'s browsers see desk only', !!(await guest.next((m) => m.type === 'agents' && JSON.stringify(m.online) === '["desk"]')));
+guest.got.length = 0;
+guest.send({ type: 'e2e', iv: 'x', data: 'y', machine: 'server' });
+check('… and reach server no more', !!(await guest.next((m) => m.type === 'error' && m.code === 'machine_not_connected')) && await none(server, (m) => m.cid === guestCid));
+owner.send({ type: 'account_update', id, machines: [] });
+await desk.next((m) => m.type === 'account_released' && m.account === id);
+check('on none of the relay\'s machines: no pairing links from them', (await fetch(`${origin}/pair`, { method: 'POST', headers: { authorization: `Bearer ${AGENT}` }, body: JSON.stringify({ account: id }) })).status === 403);
+owner.send({ type: 'account_update', id, machines: null });
+check('every machine again: they take the account up', !!(await server.next((m) => m.type === 'account_added' && m.account === id)) && !!(await desk.next((m) => m.type === 'account_added' && m.account === id)));
 
 // Password sign-in into an account
 const byName = await client({ token: 'guest-password-0123', account: 'kunde müller' });

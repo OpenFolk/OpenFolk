@@ -11,7 +11,10 @@ import { bundled, canScanQr, parsePairingLink, scanQrCode } from './platform.js'
 import { currentRelayName, goToRelay, isCurrentRelay, otherRelays, ownRelayAddress, removeRelay, renameRelay, switchRelay } from './relays.js';
 import { accountsOf, openOtherChat, showAllAccounts } from './others.js';
 import { confirmDialog } from './dialogs.js';
-import { openSetup, setupAccountsChanged } from './setups.js';
+import { machinePicker, openSetup, setupAccountsChanged } from './setups.js';
+
+/** The machines ticked in the form for a new account (`value`: null = all of them). @type {{ box: HTMLElement, value: () => string[] | null } | null} */
+let newMachines = null;
 
 /** Passwords of accounts other than main; the relay requires as many characters. */
 const MIN_PASSWORD = 16;
@@ -423,15 +426,17 @@ export function renderAccountList() {
                 : r.created ? t('accounts.created', { date: new Date(r.created).toLocaleDateString(locale()) }) : '';
             text.append(name, node('span', '', [sub, r.signedIn || r.current ? '' : t('accounts.notHere')].filter(Boolean).join(' · ')));
             // At most two buttons: the way in (switch, or the invitation when not signed in here) and the settings of the
-            // account ("Set up": name, admin, reach, delete and the bots on the person's own computer, setups.js)
+            // account ("Edit": name, admin, reach, delete and the bots on the person's own computer, setups.js)
             if (!r.current && r.signedIn) button(t('relays.switch'), '', () => (r.own ? switchAccount(r.id) : openOtherChat(r.relay, r.id)));
             if (r.manageable && !r.signedIn) button(t('accounts.invite'), '', () => { accountError(''); send({ type: 'account_invite', id: r.id }); });
-            if (r.manageable) button(t('accounts.setUp'), '', () => {
+            // The own account: its name, and its password unless it is main (that one is the relay's setup)
+            if (r.current && state.account) button(t('accounts.edit'), '', () => openOwnAccount());
+            if (r.manageable) button(t('accounts.edit'), '', () => {
                 const account = relayAccounts.find((a) => a.id === r.id);
                 const forget = !r.current && r.signedIn && r.own ? () => forgetAccount(r.id) : undefined;
                 if (account) openSetup(account, relayAccounts, state.account ? state.account.id : 'main', { forget });
             });
-            // "Remove" forgets the sign-in on this device (for an account managed here it sits in "Set up"). The current
+            // "Remove" forgets the sign-in on this device (for an account managed here it sits in "Edit"). The current
             // sign-in has none: signing out is at the bottom of the settings.
             else if (!r.current && r.signedIn && r.own) button(t('relays.remove'), ' danger', async () => { if (await confirmDialog(t('accounts.forgetConfirm', { name: r.name }))) forgetAccount(r.id); });
         }
@@ -503,7 +508,6 @@ export function loadAccounts() {
     el.accountsLink.value = '';
     showNewAccountForm(false);
     el.accountsOwnName.value = state.account ? state.account.name : '';
-    el.accountsOwn.hidden = !state.account || state.account.id === 'main';
     el.settingsSignOut.hidden = !state.account;
     renderSignedIn();
     relayAccounts = [];
@@ -535,8 +539,6 @@ export function renderAccounts(list, current) {
         renderAccountSwitch();
         if (document.activeElement !== el.accountsOwnName) el.accountsOwnName.value = own.name;
     }
-    // The owner's password is the relay's setup and its name shows nowhere but here: nothing of its own to edit
-    el.accountsOwn.hidden = current === 'main';
     el.settingsSignOut.hidden = false;
     renderSignedIn();
     relayAccounts = list;
@@ -559,8 +561,18 @@ function showCustomerChoice() {
 export function accountError(message) {
     el.accountsError.textContent = message;
     el.accountsError.hidden = !message;
-    // The dialog of an account covers the error line
-    if (message && !el.setupBox.hidden) toast(message, 5000);
+    // A dialog over the settings covers the error line
+    if (message && !el.settingsDialog.hidden) toast(message, 5000);
+}
+
+function openOwnAccount() {
+    if (!state.account) return;
+    accountError('');
+    el.accountsOwnName.value = state.account.name;
+    el.accountsPassword.value = '';
+    el.accountsPasswordField.hidden = state.account.id === 'main';
+    openSettingsDialog(t('setup.title', { name: state.account.name }), el.accountsOwn, true);
+    el.accountsOwnName.focus();
 }
 
 export function saveOwnAccount() {
@@ -574,10 +586,10 @@ export function saveOwnAccount() {
     }
     const change = {};
     if (name && name !== state.account.name) change.name = name;
-    if (password) change.password = password;
-    if (!Object.keys(change).length) return;
-    send({ type: 'account_update', id: state.account.id, ...change });
+    if (password && state.account.id !== 'main') change.password = password;
+    if (Object.keys(change).length) send({ type: 'account_update', id: state.account.id, ...change });
     el.accountsPassword.value = '';
+    closeSettingsDialog(el.accountsOwn);
 }
 
 /** The admin's form behind "Add" (a link to redeem, a new person) in the settings dialog; an invitation on display goes away with it. */
@@ -588,6 +600,9 @@ export function showNewAccountForm(on) {
     }
     el.inviteBox.hidden = true;
     el.inviteBox.replaceChildren();
+    // On which machines the new account runs; all of them, as before the choice, until the admin unticks some
+    newMachines = machinePicker(undefined, () => undefined);
+    el.accountsNewMachines.replaceChildren(...(newMachines ? [node('h4', '', t('machines.pickTitle')), node('p', 'hint', t('machines.pickHintNew')), newMachines.box] : []));
     openSettingsDialog(t('accounts.joinTitle'), el.accountsNewForm, true);
     el.accountsNewName.focus();
 }
@@ -600,7 +615,8 @@ export function createAccount() {
         return;
     }
     el.accountsCreate.disabled = true;
-    send({ type: 'account_create', name, admin: el.accountsNewAdmin.checked, ...(el.accountsNewCustomer.checked ?{ reach: 'admins' } : {}) });
+    const machines = newMachines?.value();
+    send({ type: 'account_create', name, admin: el.accountsNewAdmin.checked, ...(el.accountsNewCustomer.checked ? { reach: 'admins' } : {}), ...(machines ? { machines } : {}) });
 }
 
 /**

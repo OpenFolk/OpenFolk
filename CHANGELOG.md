@@ -5,6 +5,125 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-15
+
+### Added
+- "Sign in to Claude" in the first steps signs Claude Code in with the subscription without a terminal: the backend
+  runs `claude auth login`, the browser on that machine shows Anthropic's sign-in, and the CLI takes the answer
+  itself, so OpenFolk never sees a code or a token. A second tap starts over (a tab closed too early). A backend
+  without a desktop (a Windows task in session 0, Linux without a display) opens the terminal as before. The answer
+  `claude_sign_in` carries the new optional field `via: 'browser'`.
+- "Duplicate bot" on a bot's page and in its menu: a copy under a new name on the bot's machine with its profile,
+  model, approval level, folder and picture, and copies of its routines, paused so nothing runs twice; history,
+  knowledge, conversations, favorite, mute and the tools allowed for good stay with the original. New frames
+  `bot_duplicate` and `bot_duplicated`; bots of an admin's setup cannot be copied.
+- Fewer steps for newcomers: a new installation whose computer has Claude Code signed in already starts with Claude
+  on and skips the choice of AI providers (the backend asks the CLI on its first start, for at most 20 seconds). "Try
+  it without signing in" in the first steps switches on OpenCode's free models, which need no subscription or key,
+  and says that their providers may train on the data; a new bot then starts on OpenCode while Claude is not ready.
+- An Anthropic API key is checked before it is stored (`GET /v1/models`, no tokens): a key Anthropic does not know
+  (401) or refuses access (403) is not stored, and the machine says why; without a clear answer (no network, 429,
+  5xx) it is stored as before. The first steps link to the Console page for keys and say how the key is billed.
+- Forwarding a message: "Forward" in the ⋯ menu of a message opens a page with the other chats (search included); the
+  chosen chat opens with the message above the input, where you add words of your own or send it as it is. The quote
+  carries the new optional fields `forwarded`, `origin` and `originChat` and keeps up to 20,000 characters (a reply
+  keeps 300); the bot reads the forwarded text whole, with its line breaks. Into a person chat it goes without the
+  origin. In the chat a forward shows four lines; a tap opens the whole text in place (also in the bar above the
+  input), the line "from …" opens the chat it came from.
+- The phone stays quiet while a desktop is in use: the desktop app and browsers on a wide screen report whether
+  they are visible with input in the last two minutes (`presence` with the new optional fields `desktop` and
+  `active`, now sent to every machine awake). Meanwhile the phone gets no answers, routine results or person
+  messages, and approvals, questions and hand-overs only after three minutes, unless answered or the chat was opened
+  by then; machine awake and usage limits are unchanged. A visible desktop without input no longer keeps the phone
+  silent. "Always notify on this device" in a phone's notification settings opts out; it travels with the
+  subscription (`push_subscribe` with the new optional fields `form` and `always`) and syncs between machines.
+- Routines on the bot's page: a row each with when it runs in words ("weekdays 8:00", "every 2 hours"), the next run
+  and a switch active/paused; opened, the instruction, "Run now", "Edit", "Edit in chat" and the last 20 runs with
+  start, duration, status (ok, error, running), the reason of a failure and a jump to the answer in the chat. The
+  backend keeps the runs in the routine (new optional `runs`, synced to the other machines with it) and sends the next
+  due time from the cron expression (new optional `nextRun`, never stored); a turn's result names the recorded answer
+  (optional `entryId`). "Edit in chat" puts "Change the routine “…”: " into the composer, and the bot changes or creates
+  its own routines with the new tools `set_routine` and `list_routines` on every engine, with a line in the chat;
+  waking the machine stays with the user.
+- Command palette and keyboard shortcuts on desktop and in the browser: Ctrl+K (Cmd+K on a Mac) searches bots,
+  groups, people, conversations, routines, the settings' sections and actions (new bot, new group, settings, status,
+  waking a machine), plus messages of the last four weeks with "Search older messages" and attached files by name; a
+  hit opens the chat at the message. Shortcuts: Ctrl+N, Ctrl+Shift+N, Ctrl+F, Ctrl+1 to 9, Alt+Up/Down,
+  Ctrl+[ and Ctrl+], Ctrl+I, Ctrl+Enter, Ctrl+B, Ctrl+, and Ctrl+/ for an overview. The desktop app lists them in a
+  new menu "Go". The frame `search` takes the new optional fields `since` and `files` (echoed in `search_result`).
+  On the phone the search above the list gets chips instead: messages, bots, files, routines.
+- Dictation as a setting of the device ("Microphone: dictate into the input field instead of sending a voice
+  message", off by default): while recording, the text field, attaching and pasting stay usable, X discards (also
+  Escape in the field) and a checkmark next to it asks the bot's machine for the text, which goes where the cursor
+  was; the microphone dictates more, and the message leaves as text with the send button, without the recording and
+  without reading the answer aloud. New frames `transcribe` and `transcribed`; an older backend says it is too old
+  for it. Whisper gets the bot's name, folder and repository (in a group its members') as `initial_prompt` for a
+  dictation; voice messages stay as they were (#59).
+- The status page names each machine's backend version first in the line below it; a backend before 0.2.1 sends none
+  and shows none (#64).
+- Desktop app for Intel Macs: CI builds it on an Intel runner, signs and notarizes it like the Apple Silicon one and
+  attaches `OpenFolk-X.Y.Z-x64.dmg` and `-mac.zip` to the release. One `latest-mac.yml` names the files of both, so each
+  Mac updates with its own build. Both READMEs open with a download table that links each system's package
+  through openfolk.app and stays the same across versions.
+
+### Changed
+- A new message in a bot's chat closes its open approval and question cards: the bot is told nothing it asked about
+  happens and to end its turn, the message follows as the next instruction. Groups keep their cards, since the message
+  may be meant for another member.
+- An approval nobody answers within 30 minutes stays in the chat as an expired card without buttons ("nothing
+  happened") instead of vanishing (`approval_done` with the new optional field `expired`).
+- The phone's search above the list looks through the messages of the last four weeks first, like the palette, with
+  "Search older messages" below; hits show newest first, and the answers of several machines add up instead of the
+  last one replacing the others.
+- An admin chooses the machines an account runs on: in the form for a new account and under "Edit" in its row, "All my
+  machines, new ones too" (as before) or one by one. A machine not ticked does not serve the account and its devices do
+  not see it; it keeps the account's data and takes it up again when ticked. An account with a setup link is no longer
+  a kind of its own: its first link unticks the relay's machines, and the admin can tick some again, next to the
+  person's own computer. The relay keeps the choice (`machines` in `RelayAccount`, new optional fields in
+  `account_create`, `account_update` and, for an admin, the relay's machines in `accounts`) and tells the backends with
+  `account_added` and `account_released`; the backends need no change.
+- The model switch names the Claude models by family only (Fable, Opus, Sonnet, Haiku), without a version: each
+  chip is the alias that always runs the newest version the CLI offers; the version behind it is in the tooltip. A
+  model id pinned in the editor keeps its version. Header and chat list still show the version that runs.
+- "Add machine" shows the link for the desktop app's setup first, with "Copy link" copying only the link, and the
+  `npm run join` command below it with "Copy command". The desktop app's setup and `npm run join` also take the whole
+  command pasted, quotation marks included (#61).
+- A machine's settings list its allowed folders (changed at that computer: the desktop app's tray or `ALLOWED_ROOTS`)
+  and call the folder below them "Default folder for new bots", chosen with the bot editor's folder picker ("Choose …")
+  or typed as before (#62).
+- The page "New bot" asks for role, name, folder and repository only, the role first; the templates stand under the
+  role as chips (a tap takes the role and, unseen, the template's working instructions and approval level, dropped
+  again when the role is typed over), three first names alliterating with the role come without the model ("Others"
+  for three more), the machine shows only when there is a choice, and the button says "Create". Everything else
+  (picture, field of work, model, approval level, tone, voice, list folder, whom it may message) waits in the bot's
+  settings, and the bot asks what is still open in its chat. The template select, "Set up in the chat" and "no
+  template" are gone.
+- The Windows installer installs with one click: it asks for administrator rights once, installs for all users into
+  `C:\Program Files\OpenFolk` as before and starts the app, without the pages for language, folder and finish. An
+  update keeps the folder an earlier version was installed to.
+
+### Fixed
+- An account other than the main one, while none of its machines is awake (right after an invitation, say), no
+  longer sees the first steps of a new installation with "npm start", but a note that no machine is reachable yet and
+  that its bots and people appear once one runs.
+- Bot editor, "New bot", the model switch and the model in the chat header take the engines and models of the bot's
+  machine (in the editor: the machine chosen there). Each backend's `models` replaced the list of every other one, so
+  with two machines Cursor of one could go missing for its bots (#63).
+- iPhone, home screen app: iOS 27 blurred the top of the page, header included. A fixed strip in the header's color
+  now lies at the very top, which is what makes iOS leave the blur out and color the status bar like the header; the
+  status bar style is `default` instead of the deprecated `black-translucent`, so the page starts below the status
+  bar. The app has to be removed from the home screen and added again (#65).
+- Desktop app: the tray menu is complete right after the first setup ("Allowed folders …", "Sign this window in
+  again", "Disconnect from …", "Run without signing in"); it was built once at start and came complete only after a
+  restart (#60).
+
+### Security
+- The web app shows a profile picture only from a data URL of an image or an object URL; anything else in `avatar`
+  shows the initials (CodeQL js/xss, js/client-side-unvalidated-url-redirection).
+- hono 4.13.18 and @hono/node-server 2.1.8, which the Agent SDK's MCP server pulls in (CSRF, middleware bypasses with
+  `mount()` and the RegExpRouter, `validator('form')`, a backslash in the path, a crash on `ECONNRESET` during a
+  WebSocket upgrade).
+
 ## [0.5.0] - 2026-11-10
 
 ### Added
@@ -425,7 +544,8 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.2.1...v0.3.0

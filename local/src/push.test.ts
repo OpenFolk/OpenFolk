@@ -77,6 +77,86 @@ requests.length = 0;
 await inAccount('main', () => sendPush({ title: 't', body: 'b', url: '/?chat=anna', tag: 'anna' }));
 const plain = JSON.parse(requests[0]?.payload ?? '{}') as { url?: string; tag?: string };
 check('main: link and tag as before', plain.url === '/?chat=anna' && plain.tag === 'anna');
+
+// A desktop in use keeps the phones quiet: answers stay away, requests follow after the delay unless taken up
+const { attention, mergeSubscriptions, phoneDelay, relayPush, ACTIVE_MS } = await import('./push.ts');
+await inAccount('desk', async () => {
+    saveSubscription(subscription('desk-pc'), { form: 'desktop' });
+    saveSubscription(subscription('desk-phone'), { form: 'phone' });
+    saveSubscription(subscription('desk-always'), { form: 'phone', always: true });
+    saveSubscription(subscription('desk-old')); // a browser too old to say what it is
+});
+const to = () => requests.map((r) => r.endpoint.slice(r.endpoint.lastIndexOf('/') + 1)).sort().join(',');
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+phoneDelay.ms = 40;
+const inDesk = (kind: Parameters<typeof sendPush>[1], context: Parameters<typeof sendPush>[2]) =>
+    inAccount('desk', () => sendPush({ title: 't', body: 'b', url: '/?chat=c', tag: 'c' }, kind, context));
+for (const kind of ['done', 'routine', 'message'] as const) {
+    requests.length = 0;
+    await inDesk(kind, { desk: true });
+    await sleep(80);
+    check(`desktop in use: ${kind} only to the phone set to always notify`, to() === 'desk-always');
+}
+for (const kind of ['done', 'approval'] as const) {
+    requests.length = 0;
+    await inDesk(kind, { desk: false });
+    check(`no desktop in use: ${kind} to every device at once`, to() === 'desk-always,desk-old,desk-pc,desk-phone');
+}
+for (const kind of ['approval', 'handover'] as const) {
+    requests.length = 0;
+    await inDesk(kind, { desk: true, due: () => true });
+    check(`desktop in use: ${kind} at once to all but the phone`, to() === 'desk-always,desk-old,desk-pc');
+    await sleep(80);
+    check(`desktop in use: ${kind} to the phone after the delay`, to() === 'desk-always,desk-old,desk-pc,desk-phone');
+}
+requests.length = 0;
+let answered = false;
+await inDesk('approval', { desk: true, due: () => !answered });
+answered = true;
+await sleep(80);
+check('approval answered (or chat opened) during the delay: the phone gets nothing', to() === 'desk-always,desk-old,desk-pc');
+for (const kind of ['awake', 'limit', undefined] as const) {
+    requests.length = 0;
+    await inDesk(kind, { desk: true });
+    check(`desktop in use: ${kind ?? 'security warning'} unchanged, to every device`, to() === 'desk-always,desk-old,desk-pc,desk-phone');
+}
+await inAccount('desk', async () => {
+    const before = readJson<{ endpoint: string; always?: boolean; traitsAt?: string }[]>('push.json', []).find((s) => s.endpoint.endsWith('/desk-phone'));
+    saveSubscription(subscription('desk-phone'), { form: 'phone', always: false });
+    const same = readJson<{ endpoint: string; traitsAt?: string }[]>('push.json', []).find((s) => s.endpoint.endsWith('/desk-phone'));
+    check('subscribing again unchanged keeps the traits\' time', !!before?.traitsAt && same?.traitsAt === before.traitsAt);
+    // Another machine turned "always" on later; an old backend's copy without traits changes nothing
+    mergeSubscriptions([{ ...subscription('desk-phone'), endpoint: before!.endpoint, form: 'phone', always: true, traitsAt: '2999-01-01T00:00:00Z' }]);
+    mergeSubscriptions([{ ...subscription('desk-phone'), endpoint: before!.endpoint }]);
+    const merged = readJson<{ endpoint: string; always?: boolean }[]>('push.json', []).find((s) => s.endpoint.endsWith('/desk-phone'));
+    check('newer "always notify" of another machine taken over, old copy ignored', merged?.always === true);
+    mergeSubscriptions([{ ...subscription('desk-phone'), endpoint: before!.endpoint, form: 'phone', traitsAt: '2000-01-01T00:00:00Z' }]);
+    check('older traits of another machine ignored', readJson<{ endpoint: string; always?: boolean }[]>('push.json', []).find((s) => s.endpoint.endsWith('/desk-phone'))?.always === true);
+    saveSubscription(subscription('desk-old'), {});
+    check('old client subscribing keeps no traits it never sent', !('form' in (readJson<{ endpoint: string }[]>('push.json', []).find((s) => s.endpoint.endsWith('/desk-old')) ?? {})));
+});
+// An app's device token counts as a phone without saying so, and the relay gets it without the traits
+const handed: unknown[] = [];
+relayPush.channels = () => ['apns'];
+relayPush.send = (subs) => { handed.push(...subs); return true; };
+await inAccount('app', async () => {
+    saveSubscription({ channel: 'apns', token: 'app-token-1234' }, { form: 'phone' });
+    await sendPush({ title: 't', body: 'b', url: '/' }, 'done', { desk: true });
+    check('desktop in use: an app (old or new) gets no answer', handed.length === 0);
+    await sendPush({ title: 't', body: 'b', url: '/' }, 'approval', { desk: true, due: () => true });
+    check('desktop in use: an app\'s request waits', handed.length === 0);
+    await sleep(80);
+    check('… and reaches the relay after the delay, without the device\'s traits', handed.length === 1 && JSON.stringify(handed[0]) === '{"channel":"apns","token":"app-token-1234"}');
+});
+
+// Who is looking: a phone or an old client watching as before, a desktop only while in use and while its report is fresh
+const now = Date.now();
+check('nobody visible: nobody looking', JSON.stringify(attention([{ visible: false, at: now }, { visible: false, desktop: true, active: true, at: now }], now)) === '{"others":false,"desk":false}');
+check('old client visible: watching as before', attention([{ visible: true, at: now }], now).others);
+check('phone visible: watching, no desk', JSON.stringify(attention([{ visible: true, desktop: false, at: now }], now)) === '{"others":true,"desk":false}');
+check('desktop visible and in use: desk', JSON.stringify(attention([{ visible: true, desktop: true, active: true, at: now }], now)) === '{"others":false,"desk":true}');
+check('desktop visible without input: nobody looking', JSON.stringify(attention([{ visible: true, desktop: true, active: false, at: now }], now)) === '{"others":false,"desk":false}');
+check('desktop report gone stale: no longer in use', !attention([{ visible: true, desktop: true, active: true, at: now - ACTIVE_MS - 1 }], now).desk);
 fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true });
 if (failures) process.exit(1);
 console.log('all tests passed');

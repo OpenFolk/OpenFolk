@@ -10,7 +10,11 @@ import { confirmDialog } from './dialogs.js';
 
 /** @typedef {{ key: string, name: string, role: string, tone: string, approval: string, repo: string, gitUser: string, model?: string, token: boolean | string }} SetupBotRow */
 /** @typedef {{ account: string, bots: SetupBotRow[], handover: string, updatedAt?: string }} SetupView */
-/** @typedef {{ id: string, name: string, admin: boolean, reach?: string, contacts?: string[], setupBy?: string }} AccountRow */
+/** @typedef {{ id: string, name: string, admin: boolean, reach?: string, contacts?: string[], setupBy?: string, machines?: string[] }} AccountRow */
+/** @typedef {{ name: string, account?: string }} RelayMachine */
+
+/** The machines the relay knows ("accounts" for an admin); empty for a relay from before the choice. @type {RelayMachine[]} */
+let relayMachines = [];
 
 /** What the backend last sent ("setups"). @type {SetupView[]} */
 let setups = [];
@@ -50,6 +54,54 @@ export function openSetup(account, accounts, me, hooks = {}) {
     send({ type: 'setups' });
 }
 
+/** The machines of the relay's answer "accounts". @param {RelayMachine[] | undefined} list */
+export function setRelayMachines(list) {
+    relayMachines = Array.isArray(list) ? list : [];
+}
+
+/**
+ * The choice of the relay's machines an account runs on: "all of them, also new ones" or ticked one by one, and the
+ * computers bound to the account (setup link) as a line, they serve it anyway. `change` gets null for all or the names.
+ * Null when the relay names no machines (too old for the choice).
+ * @param {string[] | undefined} chosen the account's `machines`, undefined = all
+ * @param {(machines: string[] | null) => void} change
+ * @param {string} [account] the account, for the computers bound to it
+ * @returns {{ box: HTMLElement, value: () => string[] | null } | null}
+ */
+export function machinePicker(chosen, change, account) {
+    const own = relayMachines.filter((m) => !m.account).map((m) => m.name);
+    if (!relayMachines.length) return null;
+    const box = node('div', 'machine-picker');
+    const tick = (label, checked, cls = 'check') => {
+        const l = node('label', cls);
+        const c = /** @type {HTMLInputElement} */ (node('input'));
+        c.type = 'checkbox';
+        c.checked = checked;
+        l.append(c, node('span', '', ` ${label}`));
+        return { l, c };
+    };
+    const all = tick(t('machines.pickAll'), !chosen);
+    const list = node('div', 'machine-picker-list');
+    // Names the relay knows no more stay ticked, so a save does not drop them unseen
+    const names = [...new Set([...own, ...(chosen || []).filter((m) => !relayMachines.some((x) => x.name === m))])];
+    const ticks = names.map((m) => {
+        const x = tick(m.toUpperCase(), !chosen || chosen.includes(m));
+        x.c.value = m;
+        list.appendChild(x.l);
+        return x.c;
+    });
+    if (!names.length) list.appendChild(node('p', 'hint', t('machines.pickNone')));
+    const value = () => (all.c.checked ? null : ticks.filter((c) => c.checked).map((c) => c.value));
+    const show = () => { list.hidden = all.c.checked; };
+    all.c.addEventListener('change', () => { show(); change(value()); });
+    for (const c of ticks) c.addEventListener('change', () => change(value()));
+    show();
+    box.append(all.l, list);
+    const bound = account ? relayMachines.filter((m) => m.account === account).map((m) => m.name.toUpperCase()) : [];
+    if (bound.length) box.appendChild(node('p', 'hint', t('machines.pickBound', { machines: bound.join(', ') })));
+    return { box, value };
+}
+
 /** "setups" from the backend. @param {SetupView[]} list */
 export function receiveSetups(list) {
     const before = open && setups.find((s) => s.account === open.account.id);
@@ -75,7 +127,8 @@ export function setupAccountsChanged(list) {
         return;
     }
     const keys = ['name', 'admin', 'reach', 'setupBy'];
-    const changed = keys.some((k) => now[k] !== open.account[k]) || JSON.stringify(now.contacts || []) !== JSON.stringify(open.account.contacts || []);
+    const changed = keys.some((k) => now[k] !== open.account[k]) || JSON.stringify(now.contacts || []) !== JSON.stringify(open.account.contacts || [])
+        || JSON.stringify(now.machines ?? null) !== JSON.stringify(open.account.machines ?? null);
     open.accounts = list;
     if (!changed) return;
     open.account = { ...now };
@@ -289,6 +342,12 @@ function accountPart(account) {
     const row = node('div', 'setup-name');
     row.append(name, rename);
     part.append(node('h4', '', t('setup.account')), labelled(t('accounts.name'), row));
+    // The relay's machines it runs on; 'main' runs on all of them
+    const picker = account.id === 'main' ? null : machinePicker(account.machines, (machines) => {
+        send({ type: 'account_update', id: account.id, machines });
+        account.machines = machines ?? undefined;
+    }, account.id);
+    if (picker) part.append(node('h4', '', t('machines.pickTitle')), node('p', 'hint', t('machines.pickHint', { name: account.name })), picker.box);
     const actions = node('div', 'actions left');
     // An account set up runs on someone else's machine: it is no admin (the relay refuses it)
     if (!account.setupBy) {

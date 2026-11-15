@@ -52,7 +52,7 @@ export default async function ({ start, check }) {
     check('the notes of this version: its sections and entries', shown.headings.includes('Added') && shown.items > 3, shown);
     check('the older versions folded below it', shown.older.length >= 3 && shown.openOlder === 0 && shown.older.some((s) => s.startsWith('0.1.0 ')), shown);
     check('a link to all versions on GitHub', shown.link === 'https://github.com/OpenFolk/OpenFolk/releases', shown);
-    await p.click('#settings-dialog [data-close]');
+    await p.click('#settings-dialog-actions [data-close]');
     await web.wait(100);
     check('closing it leaves the settings open, the notes back in their place', !(await p.isVisible('#settings-dialog')) && (await p.isVisible('#settings-about')) && (await p.locator('#settings-about #release-notes').count()) === 1);
     // The version next to the name at the top of the sidebar opens the same notes, also with the settings closed
@@ -64,7 +64,7 @@ export default async function ({ start, check }) {
     await web.wait(200);
     check('sidebar: a click on the version opens the release notes', await p.isVisible('#settings-dialog') && (await p.textContent('#settings-dialog-title')) === `New in OpenFolk ${VERSION}`
         && (await p.locator('#settings-dialog .release-notes-current li').count()) > 3);
-    await p.click('#settings-dialog [data-close]');
+    await p.click('#settings-dialog-actions [data-close]');
     await web.wait(100);
     check('sidebar: closed again, the notes back in the settings', !(await p.isVisible('#settings-dialog')) && (await p.locator('#settings-about #release-notes').count()) === 1);
     check('no page errors', web.errors.length === 0, web.errors);

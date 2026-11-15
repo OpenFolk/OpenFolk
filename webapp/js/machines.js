@@ -29,7 +29,7 @@ function runsWithoutBackend(host) {
 }
 
 /**
- * The line under a machine on the status page: its bots and what they do, the engines ready there, the backend's
+ * The line under a machine on the status page: its backend's version, its bots and what they do, the engines ready there, the backend's
  * start and setup, its open repos. Only what the web app already knows; a machine that is off has only its bots.
  */
 /** Display names like ENGINE_NAMES in shared/protocol.ts (the web app has no build and does not load it). */
@@ -57,6 +57,8 @@ function machineDetails(host, connected) {
     }
     const backend = state.backendPerMachine[host];
     if (backend) {
+        // An older backend (before 0.2.1) sends no version
+        if (backend.version) parts.unshift(backend.version);
         parts.push(t('status.backendSince', { time: clockTime(backend.since) }));
         if ((backend.changed || []).length) parts.push(t('status.outdated'));
     }
@@ -100,7 +102,7 @@ export function renderMachines() {
             if (state.capabilities[h] && state.capabilities[h].restart === true) button(t('machine.restart'), () => askShutdown(h, true));
             if (machineCan(h, 'shutdown')) button(t('machine.shutDown'), () => askShutdown(h));
         }
-        else if (!waking && !info.active && st && st.configured && !info.error) button(t('machine.wake'), () => wake(h));
+        else if (canWake(h)) button(t('machine.wake'), () => wake(h));
         el.machines.appendChild(row);
         const details = machineDetails(h, connected);
         if (details.length) el.machines.appendChild(node('div', 'machine-details', details.join(' · ')));
@@ -123,6 +125,19 @@ export async function askAutologon(host, on) {
     if (!(await confirmDialog(t(on ? 'machine.autologonOnConfirm' : 'machine.autologonOffConfirm', { machine: upper(host) })))) return false;
     send({ type: 'machine_autologon', on }, host);
     return true;
+}
+
+/** A machine that is off and the wake service can start (the button on the status page, the palette's action). */
+export function canWake(host) {
+    const st = state.machineStatus;
+    const info = (st && st.hosts && st.hosts[host]) || {};
+    return !state.online.includes(host) && !state.waking[host] && !info.active && !!st && !!st.configured && !info.error;
+}
+
+/** Machines the wake service knows that can be woken now. */
+export function wakeableMachines() {
+    const st = state.machineStatus;
+    return Object.keys((st && st.hosts) || {}).filter(canWake).sort();
 }
 
 export function wake(host) {

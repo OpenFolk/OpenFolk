@@ -21,7 +21,8 @@ interface StoredAccount extends RelayAccount {
     hash?: string;
 }
 
-export type AccountChange = { name?: string; password?: string; admin?: boolean; reach?: Reach; contacts?: string[] };
+export type AccountChange = { name?: string; password?: string; admin?: boolean; reach?: Reach; contacts?: string[]; machines?: string[] | null };
+const MAX_MACHINES = 100;
 export type AccountResult = 'ok' | 'name_taken' | 'invalid';
 
 /** a-z0-9 and hyphen, as the backends use it as a folder name. */
@@ -77,15 +78,37 @@ export class Accounts {
         return this.list.find((x) => x.id === id)?.setupBy;
     }
 
-    /** From now on the account's bots run only on machines bound to it (a setup link was minted for it). */
+    /**
+     * A setup link was minted for the account. The first one takes it off the relay's other machines, unless an admin
+     * chose machines for it already; the admin can tick some again in the account's settings.
+     */
     markSetUp(id: string, by: string): boolean {
         const a = this.list.find((x) => x.id === id);
         if (!a || id === MAIN) return false;
         if (a.setupBy !== by) {
             a.setupBy = by;
+            a.machines ??= [];
             this.save();
         }
         return true;
+    }
+
+    /** Runs on none of the relay's own machines, only on machines bound to it (or nowhere yet). */
+    ownMachinesOnly(id: string): boolean {
+        const a = this.list.find((x) => x.id === id);
+        return !!a && id !== MAIN && (a.machines ? a.machines.length === 0 : !!a.setupBy);
+    }
+
+    /**
+     * Whether a machine that is not bound to an account (one of the relay's own) serves the account. 'main' runs on all
+     * of them; another account on those an admin ticked, or on all without a choice, except an account set up before
+     * the choice existed, which ran on its own computer only.
+     */
+    runsOn(id: string, machine: string): boolean {
+        if (id === MAIN) return true;
+        const a = this.list.find((x) => x.id === id);
+        if (!a) return false;
+        return a.machines ? a.machines.includes(machine) : !a.setupBy;
     }
 
     ids(): string[] {
@@ -116,14 +139,14 @@ export class Accounts {
         return !this.list.some((x) => x.id !== except && x.name.toLowerCase() === name.toLowerCase());
     }
 
-    create(name: string, admin = false, reach: Reach = 'all'): RelayAccount | 'name_taken' | 'invalid' {
+    create(name: string, admin = false, reach: Reach = 'all', machines?: string[]): RelayAccount | 'name_taken' | 'invalid' {
         const n = name.trim().slice(0, MAX_NAME);
         if (!n || this.list.length >= MAX_ACCOUNTS) return 'invalid';
         if (!this.nameFree(n)) return 'name_taken';
         const base = slug(n);
         let id = base;
         for (let i = 2; this.list.some((x) => x.id === id) || id in this.deleted; i++) id = `${base}-${i}`;
-        const a: StoredAccount = { id, name: n, admin, created: new Date().toISOString(), reach };
+        const a: StoredAccount = { id, name: n, admin, created: new Date().toISOString(), reach, ...(machines ? { machines: machineList(machines) } : {}) };
         this.list.push(a);
         this.save();
         return toPublic(a);
@@ -147,6 +170,11 @@ export class Accounts {
         if (change.reach !== undefined && id !== MAIN) a.reach = change.reach;
         if (change.contacts !== undefined && id !== MAIN) {
             a.contacts = [...new Set(change.contacts.filter((c) => c !== id && this.list.some((x) => x.id === c)))];
+        }
+        // null: every machine of the relay, also those to come
+        if (change.machines !== undefined && id !== MAIN) {
+            if (change.machines === null) delete a.machines;
+            else a.machines = machineList(change.machines);
         }
         this.save();
         return 'ok';
@@ -172,12 +200,23 @@ export class Accounts {
     }
 }
 
+/** Machine names as the relay keeps them (lowercase), each once. */
+function machineList(names: string[]): string[] {
+    return [...new Set(names.map((m) => m.trim().toLowerCase()).filter(Boolean))].slice(0, MAX_MACHINES);
+}
+
+/** Whether a request's `machines` is a list of names (or null for all). */
+export function isMachineList(x: unknown): x is string[] | null {
+    return x === null || (Array.isArray(x) && x.length <= MAX_MACHINES && x.every((m) => typeof m === 'string' && m.length <= 64));
+}
+
 const reachOf = (a: StoredAccount): Reach => (a.reach === 'admins' || a.reach === 'listed' ? a.reach : 'all');
 
 function toPublic(a: StoredAccount): RelayAccount {
     return {
         id: a.id, name: a.name, admin: a.id === MAIN || a.admin, created: a.created, reach: reachOf(a),
         ...(reachOf(a) === 'listed' ? { contacts: a.contacts ?? [] } : {}), ...(a.setupBy ? { setupBy: a.setupBy } : {}),
+        ...(a.machines ? { machines: a.machines } : {}),
     };
 }
 

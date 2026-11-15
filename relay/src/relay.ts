@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { REACHES, type MessageCode, type PairBox, type Reach, type RelayFrame, type RelayRequest, type ServerFrame } from '../../shared/protocol.ts';
-import { Accounts, MAIN } from './accounts.ts';
+import { Accounts, MAIN, isMachineList } from './accounts.ts';
 import { Bridge, type ClientContext } from './bridge.ts';
 import {
     clientAddress, ipAllowed, isBlocked, isGloballyBlocked, originAllowed, pendingDone, pendingLogin, recordFailure, recordSuccess, tokenMatches,
@@ -236,8 +236,8 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
             });
             return;
         }
-        // An admin's backend mints (or with `revoke` voids) the setup link of an account; from then on the account runs
-        // only on machines bound to it
+        // An admin's backend mints (or with `revoke` voids) the setup link of an account; the first one takes the account
+        // off the relay's own machines unless an admin chose some for it (Accounts.markSetUp)
         if (req.method === 'POST' && url.pathname === '/setup-invite') {
             const ip = clientIp(req);
             const auth = String(req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
@@ -261,10 +261,9 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify({ ok: true }));
                     return;
                 }
-                const first = !account.setupBy;
+                const before = bridge.servedBy(account.id);
                 accounts.markSetUp(account.id, by);
-                // The machines that served the account so far let go of it (it had nothing yet: setups are for new accounts)
-                if (first) bridge.accountSetUp(account.id);
+                bridge.accountMachinesChanged(account.id, before);
                 const invite = machineTokens.setupInvite(account.id);
                 log(`Setup link for account ${account.id} minted (by account ${by}), valid until ${invite.expiresAt}`);
                 res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(invite));
@@ -309,10 +308,10 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
             // The body names the account the device will belong to; none (backends before accounts) = 'main'
             void readJson(req, 1024).then((body) => {
                 // A machine bound to an account signs in devices of that account only, whatever it asks for (the desktop
-                // app asks without one); an account set up runs on its own machines, so no other mints for it
+                // app asks without one); an account that runs on its own computers only gets no links from the relay's machines
                 const bound = machineTokens.accountOf(auth);
                 const account = bound ?? (typeof body?.account === 'string' ? body.account : MAIN);
-                if (!bound && accounts.setupBy(account)) {
+                if (!bound && accounts.ownMachinesOnly(account)) {
                     res.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'not_allowed' }));
                     return;
                 }
@@ -426,10 +425,18 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
     }, machinesSeen);
     bridge.accountList = () => ({ ids: accounts.ids(), deleted: accounts.deletedIds(), people: accounts.people() });
     bridge.setupBy = (id) => accounts.setupBy(id);
+    bridge.runsOn = (id, machine) => accounts.runsOn(id, machine);
     bridge.mayRoute = (from, to) => accounts.mayRoute(from, to);
     bridge.boundMachines = () => machineTokens.bound();
 
     const isReach = (x: unknown): x is Reach => (REACHES as readonly unknown[]).includes(x);
+
+    /** The machines the relay knows, awake or seen before, each with the account it is bound to (for an admin's choice). */
+    const knownMachines = () => {
+        const bound = machineTokens.bound();
+        const names = new Set([...bridge.online(), ...Object.keys(machinesSeen.gone([])), ...bound.keys()]);
+        return [...names].sort().map((name) => (bound.has(name) ? { name, account: bound.get(name)! } : { name }));
+    };
 
     type AccountRequest = Extract<RelayRequest, { type: 'accounts' | 'account_create' | 'account_update' | 'account_delete' | 'account_invite' }>;
 
@@ -440,7 +447,9 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
     function accountRequest(request: AccountRequest, reply: (f: ServerFrame) => void, context: ClientContext): void {
         const own = context.account;
         const admin = accounts.isAdmin(own);
-        const list = () => reply({ type: 'accounts', list: admin ? accounts.all() : accounts.all().filter((a) => a.id === own), current: own });
+        const list = () => reply(admin
+            ? { type: 'accounts', list: accounts.all(), current: own, machines: knownMachines() }
+            : { type: 'accounts', list: accounts.all().filter((a) => a.id === own), current: own });
         const refuse = (code: MessageCode = 'not_allowed') => reply({
             type: 'error', code, request: request.type,
             message: code === 'account_name_taken' ? 'An account with this name exists already.' : 'This account may not do that.',
@@ -452,7 +461,8 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
             case 'account_create': {
                 if (!admin || typeof request.name !== 'string') return refuse();
                 if (request.reach !== undefined && !isReach(request.reach)) return refuse();
-                const created = accounts.create(request.name, request.admin === true, request.reach ?? 'all');
+                if (request.machines !== undefined && (request.machines === null || !isMachineList(request.machines))) return refuse();
+                const created = accounts.create(request.name, request.admin === true, request.reach ?? 'all', request.machines);
                 if (created === 'name_taken') return refuse('account_name_taken');
                 if (created === 'invalid') return refuse();
                 log(`Account ${created.id} created (by account ${own})`);
@@ -472,11 +482,14 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 if (request.name !== undefined && typeof request.name !== 'string') return refuse();
                 const contacts = request.contacts;
                 if (contacts !== undefined && (self || !Array.isArray(contacts) || contacts.length > 100 || !contacts.every((c) => typeof c === 'string'))) return refuse();
+                if (request.machines !== undefined && (self || id === MAIN || !isMachineList(request.machines))) return refuse();
                 // An account set up runs on someone else's machine: it is no admin
                 if (request.admin === true && accounts.setupBy(id)) return refuse();
-                const r = accounts.update(id, { name: request.name, password: request.password, admin: request.admin, reach: request.reach, contacts });
+                const before = bridge.servedBy(id);
+                const r = accounts.update(id, { name: request.name, password: request.password, admin: request.admin, reach: request.reach, contacts, machines: request.machines });
                 if (r !== 'ok') return refuse(r === 'name_taken' ? 'account_name_taken' : 'not_allowed');
-                log(`Account ${id} changed (by account ${own})`);
+                log(`Account ${id} changed (by account ${own})${request.machines === undefined ? '' : `, runs on ${request.machines ? request.machines.join(', ') || 'no machine of the relay' : 'every machine'}`}`);
+                if (request.machines !== undefined) bridge.accountMachinesChanged(id, before);
                 if (request.name !== undefined || request.admin !== undefined || request.reach !== undefined || contacts !== undefined) bridge.peopleChanged(accounts.people());
                 list();
                 return;

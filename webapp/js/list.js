@@ -2,7 +2,7 @@
 import { locale, t, tn } from './i18n.js';
 import { el, node, state, closest } from './core.js';
 import { CHAT_DRAG, activePane, paneFor, visibleChats } from './panes.js';
-import { bot, clockTime, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, openApprovals, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
+import { bot, clockTime, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, modelsOfChat, openApprovals, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
 import { allChats, baseChats, categoryOf, collapsed, conversationsOf, isFavorite, isMuted, sortedCategories, toggleCollapsed, toggleConversations, toggleFavorite } from './connection.js';
 import { loadingBar, openBeside, openChat, swipeBack } from './chat.js';
 import { isUnread, toggleUnread } from './chat-features.js';
@@ -10,7 +10,8 @@ import { isUnread, toggleUnread } from './chat-features.js';
 /** @typedef {import('./panes.js').Pane} Pane */
 import { ICONS, archiveConversation, chatMenuAction, deleteCategory, fillChatMenu, gitOpenOf, menuButton, modelDisplay, openGitPage, renameCategory } from './menus.js';
 import { setBadge } from './platform.js';
-import { openEditor } from './editors.js';
+import { openEditor, openInfo, openRoutineEditor } from './editors.js';
+import { RECENT_DAYS, renderPaletteResult } from './palette.js';
 import { renderWelcome } from './welcome.js';
 import { openSettingsAt } from './settings.js';
 import { openOtherChat, otherLabel, otherRows, otherUnreadCount } from './others.js';
@@ -101,9 +102,12 @@ export function renderChatList() {
     const foreign = otherRows();
     if (ids.length === 0) {
         // Nothing to list yet: the first steps instead (machine, first bot, other devices). An account of someone who
-        // came to chat (a customer) has people to write to and no bots; the engines' sign-in is not its first step
-        el.chatList.appendChild(state.people.length && state.account && state.account.id !== 'main' ? peopleStart()
-            : renderWelcome({ newBot: () => openEditor(null), devices: () => openSettingsAt(el.settingsDevices) }));
+        // came to chat (a customer) has people to write to and no bots; the engines' sign-in is not its first step.
+        // While the machines or their bots are still on their way, the first steps would flash up before the chats.
+        el.chatList.appendChild(!state.onlineKnown || (state.online.length && !state.botsKnown) ? listLoading()
+            : state.account && state.account.id !== 'main' && !state.online.length ? noMachineStart()
+                : state.people.length && state.account && state.account.id !== 'main' ? peopleStart()
+                    : renderWelcome({ newBot: () => openEditor(null), devices: () => openSettingsAt(el.settingsDevices) }));
         for (const r of foreign.sort((x, y) => x.section - y.section || y.ts.localeCompare(x.ts))) el.chatList.appendChild(foreignRow(r));
         setBadge(otherUnreadCount());
         return;
@@ -251,6 +255,22 @@ function favoriteStrip(ids) {
     }
     strip.appendChild(row);
     return strip;
+}
+
+function listLoading() {
+    const li = node('li', 'list-loading', t('list.loading'));
+    li.appendChild(node('div', 'loading-bar'));
+    return li;
+}
+
+/**
+ * Another account than the relay's owner while none of its machines is awake: starting a backend is not its business
+ * (the owner's first steps say "npm start"), and its bots and the people it can write to come from those machines.
+ */
+function noMachineStart() {
+    const box = node('li', 'welcome');
+    box.append(node('h2', '', t('account.noMachineTitle')), node('p', 'welcome-intro', t('account.noMachineText')));
+    return box;
 }
 
 /** The start of an account without bots or chats: whom it can write to. */
@@ -637,25 +657,107 @@ export function setupSearchBox() {
 
 // ---------------------------------------------------------- Search across all chats
 // The backend searches the whole history of all chats; hits replace the chat list, a tap opens
-// the chat and jumps to the message.
+// the chat and jumps to the message. On the phone chips above the hits choose what is searched: messages, bots
+// (names of the chats), files (names of attachments, in the backend too) or routines; the command palette
+// (palette.js) does all of them at once on larger screens.
 let searchTimer = null;
+/** @type {'messages' | 'bots' | 'files' | 'routines'} */
+let searchFilter = 'messages';
+/**
+ * Messages are searched in the last weeks first, newest first, like the palette; `since` is '' once older ones are
+ * asked for, `hits` null while the backends are still answering.
+ */
+const sidebar = { since: '', /** @type {any[] | null} */ hits: null };
+const narrow = window.matchMedia('(max-width: 760px)');
+
+/** What the sidebar's search looks for; the chips are shown on the phone only, elsewhere it is messages. */
+const sidebarFilter = () => (narrow.matches ? searchFilter : 'messages');
 
 export function onSearchInput() {
     clearTimeout(searchTimer);
     const text = el.search.value.trim();
-    const active = text.length >= 2;
+    const filter = sidebarFilter();
+    const local = filter === 'bots' || filter === 'routines';
+    const active = text.length >= (local ? 1 : 2);
     el.searchResults.hidden = !active;
     el.chatList.hidden = active;
     if (!active) return;
-    if (!el.searchResults.children.length) el.searchResults.appendChild(node('li', 'empty-hint', t('search.searching')));
-    searchTimer = setTimeout(() => send({ type: 'search', text }), 250);
+    if (local) return renderLocalResults(text, filter);
+    if (!el.searchResults.querySelector('[data-hit]')) el.searchResults.replaceChildren(node('li', 'empty-hint', t('search.searching')));
+    sidebar.since = filter === 'files' ? '' : new Date(Date.now() - RECENT_DAYS * 864e5).toISOString();
+    sidebar.hits = null;
+    searchTimer = setTimeout(() => send(filter === 'files' ? { type: 'search', text, files: true } : { type: 'search', text, since: sidebar.since }), 250);
 }
 
-function chatTitle(chatId) {
+/** "Search older messages" below the recent hits: the whole history, the hits so far stay until it answers. */
+function searchOlderInSidebar() {
+    sidebar.since = '';
+    sidebar.hits = null;
+    send({ type: 'search', text: el.search.value.trim() });
+}
+
+/** A chip of the phone's search: what it looks for; the text stays and is searched again. */
+export function chooseSearchFilter(filter) {
+    if (filter === searchFilter) return;
+    searchFilter = filter;
+    for (const b of el.searchFilters.querySelectorAll('[data-filter]')) b.setAttribute('aria-checked', String(/** @type {HTMLElement} */ (b).dataset.filter === filter));
+    el.searchResults.replaceChildren();
+    onSearchInput();
+}
+
+/** Name of a chat as the search shows it: a conversation with its bot. */
+export function chatTitle(chatId) {
     if (isGroup(chatId)) return (group(chatId) || {}).name || chatId;
+    if (isPerson(chatId)) return person(chatId).name;
     const b = bot(chatId);
     if (!b) return chatId;
     return isConversation(chatId) ? `${b.name} · ${conversationTitle(chatId)}` : b.name;
+}
+
+/** What kind of chat it is, for the search's hits. */
+export function chatKind(chatId) {
+    return t(isGroup(chatId) ? 'search.kindGroup' : isPerson(chatId) ? 'search.kindPerson' : isConversation(chatId) ? 'search.kindConversation' : 'search.kindBot');
+}
+
+/** Whether every word of `query` occurs in `text`, ignoring case. */
+export function matchesWords(text, query) {
+    const s = text.toLowerCase();
+    return query.toLowerCase().split(/\s+/).filter(Boolean).every((w) => s.includes(w));
+}
+
+/** Chats whose name matches (a bot also by its field of work and role), the list's order. */
+export function findChats(query) {
+    return allChats().filter((id) => {
+        const b = !isGroup(id) && !isPerson(id) && !isConversation(id) ? bot(id) : null;
+        return matchesWords([chatTitle(id), b ? b.area || '' : '', b ? b.role || '' : ''].join(' '), query);
+    });
+}
+
+/** Routines whose name, bot or prompt matches. */
+export function findRoutines(query) {
+    return state.routines.filter((r) => matchesWords([r.name, (bot(r.botId) || { name: '' }).name, r.prompt].join(' '), query));
+}
+
+/** The phone's search for bots or routines: found here, without the backend. */
+function renderLocalResults(text, filter) {
+    const rows = filter === 'bots'
+        ? findChats(text).map((id) => searchRow(chatTitle(id), chatKind(id), () => openChat(id)))
+        : findRoutines(text).map((r) => searchRow(r.name, `${(bot(r.botId) || { name: '' }).name} · ${r.cron}`, () => openRoutine(r)));
+    el.searchResults.replaceChildren(...(rows.length ? rows : [node('li', 'empty-hint', t('search.nothingFound', { text }))]));
+}
+
+function searchRow(title, sub, open) {
+    const li = node('li');
+    li.dataset.hit = '';
+    li.append(node('div', 's-head', title), node('div', 's-text', sub));
+    li.addEventListener('click', open);
+    return li;
+}
+
+/** A routine from the search: its bot's page with the routine's editor on top. */
+export function openRoutine(r) {
+    openInfo(r.botId);
+    openRoutineEditor(r);
 }
 
 /** Text with the search word highlighted, without innerHTML (contents come from chats). */
@@ -792,12 +894,25 @@ export function renderSearchResult(f) {
         jumpChatSearch(p);
         return;
     }
-    if (f.text !== el.search.value.trim()) return;
+    // the palette's searches (palette.js) answer through the same frame
+    renderPaletteResult(f);
+    const filter = sidebarFilter();
+    if (f.text !== el.search.value.trim() || !!f.files !== (filter === 'files') || filter === 'bots' || filter === 'routines') return;
+    // A backend from before `since` answers without it, over the whole history: still hits for the query
+    if (!f.files && f.since && f.since !== sidebar.since) return;
+    // every awake machine answers for its chats
+    const key = (h) => h.chatId + '\n' + h.id;
+    const seen = new Set((sidebar.hits || []).map(key));
+    sidebar.hits = [...(sidebar.hits || []), ...f.hits.filter((h) => !seen.has(key(h)) && allChats().includes(h.chatId))]
+        .sort((a, b) => b.ts.localeCompare(a.ts));
+    const hits = sidebar.hits;
     el.searchResults.innerHTML = '';
-    const hits = f.hits.filter((h) => allChats().includes(h.chatId));
-    if (!hits.length) el.searchResults.appendChild(node('li', 'empty-hint', t('search.nothingFound', { text: f.text })));
+    if (!hits.length) {
+        el.searchResults.appendChild(node('li', 'empty-hint', sidebar.since ? t('palette.noRecent', { days: RECENT_DAYS }) : t('search.nothingFound', { text: f.text })));
+    }
     for (const h of hits) {
         const li = node('li');
+        li.dataset.hit = '';
         const head = node('div', 's-head', chatTitle(h.chatId));
         head.appendChild(node('span', '', clockTime(h.ts)));
         const text = node('div', 's-text');
@@ -806,6 +921,12 @@ export function renderSearchResult(f) {
         li.append(head, text);
         li.addEventListener('click', () => openChat(h.chatId, h.id, f.text));
         el.searchResults.appendChild(li);
+    }
+    if (sidebar.since) {
+        const older = node('li', 'search-older');
+        older.append(node('div', 's-head', t('palette.older')), node('div', 's-text', t('palette.olderSub', { days: RECENT_DAYS })));
+        older.addEventListener('click', searchOlderInSidebar);
+        el.searchResults.appendChild(older);
     }
 }
 
@@ -826,7 +947,7 @@ export function jumpToEntry(p) {
 
 /** The model a bot's chat runs on (a conversation can have its own), the name that really runs, never "Default". */
 function modelBadge(chatId) {
-    const name = modelDisplay(modelOf(chatId));
+    const name = modelDisplay(modelOf(chatId), modelsOfChat(chatId));
     const badge = node('span', 'model-badge', name);
     badge.title = name;
     return badge;

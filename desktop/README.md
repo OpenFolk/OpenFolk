@@ -12,7 +12,8 @@ and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; ev
   chats, so A says to use C then.
   - **A. Start on this computer** ("new to OpenFolk, without a relay server"): the app runs the backend (`../local/`) itself, with the relay embedded on 127.0.0.1, and
     signs its window in with a pairing link. Nothing to host; the only step left is signing in to Claude Code
-    (the first steps in the app show how). Data, keys and the backend's log (`local.log`) live in `data` in the
+    (the first steps in the app show how; none when Claude Code is signed in on this computer already, and "Try it
+    without signing in" starts on OpenCode's free models instead). Data, keys and the backend's log (`local.log`) live in `data` in the
     profile folder (below); settings that `.env.sample` describes go into `.env` there. Quitting the app ends the
     backend once no bot is working, after asking if that takes a while. "Sign this window in again" (tray menu,
     on the Mac "Window") helps after logging the device out. This is the single-computer setup: your phone, or
@@ -31,7 +32,7 @@ and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; ev
     Instead of the link, the page shows a QR code for the relay's address (`qr-join.js`): a signed-in phone scans it,
     the user confirms there, a backend mints the invitation and the phone sends it back sealed for the app's key, as in
     the QR sign-in of a device (`webapp/js/qr-login.js`, `kind=machine` in the code). The relay only passes the box on.
-  - **A setup link** (`https://relay/#setup=…`, from an admin's "Set up" in the accounts) joins the same way, but bound
+  - **A setup link** (`https://relay/#setup=…`, from an admin's "Edit" in the accounts) joins the same way, but bound
     to one account: the relay's page for it opens `openfolk://setup?link=…`, which the app registers with the system
     (`setAsDefaultProtocolClient`, `protocols` in `package.json` for the macOS bundle; Windows and Linux hand it over
     through `second-instance`, macOS through `open-url`). The app asks once, naming the relay, and refuses with the
@@ -83,7 +84,10 @@ and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; ev
   browsers as before. While the window is open, the web app shows new answers itself.
 - **Zoom:** Ctrl and + or - (Cmd on the Mac), also on the number pad and with the mouse wheel; Ctrl+0 returns to
   the normal size. The level applies to every page of the app and stays across starts (`zoom` in `config.json`).
-- On Windows and Linux the menu bar is hidden; Alt shows it (reload, zoom, full screen, developer tools).
+- **Keyboard shortcuts:** the menu "Go" lists the web app's shortcuts (command palette Ctrl+K, new bot, back and
+  forward, …; Cmd on the Mac, where the settings sit under "OpenFolk" with Cmd+,). The entries only show the keys:
+  the keys themselves go to the page, so nothing runs twice, and none of them is a zoom key.
+- On Windows and Linux the menu bar is hidden; Alt shows it (reload, zoom, go, full screen, developer tools).
 
 ## Develop and build
 
@@ -92,11 +96,11 @@ cd openfolk/desktop
 npm install
 npm start                # starts the app from source (the backend runs from this checkout)
 npm run smoke            # the app with a profile of its own: "on this computer" end to end
-npm run build            # Windows: dist/OpenFolk-Setup-0.1.0.exe (NSIS, English/German, for all users in
-                         # C:\Program Files\OpenFolk, folder selectable, asks for admin rights)
+npm run build            # Windows: dist/OpenFolk-Setup-0.1.0.exe (NSIS one-click, English/German, asks for
+                         # admin rights once and installs for all users in C:\Program Files\OpenFolk, then starts)
 npm run build:portable   # Windows: a single EXE without installation
 npm run build:linux      # Linux: dist/OpenFolk-0.1.0-x86_64.AppImage and dist/OpenFolk-0.1.0-amd64.deb
-npm run build:mac        # macOS: dist/OpenFolk-0.1.0-arm64.dmg and .zip (on Apple Silicon)
+npm run build:mac        # macOS: dist/OpenFolk-0.1.0-arm64.dmg and .zip on Apple Silicon, -x64.dmg on an Intel Mac
 ```
 
 Every build first runs `npm run bundle` (`../scripts/desktop-bundle.mjs`): backend, relay and web app as sources
@@ -108,9 +112,11 @@ request and stops it on quit. A built app is checked with `node ../scripts/deskt
 `dist/win-unpacked/OpenFolk.exe`, `dist/linux-unpacked/openfolk` or `dist/mac-arm64/OpenFolk.app/Contents/MacOS/OpenFolk`.
 
 **Releases:** `.github/workflows/desktop.yml` does all of this in CI, each app on a runner of its own system (Windows,
-macOS on Apple Silicon, Linux): build, smoke test against the built app, packages as workflow artifacts. When a release
-is published on GitHub it attaches the installer, the DMG and ZIP, the AppImage and the .deb, the update feeds
-(`latest.yml`, `latest-mac.yml`, `latest-linux.yml` and the blockmaps), then a `SHA256SUMS` over the packages. Nothing
+macOS on Apple Silicon, macOS on Intel, Linux): build, smoke test against the built app, packages as workflow artifacts.
+When a release is published on GitHub it attaches the installer, the DMG and ZIP of each Mac, the AppImage and the .deb,
+the update feeds (`latest.yml`, `latest-mac.yml`, `latest-linux.yml` and the blockmaps), then a `SHA256SUMS` over the
+packages. Each Mac build writes a `latest-mac.yml` of its own; the job `mac-feed` merges the two into one, from which
+electron-updater picks the files of the Mac's architecture ("arm64" in the name or not). Nothing
 is uploaded by hand; openfolk.app always links to the latest release. File names carry no spaces, because the update
 feeds name the files as GitHub stores them.
 
@@ -146,12 +152,14 @@ Windows is signed only in the build of a published release: only that job runs i
 The Mac app runs with the hardened runtime and the entitlements in `build/entitlements.mac.plist` (JIT for V8 and the
 Claude Code binary, microphone, camera); the job log says which system was signed.
 
-- **Windows:** unsigned until Azure Trusted Signing is set up (above); SmartScreen asks on first start.
+- **Windows:** release builds are signed with Azure Trusted Signing (publisher "Flowdesk GmbH", timestamped); builds of
+  `main` stay unsigned. SmartScreen may still ask while the publisher builds up download reputation.
 - **Linux:** the AppImage runs after `chmod +x` and needs `libfuse2` (`APPIMAGE_EXTRACT_AND_RUN=1` works without
   it). The .deb installs to `/opt/OpenFolk` with an entry in the application menu
   (`sudo apt install ./OpenFolk-0.1.0-amd64.deb`).
-- **macOS:** until signing and notarization are set up (above), on first open right-click → "Open", or allow it in System
-  Settings under "Privacy & Security". It is built and checked on a Mac, locally or by CI; what is Mac-specific (menu bar,
+- **macOS:** release builds are signed with a Developer ID and notarized, so they open without a warning. A build without
+  the secrets (e.g. from a fork) needs right-click → "Open" on first open, or allowing it in System Settings under
+  "Privacy & Security". It is built and checked on a Mac, locally or by CI; what is Mac-specific (menu bar,
   Dock, no tray) sits behind `MAC` in `main.js`.
 
 `dist/`, `build/openfolk/` and `node_modules/` are not versioned. Icons: `build/icon.png` (installers, window; the

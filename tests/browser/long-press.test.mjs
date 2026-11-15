@@ -31,7 +31,7 @@ export default async function ({ start, check }) {
     const entries = (sel) => p.evaluate((sel) => { const m = document.querySelector(sel); return m && !m.hidden ? [...m.querySelectorAll(':scope > button')].map((b) => b.textContent.trim() + (b.disabled ? ' (disabled)' : '')) : null; }, sel);
     const menu = () => entries('#row-menu');
     const chips = () => p.locator('#row-menu .model-switch .chip').allTextContents();
-    const BOT = ['New conversation', 'Move to a conversation', 'Open changes', 'Search in chat', 'Machine sessions', 'Info, routines, knowledge', 'Edit bot', 'Mark as favorite', 'Mute', 'Folder', 'New session (clear context)', 'Delete bot'];
+    const BOT = ['New conversation', 'Move to a conversation', 'Open changes', 'Search in chat', 'Machine sessions', 'Info, routines, knowledge', 'Edit bot', 'Duplicate bot', 'Mark as favorite', 'Mute', 'Folder', 'New session (clear context)', 'Delete bot'];
     const open = () => p.evaluate(() => document.getElementById('app').classList.contains('chat-open'));
 
     await hold('Skool Sven', 150);
@@ -56,7 +56,7 @@ export default async function ({ start, check }) {
     check('back closes it, the list stays', (await menu()) === null && !(await open()));
 
     await hold('PDF-Reader', 700);
-    check('sleeping bot: new conversation and changes disabled', JSON.stringify(await menu()) === JSON.stringify(BOT.map((e) => (['Open changes', 'New conversation', 'Move to a conversation'].includes(e) ? e + ' (disabled)' : e))), await menu());
+    check('sleeping bot: new conversation and changes disabled', JSON.stringify(await menu()) === JSON.stringify(BOT.map((e) => (['Open changes', 'New conversation', 'Move to a conversation', 'Duplicate bot'].includes(e) ? e + ' (disabled)' : e))), await menu());
     await h.swipe(60, 600, 360, 600);
     await h.wait(100);
     check('swipe to the right closes it', (await menu()) === null && !(await open()));

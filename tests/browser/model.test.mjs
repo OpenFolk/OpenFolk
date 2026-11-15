@@ -29,8 +29,9 @@ export default async function ({ start, check }) {
     await h.openChat('Skool Sven');
     check('header shows the real model behind default', (await badge()) === 'Opus 5.5', await badge());
     await page();
-    check('switch without "Default", names of the CLI', (await chips()).join('|') === 'Opus 5.5|Fable 5.1|Sonnet 5.5|Haiku 4.5', await chips());
-    check('Opus active because the default is Opus', (await active()).join() === 'Opus 5.5');
+    check('switch without "Default", families without version', (await chips()).join('|') === 'Opus|Fable|Sonnet|Haiku', await chips());
+    check('Opus active because the default is Opus', (await active()).join() === 'Opus');
+    check('the chip names the version behind the alias', (await p.getAttribute('#info-switches .model-switch .chip.on', 'title')) === 'Opus 5.5');
     await p.locator('#info-switches .model-switch .chip', { hasText: 'Opus' }).click();
     await h.wait(100);
     check('a tap on the running model sends nothing', switches().length === 0);
@@ -38,7 +39,7 @@ export default async function ({ start, check }) {
     await h.wait(150);
     const f = switches()[0];
     check('switch to the bot\'s machine', f && f.chatId === 'skool' && f.model === 'fable' && f.machine === 'desk', f);
-    check('the page stays open with Fable active', (await p.isVisible('#info')) && (await active()).join() === 'Fable 5.1', await active());
+    check('the page stays open with Fable active', (await p.isVisible('#info')) && (await active()).join() === 'Fable', await active());
     await leave();
     check('header shows Fable 5.1', (await badge()) === 'Fable 5.1', await badge());
 

@@ -50,7 +50,7 @@ export default async function ({ start, check }) {
     const actions = (await p.locator('#info-actions button[data-action]').evaluateAll((bs) => bs.map((b) => b.dataset.action))).join(' ');
     check('the page: model switch, open changes, the chat\'s entries', (await p.locator('#info-switches .model-switch .chip.on').count()) === 1
         && h.sent.some((f) => f.type === 'git_changes' && f.botId === 'pdf') && (await p.locator('#info-git .git-repo').count()) === 1
-        && actions === 'search vscode edit favorite mute category restart delete'
+        && actions === 'search vscode edit duplicate favorite mute category restart delete'
         && (await p.locator('#info-switches > button[data-action]').evaluateAll((bs) => bs.map((b) => b.dataset.action))).join(' ') === 'conversation_new main_to_conversation', actions);
     await p.click('#info-actions button[data-action="search"]');
     await h.wait(200);

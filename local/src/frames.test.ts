@@ -50,6 +50,11 @@ rejected('clone without an address', { type: 'folder_clone', url: '' }, 'url');
 rejected('create a folder without a name', { type: 'folder_create', name: '' }, 'name');
 accepted('Android FCM token', { type: 'push_subscribe', subscription: { channel: 'fcm', token: 'fcm-token-123456' } });
 rejected('unknown push channel', { type: 'push_subscribe', subscription: { channel: 'pigeon', token: 'x'.repeat(20) } }, 'subscription');
+accepted('subscription of a phone set to always notify', { type: 'push_subscribe', subscription: { channel: 'fcm', token: 'fcm-token-123456' }, form: 'phone', always: true });
+rejected('unknown device form', { type: 'push_subscribe', subscription: { channel: 'fcm', token: 'fcm-token-123456' }, form: 'tablet' }, 'form');
+accepted('presence of an old client', { type: 'presence', visible: true });
+accepted('presence of a desktop in use', { type: 'presence', visible: true, desktop: true, active: true, machine: 'desk' });
+rejected('activity that is no flag', { type: 'presence', visible: true, desktop: true, active: 'yes' }, 'active');
 
 // ---- malformed
 rejected('message without text', { type: 'send', chatId: 'cloud' }, 'text');

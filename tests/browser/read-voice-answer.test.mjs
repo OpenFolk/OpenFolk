@@ -65,6 +65,42 @@ export default async function ({ start, check }) {
     check('back in the app: read now', (await spoken()).endsWith('Background answer.'), await spoken());
     await p.click('#speech-bar-stop');
 
+    // while the next voice message is recorded: not read; discarded, it is read then
+    await voiceMessage();
+    await p.click('[data-el=btn-mic]');
+    await h.wait(300);
+    await answer('a6', 'Answer while recording.');
+    await h.wait(100);
+    check('while recording: not read', !(await spoken()).includes('while recording'), await spoken());
+    await p.click('[data-el=rec-discard]');
+    await h.wait(300);
+    check('recording discarded: read now', (await spoken()).endsWith('Answer while recording.'), await spoken());
+    // something being read stops when recording starts
+    await p.click('[data-el=btn-mic]');
+    await h.wait(300);
+    check('recording starts: the reading stops', await p.evaluate(() => document.getElementById('speech-bar').hidden));
+    await p.click('[data-el=rec-discard]');
+    await h.wait(200);
+
+    // the switch next to the recording: off here, the settings show it, the answer is not read
+    await p.click('[data-el=btn-mic]');
+    await h.wait(300);
+    const on = await p.evaluate(() => !document.querySelector('[data-el=rec-autoread]').classList.contains('off'));
+    await p.click('[data-el=rec-autoread]');
+    const off = await p.evaluate(() => ({ button: document.querySelector('[data-el=rec-autoread]').classList.contains('off'), stored: localStorage.getItem('openfolk-read-voice-answers'), setting: document.getElementById('settings-auto-read').checked }));
+    check('switch at the recording: on before, off after a tap, the setting follows', on && off.button && off.stored === 'off' && !off.setting, { on, off });
+    await p.click('[data-el=rec-send]');
+    await h.wait(600);
+    await answer('a7', 'Not read by switch.');
+    await h.wait(100);
+    check('switched off at the recording: the answer is not read', !(await spoken()).includes('Not read by switch'), await spoken());
+    // and back on from the speech bar
+    await p.click('.bubble.bot .speak');
+    await h.wait(100);
+    await p.click('#speech-bar-auto');
+    check('switch in the speech bar: on again', await p.evaluate(() => localStorage.getItem('openfolk-read-voice-answers') === 'on' && !document.getElementById('speech-bar-auto').classList.contains('off')));
+    await p.click('#speech-bar-stop');
+
     // setting off: nothing by itself
     await p.evaluate(() => localStorage.setItem('openfolk-read-voice-answers', 'off'));
     await voiceMessage();

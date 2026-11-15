@@ -148,8 +148,8 @@ class Transcriber {
         });
     }
 
-    /** `language`: en, de, or '' to detect it. */
-    async transcribe(file: string, language = ''): Promise<Transcript> {
+    /** `language`: en, de, or '' to detect it. `prompt`: names and terms Whisper should spell as written. */
+    async transcribe(file: string, language = '', prompt = ''): Promise<Transcript> {
         if (this.idle) clearTimeout(this.idle);
         const since = Date.now();
         const cold = !this.ready;
@@ -170,7 +170,7 @@ class Transcriber {
             }, JOB_TIMEOUT_S * 1000);
             this.pending.set(id, { resolve, reject, timer });
         });
-        this.proc!.stdin.write(JSON.stringify({ id, path: file, language }) + '\n');
+        this.proc!.stdin.write(JSON.stringify({ id, path: file, language, ...(prompt ? { prompt } : {}) }) + '\n');
         try {
             const x = await result;
             const model = waited >= 100 ? `, ${seconds(waited)} s of it waiting for the model${cold ? ' (cold start)' : ''}` : '';

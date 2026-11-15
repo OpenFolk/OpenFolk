@@ -42,8 +42,18 @@ Optional schränkt Tailscale die Verbindung des Backends weiter ein (`docs/tails
 > ein Mac braucht eine Anmeldung, und die automatische Anmeldung der Desktop-Sitzung gibt es nur unter Windows. Das
 > Relay läuft überall, wo Node 22 oder Docker läuft.
 
-**In zwei Minuten ausprobieren:** die Desktop-App aus den [Releases](https://github.com/OpenFolk/OpenFolk/releases)
-installieren (Windows, macOS, Linux) und „Auf diesem Rechner starten“ wählen, oder aus dem Quelltext mit Node 22:
+**In zwei Minuten ausprobieren:** die Desktop-App installieren und „Auf diesem Rechner starten“ wählen:
+
+| System | Download | Hinweis |
+| --- | --- | --- |
+| Windows 10 und 11 | [Installer (.exe)](https://openfolk.app/download.php?os=windows) | Signiert („Flowdesk GmbH“) |
+| macOS, Apple Silicon | [Disk-Image (.dmg)](https://openfolk.app/download.php?os=mac) | Von Apple signiert und notarisiert |
+| macOS, Intel | [Disk-Image (.dmg)](https://openfolk.app/download.php?os=mac-intel) | Von Apple signiert und notarisiert |
+| Linux | [AppImage](https://openfolk.app/download.php?os=linux) · [.deb](https://openfolk.app/download.php?os=linux-deb) | AppImage: `chmod +x`, braucht `libfuse2` |
+
+Die Links führen immer zum neuesten [Release](https://github.com/OpenFolk/OpenFolk/releases); dessen `SHA256SUMS`
+enthält die Prüfsumme jedes Pakets (`sha256sum -c SHA256SUMS --ignore-missing`). Installierte Apps aktualisieren sich
+selbst. Oder aus dem Quelltext mit Node 22:
 
 ```sh
 git clone https://github.com/OpenFolk/OpenFolk.git openfolk && cd openfolk && npm install && npm start
@@ -54,16 +64,22 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
 
 ## Funktionen
 
-- **Bots und Vorlagen.** Bot über „+“ anlegen, wahlweise aus einer Vorlage. Die Vorgabe „Im Chat einrichten“ braucht
-  nur Name und Ordner: Der Bot sieht sich den Ordner an, stellt in seinem Chat ein paar Fragen mit Optionen und füllt
-  Fachgebiet, Rolle und Arbeitsanweisungen selbst aus (`set_profile`); ein Bot aus einer anderen Vorlage lässt aus, was die
-  schon gesetzt hat. Sein Chat öffnet sich gleich nach dem Speichern; alles bleibt in seinen Einstellungen änderbar. Je Bot: Ordner, Modell, Freigabe-Stufe,
-  Ton und die Stimme, die seine Antworten vorliest (ohne Wahl passend zum Namen): männlich oder weiblich und eine
-  eigene Stimme des gerade lesenden Anbieters (13 von OpenAI, 30 von Gemini, Piper je Sprache) mit „Anhören“. „KI-Avatar“ öffnet ein Set fertiger
-  Porträts (gezeichnet, in `webapp/avatars/`), das Bildmodell steht darin als letzter Eintrag. „Vorschlag“ schlägt Namen (Vorname mit Aufgabenfeld in einem eigenen Feld), Rolle
-  oder ein Profilbild vor; mit einem Gemini- oder OpenAI-Schlüssel in den Einstellungen
-  ist der Avatar ein generiertes Foto, sonst ein vom Modell gezeichnetes SVG. Das Feld „Ordner oder Repository“ ist
-  ein Textfeld: Der Ordner muss auf dem Rechner des Bots schon existieren und unter dessen freigegebenen Ordnern
+- **Bots und Vorlagen.** „+“ öffnet eine kurze Seite: Rolle, Name, Ordner und Repository, mehr nicht. Die Vorlagen
+  (Chief of Staff, Entwickler, Infrastruktur, Social Media, Landingpages, Produkt-Scout, Mail) stehen als Chips unter der
+  Rolle; ein Tipp übernimmt die Rolle und, unsichtbar, Arbeitsanweisungen und Freigabe-Stufe der Vorlage. Unter dem Namen
+  erscheinen drei Vornamen, die mit der Rolle alliterieren („Andere“ bringt drei weitere); der Rechner zeigt sich nur,
+  wenn es eine Wahl gibt. Nach „Anlegen“ öffnet sich der Chat des Bots: Er sieht sich seinen Ordner an, stellt ein paar
+  Fragen mit Optionen, füllt Fachgebiet, Rolle und Arbeitsanweisungen selbst aus (`set_profile`), lässt aus, was schon
+  gesetzt ist, und bietet zuletzt ein Profilbild an. Alles Weitere steht in seinen Einstellungen (der Stift auf seiner
+  Seite): Bild, Fachgebiet, Modell, Freigabe-Stufe, Ton, Ordner der Liste, wem er Aufträge geben darf, und die Stimme,
+  die seine Antworten vorliest (ohne Wahl passend zum Namen): männlich oder weiblich und eine eigene Stimme des gerade
+  lesenden Anbieters (13 von OpenAI, 30 von Gemini, Piper je Sprache) mit „Anhören“. „KI-Avatar“ öffnet dort ein Set
+  fertiger Porträts (gezeichnet, in `webapp/avatars/`), das Bildmodell steht darin als letzter Eintrag; „Vorschlag“
+  schlägt Namen (Vorname mit Aufgabenfeld in einem eigenen Feld), Rolle oder ein Profilbild vor; mit einem Gemini- oder
+  OpenAI-Schlüssel in den Einstellungen ist der Avatar ein generiertes Foto, sonst ein vom Modell gezeichnetes SVG.
+  „Bot duplizieren“ auf seiner Seite legt eine Kopie unter neuem Namen auf demselben Rechner an: Profil, Modell,
+  Freigabe-Stufe, Ordner und Bild, dazu seine Routinen pausiert; Verlauf, Wissen und Unterhaltungen bleiben beim
+  Original. Das Feld „Ordner“ ist ein Textfeld: Der Ordner muss auf dem Rechner des Bots schon existieren und unter dessen freigegebenen Ordnern
   liegen (siehe „Freigegebene Ordner“ unter Dauerbetrieb), sonst lehnt das Backend ihn mit dem Grund ab. Statt eines
   Ordners nimmt das Feld die Adresse eines Git-Repositorys; dann klont das Backend es beim Speichern in den Ordner für
   Bots des Rechners. „Durchsuchen“ zeigt die Ordner des Rechners, auf dem der Bot wohnt, und legt dort einen neuen an.
@@ -76,16 +92,28 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   Mauer: Ein Skript, das der Bot schreibt und dann ausführt, wird nicht durchleuchtet. Wer jeden Befehl bestätigen
   will, nimmt *bei jeder Änderung*. `.env`-Dateien und Schlüssel bekommen lesende Werkzeuge in keiner Stufe. Die Karte
   bietet Freigeben, Immer erlauben (für die Session), Immer für diesen Bot (externe MCP-Werkzeuge; der Bot-Editor
-  listet sie und nimmt sie wieder weg) und Ablehnen mit Begründung; ohne Antwort wird nach 30 Minuten abgelehnt.
+  listet sie und nimmt sie wieder weg) und Ablehnen mit Begründung. Ohne Antwort wird nach 30 Minuten abgelehnt; die Karte bleibt als abgelaufen im Chat stehen.
+  Eine neue Nachricht im Chat statt einer Antwort schließt die offenen Karten des Bots: Nichts von dem Gefragten
+  passiert, die Nachricht ist seine nächste Anweisung (nicht in Gruppen).
 - **Connectoren.** Die Dienste, die im claude.ai-Konto von Claude Code verbunden sind (Gmail, Drive usw.), bleiben
   den Bots verschlossen, bis die Maschinen-Einstellungen sie zulassen („Connectoren“). Selbst eingerichtete
   MCP-Server (`.mcp.json`, `claude mcp add`) betrifft das nicht.
 - **Rückfragen** eines Bots mit Optionen erscheinen als Karte mit Knöpfen und Freitext.
 - **Push-Benachrichtigungen** je Art (Bot fertig, Routine fertig, Freigabe/Rückfrage, Rechner wach, Abo-Limit, Nachricht einer Person, Übergabe)
-  aus, leise, normal oder hoch, für alle Geräte; einzelne Bots und Gruppen schaltet man auf ihrer Seite oder im Menü der Liste stumm. Browser
+  aus, leise, normal oder hoch, für alle Geräte; einzelne Bots und Gruppen schaltet man auf ihrer Seite oder im Menü der Liste stumm.
+  Solange du einen Computer benutzt (Desktop-App oder Browser auf breitem Bildschirm, sichtbar, Eingabe in den letzten
+  zwei Minuten), bleibt das Handy still: keine Antworten, Routine-Ergebnisse oder Nachrichten, und Freigaben, Rückfragen
+  und Übergaben erst nach drei Minuten, wenn bis dahin niemand den Chat geöffnet oder geantwortet hat; „Rechner wach“
+  und Limits kommen wie immer. „Auf diesem Gerät immer benachrichtigen“ in den Benachrichtigungen des Handys schaltet
+  das für dieses Handy ab. Browser
   bekommen Web Push (Ende-zu-Ende-verschlüsselt), die Mobile-Apps APNs bzw. FCM; dort sehen Apple und Google den
   Inhalt, deshalb zeigt eine App-Benachrichtigung standardmäßig nur den Titel (einstellbar in den Einstellungen).
 - **Routinen** nach Zeitplan (täglich, werktags, wöchentlich, stündlich oder Cron), auf Wunsch mit Wecken des Rechners.
+  Auf der Seite des Bots steht je Routine eine Zeile mit „Wann“ in Worten („werktags 8:00“, „alle 2 Stunden“), nächstem
+  Lauf und einem Schalter zum Pausieren; aufgeklappt die Anweisung, „Jetzt ausführen“, „Bearbeiten“ und die letzten 20
+  Läufe mit Beginn, Dauer, Status und Fehlergrund, „Im Chat zeigen“ springt zur Antwort. Der Verlauf reist mit auf die
+  anderen Rechner. „Im Chat ändern“ beginnt eine Bitte im Eingabefeld; der Bot ändert oder legt seine eigenen Routinen
+  selbst an (`set_routine`, mit einer Zeile im Chat), nie die eines anderen Bots.
 - **Slash-Commands:** Im Chat eines Bots mit Claude listet „/“ am Anfang der Nachricht die Commands von Claude Code für
   den Ordner des Bots: eigene (`~/.claude/commands`, Skills), die des Projekts (`.claude/commands`), von Plugins und
   einige eingebaute wie `/compact` und `/context`. Claude Code führt sie aus wie im Terminal. Eine Nachricht, die mit
@@ -115,7 +143,9 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   Mit `search_history` und `read_history` durchsuchen sie außerdem den Verlauf aller Chats auf ihrem Rechner (ohne
   Werkzeugausgaben) und beantworten so Fragen nach früheren Entscheidungen. Weiteres Wissen (Wiki, Notion,
   Confluence) kommt über die MCP-Server, die du anbindest.
-- **Sprachnachrichten,** lokal mit faster-whisper umgewandelt. Das ist der einzige, optionale Python-Teil: Mit Python 3.9
+- **Sprachnachrichten,** lokal mit faster-whisper umgewandelt. Je Gerät einstellbar diktiert das Mikrofon stattdessen
+  ins Eingabefeld: Das Feld bleibt während der Aufnahme nutzbar, der Haken schreibt den Text an die Cursorstelle, und
+  die Nachricht geht mit dem Senden-Button als Text hinaus. Das ist der einzige, optionale Python-Teil: Mit Python 3.9
   oder neuer auf dem Rechner richtet „Sprachnachrichten einrichten“ in seinen Einstellungen den Rest ein
   (`local/tools/requirements-voice.txt`, auch von Hand), bei einer NVIDIA-Karte mit den CUDA-Bibliotheken, und lädt
   das Modell: etwa 1,6 GB für `large-v3-turbo` (ohne Grafikkarte `small`, etwa 0,5 GB). Ein Python, das faster-whisper
@@ -133,11 +163,26 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   ChatGPT: `gpt-realtime-2.1` von OpenAI (oder das günstigere mini) hört zu, erkennt das Satzende und lässt sich
   unterbrechen; es gibt jede Bitte an den Bot weiter und spricht dessen Antwort. Deine Stimme geht dann an OpenAI und
   kostet einige Cent pro Minute; der Schlüssel bleibt auf dem Rechner, der die Verbindung öffnet.
+- **Weiterleiten.** „Weiterleiten“ im ⋯-Menü einer Nachricht gibt sie an einen anderen Bot, eine Unterhaltung, eine
+  Gruppe oder eine Person: Der gewählte Chat öffnet sich mit der Nachricht über dem Eingabefeld, du ergänzt ein paar
+  Worte oder keine und schickst sie ab. Der Bot bekommt die ganze Nachricht und ihre Herkunft. Im Chat zeigt die
+  Weiterleitung ein paar Zeilen; ein Tipp klappt den ganzen Text auf, die Zeile „aus …“ darunter führt in den Chat,
+  aus dem sie kam.
 - **Gelesen-Stand, Favoriten und fixierte Nachrichten** gelten auf allen Geräten und Rechnern.
 - **Spalten auf breiten Bildschirmen:** Strg-Klick (oder die mittlere Maustaste) öffnet einen Chat in einer eigenen
   Spalte daneben, so viele wie Platz haben; „+“ am rechten Rand fügt eine leere hinzu. Mit der Maus lässt sich ein
   Chat auch aus der Liste auf eine Spalte oder auf „+“ ziehen. Die Bot-Info dockt als eigene
   Spalte an. Handy und Laptop bleiben bei einem Chat.
+- **Befehlspalette und Tastenkürzel:** Strg+K (Cmd+K am Mac) öffnet eine Palette über alles: Bots, Gruppen, Personen,
+  Unterhaltungen, Routinen, die Abschnitte der Einstellungen und Aktionen (neuer Bot, neue Gruppe, Einstellungen,
+  Status, ausgeschalteten Rechner wecken), dazu die Nachrichten der letzten vier Wochen („Ältere durchsuchen“ geht
+  weiter zurück) und angehängte Dateien nach Namen; ein Treffer öffnet den Chat an der Stelle. Weitere Kürzel: Strg+N
+  neuer Bot, Strg+Umschalt+N neue Gruppe, Strg+F im Chat suchen, Strg+1 bis 9 der n-te Chat der Liste, Alt+↑/↓
+  voriger oder nächster, Strg+[ und Strg+] zurück und vor durch die geöffneten Chats, Strg+I Eingabefeld, Strg+Enter
+  senden von überall, Strg+B Liste ausblenden, Strg+, Einstellungen, Strg+/ Übersicht aller Kürzel. Im Browser-Tab
+  behält der Browser Strg+N, Strg+Umschalt+N und Strg+1 bis 9; die Desktop-App kennt alle und zeigt sie im Menü
+  „Gehe zu“. Auf dem Handy hat die Suche über der Liste stattdessen Filter: Nachrichten, Bots, Dateien, Routinen; Nachrichten auch
+  dort erst aus den letzten vier Wochen, die neuesten zuerst.
 - **Tabs** schwebend unten an der Liste: Bots, Repos (offene Änderungen aller Bots, mit Zähler), Status (die Rechner
   mit ihren Bots, Engines und Backend, Wecken und Herunterfahren, Kontingent der Abos mit 5-Stunden- und Wochenfenster, Fable getrennt, und wann jedes
   zurückgesetzt wird) und Einstellungen.
@@ -163,14 +208,14 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   einem Rechner und arbeitet dort in einem Ordner; schläft der Rechner, schläft der Bot, und die App bietet das
   Wecken an. Nichts weicht von selbst auf einen anderen Rechner aus. Rechner tauschen Arbeit wie Menschen über Git
   aus: Wird ein Projekt auf zwei Rechnern bearbeitet, hat jeder seinen Klon und seinen Bot. Jeder Rechner hat einen
-  Ordner für Bots (in seinen Einstellungen, „Ordner für Bots“; ohne Wahl der erste freigegebene Ordner), und der
+  Ordner für Bots (in seinen Einstellungen, „Standardordner für neue Bots“, mit dem Ordner-Browser gewählt; ohne Wahl der erste freigegebene Ordner), und der
   Rechner eines Bots merkt sich, wo der Bot darunter liegt und welches Repository dazugehört. Ein Umzug ist ein Tipp
   auf den anderen Rechner auf der Seite des Bots, ohne Rückfrage: Der Bot kommt an dieselbe Stelle unter dem Ordner
   für Bots des neuen Rechners, das Repository wird dort geklont, falls es fehlt, ein Ordner ohne Repository wird
   angelegt, ein schlafender Rechner wird dafür geweckt, und die Sessions ziehen mit dem ganzen Kontext mit. Nur wenn die Stelle dort schon anders belegt ist oder
   der Ordner außerhalb der freigegebenen Ordner liegt, fragt die App nach Ordner und Repository.
-- **Einstellungen:** Sprache, Darstellung, Benachrichtigungen, Geräte und Sicherheit; je Gerät, ob die Antwort auf
-  eine Sprachnachricht von selbst vorgelesen wird, sobald sie fertig ist (Standard: an). Für alle Rechner: die
+- **Einstellungen:** Sprache, Darstellung, Benachrichtigungen, Geräte und Sicherheit; je Gerät, ob das Mikrofon Sprachnachrichten
+  sendet (Standard) oder ins Eingabefeld diktiert und ob die Antwort auf eine Sprachnachricht von selbst vorgelesen wird, sobald sie fertig ist (Standard: an). Für alle Rechner: die
   KI-Dienste (API-Schlüssel von OpenAI und Google Gemini als Liste), das Bildmodell für Profilbilder, wie der Sprachdialog läuft (in der App oder über OpenAI Realtime), die Stimme zum
   Vorlesen von Antworten (mit einem dieser Schlüssel eine Stimme
   von OpenAI oder Gemini, sonst der Rechner des Bots, wenn dort Sprachnachrichten eingerichtet sind, sonst die des
@@ -185,7 +230,8 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
 
 - Node 22.18 oder neuer und npm (nicht für die Desktop-Apps, die ihr eigenes mitbringen).
 - Claude Code CLI mit Abo angemeldet (`claude` einmal starten) oder ein Anthropic-API-Schlüssel in den
-  Einstellungen des Rechners.
+  Einstellungen des Rechners (anlegen unter platform.claude.com/settings/keys; der Rechner fragt Anthropic vor dem
+  Speichern kostenlos, ob er gilt, abgerechnet wird über das Guthaben des Console-Kontos).
   Bitte die Nutzungsbedingungen von Anthropic für das Abo beachten; für automatisierten oder geteilten Einsatz ist
   der API-Key-Modus die sichere Wahl.
 - Optional: Codex, Cursor, Copilot oder Antigravity mit eigenem Login (siehe englisches README). OpenCode läuft ohne
@@ -225,9 +271,12 @@ Das ist die ganze Einrichtung auf einem Rechner. Ohne `.env` startet das Backend
 `http://127.0.0.1:8787`, erzeugt beim ersten Start alle Schlüssel (`local/data/`) und öffnet die Web-App im Browser
 mit einem Pairing-Link, der den Browser anmeldet und ihm den Ende-zu-Ende-Schlüssel übergibt. Danach führt die App
 durch die ersten Schritte: Backend verbunden, KI-Anbieter wählen (eine neue Installation startet ohne, man hakt die
-eigenen an) und bei einem anmelden (Claude Code in einem Terminal, das die App auf dem Rechner öffnet, oder mit einem
-Anthropic-API-Schlüssel direkt im Schritt; Codex und Copilot mit einem Gerätecode, den man auf einem beliebigen Gerät
-eingibt), erster Bot, Handy koppeln. Jeder Schritt hakt sich selbst ab.
+eigenen an; ist Claude Code auf dem Rechner schon angemeldet, ist Claude gleich an und die Frage entfällt) und bei
+einem anmelden (Claude Code mit dem Abo im Browser, den die App auf dem Rechner öffnet, in einem Terminal dort, wenn
+das Backend ohne Desktop läuft, oder mit einem Anthropic-API-Schlüssel direkt im Schritt; Codex und Copilot mit einem Gerätecode, den man auf einem beliebigen Gerät
+eingibt), erster Bot, Handy koppeln. Jeder Schritt hakt sich selbst ab. Ohne Abo und Schlüssel schaltet „Ohne
+Anmeldung ausprobieren“ die Gratis-Modelle von OpenCode ein, die keine Anmeldung brauchen (deren Anbieter dürfen die
+Daten fürs Training nutzen); der erste Bot läuft dann mit OpenCode, Claude kommt später dazu.
 
 ```sh
 npm run pair                          # Pairing-Link und QR-Code für ein weiteres Gerät (15 Minuten, einmalig)
@@ -344,8 +393,8 @@ dürfen, mit `;` getrennt; ohne die Variable ist es der Benutzerordner des Backe
 abgelehnt, auch in anderen Konten, und die App gibt Dateien nur aus diesen Ordnern heraus. Wo die Variable steht:
 Quellcode in der `.env` des Checkouts, Desktop-App in der `.env` ihres Profilordners (oben), Container in der `.env`
 neben der Compose-Datei; dort ist `/work` der freigegebene Ordner und `WORK_DIR` der Ordner des Servers dahinter. Das
-Backend nennt die Ordner beim Start in seinem Log. Nach einer Änderung das Backend neu starten. Der **Ordner für Bots**
-in den Einstellungen des Rechners muss in einem freigegebenen Ordner liegen; dorthin ziehen umziehende Bots, und dorthin
+Backend nennt die Ordner beim Start in seinem Log. Nach einer Änderung das Backend neu starten. Der **Standardordner für neue Bots**
+in den Einstellungen des Rechners (dort stehen auch die freigegebenen Ordner) muss in einem freigegebenen Ordner liegen; dorthin ziehen umziehende Bots, und dorthin
 klont der Bot-Editor Repositorys. Leer gelassen ist es der erste freigegebene Ordner.
 
 **Git-Zugang:** Das Backend läuft ohne Terminal, oft als Aufgabe ohne Anmeldung oder im Container, und kann deshalb nie
@@ -407,6 +456,13 @@ eingerichtet hat, besitzt das Hauptkonto; solange es kein zweites gibt, ändert 
   eines Relays (dann fragt die App nach Konto und Passwort); ein Admin legt dort auch eine neue Person an („Konto
   anlegen und Einladungslink erstellen“). Die Einladung ist ein Kopplungslink mit QR-Code, 15 Minuten gültig; wer ihn
   öffnet, ist im neuen Konto angemeldet und kann sich danach ein eigenes Passwort setzen. Das Hauptkonto ist immer Admin.
+- **Rechner je Konto:** Im Formular für ein neues Konto und unter „Bearbeiten“ in seiner Zeile hakt ein Admin an, auf
+  welchen Rechnern des Relays das Konto läuft: „Alle meine Rechner, auch neue“ (Standard) oder einzeln, etwa nur den
+  Cloud-Server für einen Kollegen und keinen für einen Kunden. Ein Rechner ohne Haken bedient das Konto nicht, und
+  seine Geräte sehen ihn nicht; später abgewählt, behält der Rechner die Daten des Kontos und hat sie wieder, sobald er
+  wieder angehakt ist. Auf jedem angehakten Rechner meldet sich das Konto mit einem eigenen Claude- oder Codex-Zugang
+  an (siehe „KI-Anmeldungen je Konto“), nie mit deinem. Das Hauptkonto läuft auf allen Rechnern; ein per
+  Einrichtungslink angebundener Computer kommt zu den Haken hinzu.
 - **Reihenfolge beim Einladen:** Die Einladung meldet das Gerät der Person sofort im neuen Konto an, und dort wartet
   die Einrichtungs-Checkliste mit der Claude-Anmeldung für dieses Konto (ein Befehl für ein Terminal auf dem Rechner,
   siehe unten), auf einem Handy nicht zu erledigen. Deshalb zuerst das Konto anlegen und die Einladung auf dem eigenen
@@ -444,7 +500,7 @@ eingerichtet hat, besitzt das Hauptkonto; solange es kein zweites gibt, ändert 
   soll nur sein Team erreichen und keine anderen Kunden: Beim Anlegen das Häkchen „Kunde: chattet nur mit den Admins“
   setzen, oder später in der Liste „Nur Admins“ bzw. „Erreicht alle“ wählen. Admins erreichen jeden. Ein Konto, das nur
   chatten soll, braucht keine Claude-Anmeldung; solange es keine Bots hat, zeigt die App ihm statt der Checkliste die
-  Personen, denen es schreiben kann. Jede Seite hat ihre eigene Kopie: Wer den Chat löscht, löscht nur seine.
+  Personen, denen es schreiben kann. Die kennen die Rechner: Ist keiner davon an, sieht so ein Konto einen Hinweis darauf statt der ersten Schritte des Betreibers mit „npm start“. Jede Seite hat ihre eigene Kopie: Wer den Chat löscht, löscht nur seine.
   Der Supportbot eines Kunden übergibt an dich, wenn in seinen Einstellungen unter „Übergabe an“ dein Konto steht.
 
 ### Eine Person auf ihrem eigenen Computer einrichten
@@ -454,7 +510,7 @@ du diese Bots aus deinem OpenFolk einrichtest. Die Person installiert die Deskto
 sich dort bei Claude an; du bereitest alles vor und schickst ihr einen Link.
 
 1. **Vorbereiten:** Ein Konto für die Person anlegen (Einstellungen → Konten → „Hinzufügen“), dann in seiner Zeile
-   „Einrichten“. Die Bots wählen: einen Supportbot, der nur liest (Stufe „nur lesen“: er beantwortet Fragen zum
+   „Bearbeiten“. Die Bots wählen: einen Supportbot, der nur liest (Stufe „nur lesen“: er beantwortet Fragen zum
    Projekt aus dem Code und ändert nichts), und einen Entwicklungsbot, der das Projekt ändert und pusht, jeweils mit
    der https-Adresse des Repositorys und einem eigenen Token dafür (für den Supportbot ein Lese-Token). Ankreuzen, wen
    die Person anschreiben kann (dich und weitere Teammitglieder) und an wen die Bots ein Gespräch übergeben. Speichern.
@@ -465,8 +521,8 @@ sich dort bei Claude an; du bereitest alles vor und schickst ihr einen Link.
    einen eigenen Ordner und legt die Bots an. Die Person sieht ihre Bots und die Personen, denen sie schreiben darf,
    sonst nichts.
 
-Was die Bindung bedeutet: Ein Rechner, der per Einrichtungslink beitritt, bedient nur sein Konto, und dieses Konto
-läuft nur auf solchen Rechnern. Deine Bots, Chats und Rechner erreichen ihn nie, und seine Chats nicht deine Rechner:
+Was die Bindung bedeutet: Ein Rechner, der per Einrichtungslink beitritt, bedient nur sein Konto, und der erste
+Einrichtungslink nimmt deine Rechner für dieses Konto heraus (unter „Bearbeiten“ lassen sich wieder welche anhaken). Deine Bots, Chats und Rechner erreichen ihn nie, und seine Chats nicht deine Rechner:
 Personen-Chats und die Einrichtung gehen über das Relay von Rechner zu Rechner, das nichts speichert (eine Nachricht
 wartet auf dem sendenden Rechner, bis der andere online ist, höchstens eine Woche). Die Person kann die Bots der
 Einrichtung weder ändern noch löschen; du änderst sie im selben Dialog, und die Änderung kommt auf ihrem Computer an,

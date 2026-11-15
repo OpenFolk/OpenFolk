@@ -271,6 +271,12 @@ export interface PushSettings {
     updatedAt: string;
 }
 
+/**
+ * How a device takes part in the rule "the phone stays quiet while a desktop is in use" (docs/internals/push.md):
+ * `desktop` for the desktop app and a browser with a mouse on a wide screen, `phone` for everything else.
+ */
+export type DeviceForm = 'desktop' | 'phone';
+
 /** Image models for profile pictures as photos; gpt-image-1 needs the OpenAI key, the others the Gemini key. */
 export const AVATAR_MODELS = ['gemini-3.1-flash-image', 'gemini-3-pro-image', 'gpt-image-1'] as const;
 export type AvatarModel = (typeof AVATAR_MODELS)[number];
@@ -549,7 +555,17 @@ export interface Quote {
     /** 'me' or bot id */
     from: string;
     text: string;
+    /** Forwarded from another chat: the text stays whole (up to FORWARD_TEXT_MAX), the bot reads it as content. */
+    forwarded?: boolean;
+    /** Forwarded: title of the chat it came from, as shown at the time. */
+    origin?: string;
+    /** Forwarded: id of that chat, so a tap on the quote opens it at the message (not sent into a person chat). */
+    originChat?: string;
 }
+
+/** A reply quotes a reminder of the message; a forward carries the message itself. */
+export const QUOTE_TEXT_MAX = 300;
+export const FORWARD_TEXT_MAX = 20000;
 
 export interface QuestionOption {
     label: string;
@@ -615,10 +631,24 @@ export interface Routine {
     wake?: boolean;
     lastRun?: string;
     lastStatus?: 'ok' | 'error' | 'running';
+    /** The last runs, newest first (at most 20); travels with the routine to the other machines. */
+    runs?: RoutineRun[];
+    /** Next due time (ISO) of an active routine, computed by the backend when it sends the list; never stored. */
+    nextRun?: string;
     updatedAt: string;
 }
 
-export type RoutineInput = Omit<Routine, 'lastRun' | 'lastStatus' | 'updatedAt'>;
+export interface RoutineRun {
+    start: string;
+    /** Missing while it runs. */
+    end?: string;
+    status: 'ok' | 'error' | 'running';
+    error?: string;
+    /** History entry in the bot's main chat: the answer, or the routine's message while there is none. */
+    entryId?: string;
+}
+
+export type RoutineInput = Omit<Routine, 'lastRun' | 'lastStatus' | 'runs' | 'nextRun' | 'updatedAt'>;
 
 /**
  * A planned run of a routine with `wake`, as the backends report it to the relay. The relay only knows time and
@@ -802,6 +832,12 @@ export type ClientFrame =
      * that fails now, nothing is deleted and an error answers. Sent to the bot's machine only then.
      */
     | { type: 'bot_delete'; botId: string; deleteFolder?: boolean }
+    /**
+     * A new bot with `name` and the profile of `botId` (role, tone, model, approval, folder, picture) and copies of its
+     * routines, paused; history, knowledge and conversations stay with the original. Sent to the bot's machine;
+     * answer "bots", "routines", then "bot_duplicated".
+     */
+    | { type: 'bot_duplicate'; botId: string; name: string }
     /** Whether the bot's working folder may be deleted with it (folder_delete_checked); asked of the bot's machine. */
     | { type: 'folder_delete_check'; botId: string }
     | { type: 'bot_suggest'; request: SuggestionRequest }
@@ -866,8 +902,11 @@ export type ClientFrame =
     | { type: 'model'; chatId: string; model: ModelChoice }
     | { type: 'conversation_delete'; chatId: string }
     | { type: 'conversation_archive'; chatId: string; on: boolean }
-    /** Full-text search over all chats (from 2 characters), with chatId only in that chat; answer "search_result". */
-    | { type: 'search'; text: string; chatId?: string }
+    /**
+     * Full-text search over all chats (from 2 characters), with chatId only in that chat; answer "search_result".
+     * `since` (ISO time) keeps to newer messages, `files` matches the names of attached files instead of the text.
+     */
+    | { type: 'search'; text: string; chatId?: string; since?: string; files?: boolean }
     /** Move a waiting message from the queue into a new conversation with the bot and start it there. */
     | { type: 'queue_to_conversation'; chatId: string; entryId: string }
     /** Delete a waiting message from the queue (only while the bot has not started it). */
@@ -924,7 +963,11 @@ export type ClientFrame =
     /** Voice conversation over OpenAI Realtime: the backend sends the browser's SDP offer to OpenAI with the stored key
      *  and the session for this chat's bot; the answer comes as "talk_answer". */
     | { type: 'talk_connect'; id: string; chatId: string; sdp: string; voice?: BotVoice }
-    | { type: 'push_subscribe'; subscription: unknown }
+    /**
+     * `form` and `always` (newer clients) are stored with the subscription: a phone that is not set to `always`
+     * stays quiet while a desktop is in use. Missing: pushed as before.
+     */
+    | { type: 'push_subscribe'; subscription: unknown; form?: DeviceForm; always?: boolean }
     /** The people this account can chat with and its person chats again; answer "people". */
     | { type: 'people' }
     /** Deletes this account's half of a person chat (the other person keeps theirs); answer "people" to all browsers. */
@@ -938,16 +981,25 @@ export type ClientFrame =
     | { type: 'pair_link'; token?: string; expiresAt?: string }
     /** Sign this machine in to an engine with a device code; answers "engine_login" with the link and the code. */
     | { type: 'engine_login'; engine: DeviceLoginEngine }
-    /** Open a terminal with Claude Code on this machine for its sign-in (main account); answers "claude_sign_in" or an error. */
+    /** Sign in to Claude Code on this machine, in its browser or a terminal (main account); answers "claude_sign_in" or an error. */
     | { type: 'claude_sign_in' }
     /**
      * Claim a relay of one's own on a server with the setup code from its log and move this backend there (main account,
      * embedded relay only); answers "relay_claimed" with a pairing link at that relay, or an error.
      */
     | { type: 'relay_claim'; address: string; code: string }
-    | { type: 'presence'; visible: boolean }
+    /**
+     * Whether the page is visible, sent to every machine awake. Newer clients add `desktop` (the device's form) and,
+     * on a desktop, `active`: visible with input in the last two minutes, sent again at most once a minute while it lasts.
+     */
+    | { type: 'presence'; visible: boolean; desktop?: boolean; active?: boolean }
     /** Recording in progress: load the speech model already so the transcription starts warm. */
     | { type: 'voice_warmup' }
+    /**
+     * Dictation: turn the recording into text for the input field of `chatId`; nothing goes to a bot or into the
+     * history. Answer "transcribed" with the same `id`; an older backend answers with an error for the request.
+     */
+    | { type: 'transcribe'; id: string; chatId: string; audio: UploadInput }
     /** Shut down or (`restart`) restart the machine the frame goes to (`machine`), or cancel the planned shutdown or restart. */
     | { type: 'machine_shutdown'; cancel?: boolean; inSeconds?: number; restart?: boolean }
     /** Toggle automatic Windows sign-in of the machine (`machine`); without `on` only query. */
@@ -1011,9 +1063,10 @@ export type RelayRequest =
     | { type: 'device_logout'; id: string }
     | { type: 'accounts' }
     /** Answers "account_created" with a pairing token for the new account's first device. */
-    | { type: 'account_create'; name: string; admin?: boolean; reach?: Reach }
+    | { type: 'account_create'; name: string; admin?: boolean; reach?: Reach; /** see RelayAccount.machines; missing = all */ machines?: string[] }
     /** `password`: own account only; `admin` and `reach`: not for one's own account. */
-    | { type: 'account_update'; id: string; name?: string; password?: string; admin?: boolean; reach?: Reach; /** with reach 'listed' */ contacts?: string[] }
+    | { type: 'account_update'; id: string; name?: string; password?: string; admin?: boolean; reach?: Reach; /** with reach 'listed' */ contacts?: string[];
+        /** the relay's machines it runs on, null = all of them (RelayAccount.machines) */ machines?: string[] | null }
     /** Removes the account, its devices and, on every machine, its data; not for 'main'. */
     | { type: 'account_delete'; id: string }
     /** A new invitation for another account (the last one expired); answers "account_invite". Not for 'main'. */
@@ -1062,6 +1115,11 @@ export interface RelayAccount {
      * else, and the admin's backend keeps its setup.
      */
     setupBy?: string;
+    /**
+     * The relay's own machines (not bound to an account) the account runs on; missing = all of them, also those to come
+     * (an account with `setupBy` from before the choice: none). 'main' runs on all.
+     */
+    machines?: string[];
 }
 
 /**
@@ -1156,7 +1214,8 @@ export type AgentFrame =
     | { type: 'tool_output'; chatId: string; entryId: string; toolId: string; result?: string }
     | { type: 'user'; chatId: string; entry: HistoryEntry }
     | { type: 'read'; chatId: string; id: string; ts: string }
-    | { type: 'search_result'; text: string; chatId?: string; hits: SearchHit[] }
+    /** `since` and `files` as asked, so the web app can tell the answers to its searches apart. */
+    | { type: 'search_result'; text: string; chatId?: string; since?: string; files?: boolean; hits: SearchHit[] }
     /** A waiting message was moved into the conversation `to`. */
     | { type: 'moved'; chatId: string; entryId: string; to: string }
     /** A waiting message was deleted from the queue. */
@@ -1207,7 +1266,10 @@ export type AgentFrame =
     | { type: 'approval'; approval: Approval }
     /** The open jobs this machine's bots gave other bots (all of them, on every change and to a new browser). */
     | { type: 'jobs'; jobs: Job[] }
-    | { type: 'approval_done'; id: string; chatId: string; result: string }
+    /** `expired`: nobody answered in time; the web app leaves the card in place, marked, until the chat is drawn anew. */
+    | { type: 'approval_done'; id: string; chatId: string; result: string; expired?: boolean }
+    /** The answer to "transcribe": the text, or why there is none. */
+    | { type: 'transcribed'; id: string; ok: boolean; text?: string; message?: string }
     | { type: 'error'; chatId?: string; botId?: string; message: string; /** for an unknown request its type */ request?: string; code?: MessageCode }
     | { type: 'account'; subscription: string | null; model: string; version: string; apiKeySource: string; /** missing = Claude Code */ engine?: Engine }
     /** Models of the CLI on this machine (queried and stored when the backend starts). */
@@ -1240,6 +1302,8 @@ export type AgentFrame =
      * `folder`: the bot's folder on this machine; `action`: it is there (`use`), the repository is cloned (`clone`) or
      * the folder is created (`create`). Not ok: the bot has no place or it is taken; the app asks for the folder then.
      */
+    /** The copy of "bot_duplicate": `id` is the new bot. */
+    | { type: 'bot_duplicated'; botId: string; id: string }
     | { type: 'bot_moved'; botId: string; ok: boolean; dryRun?: boolean; folder?: string; action?: MoveAction; message?: string; refused?: FolderRefusal }
     | { type: 'file'; path: string; name: string; mime: string; data: string }
     /** The audio for "speech_get" (base64), or why there is none; the web app then reads with the device's voice. */
@@ -1309,7 +1373,7 @@ export type AgentFrame =
     | { type: 'setup_status'; relay: 'embedded' | 'remote'; container: boolean; engines: EngineStatuses;
         /** How this account signs in to Claude Code on this machine; missing = the plain `claude` (the machine's owner) */
         claudeCommand?: string;
-        /** The backend can open a terminal with Claude Code here for the sign-in ("claude_sign_in") */
+        /** The backend can sign in to Claude Code here ("claude_sign_in"): in the browser on this machine, or in a terminal */
         claudeTerminal?: boolean;
         /** Every engine is switched off here (a new installation): the main account picks first */
         noEngine?: boolean;
@@ -1320,8 +1384,12 @@ export type AgentFrame =
      * browsers, so the one that started it sees the outcome even after a reconnect.
      */
     | { type: 'engine_login'; engine: DeviceLoginEngine; state: 'code' | 'done' | 'failed'; url?: string; code?: string; message?: string }
-    /** The sign-in terminal is open on the machine (to the asking browser only). */
-    | { type: 'claude_sign_in' }
+    /**
+     * The sign-in to Claude Code runs on the machine (to the asking browser only): `browser` = `claude auth login` has
+     * opened the browser there and the backend notices the outcome itself, missing = a terminal is open (no desktop of
+     * its own, or a backend from before). A failure comes later as an error with request "claude_sign_in".
+     */
+    | { type: 'claude_sign_in'; via?: 'browser' }
     /** The relay is claimed; `url` signs the asking device in there. The backend moves over a moment later. */
     | { type: 'relay_claimed'; url: string }
     | E2eFrame
@@ -1350,7 +1418,8 @@ export type RelayFrame =
     /** Machines with a token of their own (joined by invitation). */
     | { type: 'machine_tokens'; list: { machine: string; created: string; /** bound to this account by a setup link */ account?: string }[] }
     /** All accounts for an admin, otherwise only one's own. */
-    | { type: 'accounts'; list: RelayAccount[]; current: string }
+    | { type: 'accounts'; list: RelayAccount[]; current: string;
+        /** for an admin: the machines the relay knows, awake or not, those bound to an account with it */ machines?: { name: string; account?: string }[] }
     | { type: 'account_created'; account: RelayAccount; pair: { token: string; expiresAt: string } }
     | { type: 'account_invite'; account: RelayAccount; pair: { token: string; expiresAt: string } }
     /**
@@ -1429,6 +1498,8 @@ export interface TurnResultData {
     durationMs: number;
     costUsd: number;
     error?: string;
+    /** The answer's history entry; missing from backends before it and when there was no answer. */
+    entryId?: string;
 }
 
 export interface Snapshot {
@@ -1562,9 +1633,9 @@ export type AgentInbound =
     | { type: 'people'; list: Person[] }
     /** An account was deleted: the backend stops its bots and removes its data. */
     | { type: 'account_deleted'; account: string }
-    /** An account was created; the backend starts serving it. */
+    /** An account was created or now runs on this machine (an admin ticked it); the backend starts serving it. */
     | { type: 'account_added'; account: string }
-    /** An account now runs on machines bound to it: this backend stops serving it and keeps what it has. */
+    /** The account no longer runs on this machine (an admin chose others, a setup link): this backend stops serving it and keeps what it has. */
     | { type: 'account_released'; account: string }
     /** Answer to `push`: device tokens the push service no longer knows (app uninstalled); the backend drops them. */
     | { type: 'push_result'; gone: NativePushSubscription[] }

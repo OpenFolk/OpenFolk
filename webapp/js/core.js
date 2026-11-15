@@ -1,5 +1,4 @@
 /* OpenFolk web app: basics: DOM elements, state, Markdown, storage and small helpers. */
-import { t } from './i18n.js';
 import { bundled, relayAddress, setRelayAddress } from './platform.js';
 
 /** @param {string} id */
@@ -25,10 +24,10 @@ export const el = {
     settingsAccounts: $('settings-accounts'), accountsOwnName: /** @type {HTMLInputElement} */ ($('accounts-own-name')), accountsPassword: /** @type {HTMLInputElement} */ ($('accounts-password')),
     accountsOwnSave: /** @type {HTMLButtonElement} */ ($('accounts-own-save')), accountsList: $('accounts-list'), accountsNewName: /** @type {HTMLInputElement} */ ($('accounts-new-name')),
     accountsNewAdmin: /** @type {HTMLInputElement} */ ($('accounts-new-admin')), accountsNewCustomer: /** @type {HTMLInputElement} */ ($('accounts-new-customer')), accountsCreate: /** @type {HTMLButtonElement} */ ($('accounts-create')),
-    accountsNewForm: $('accounts-new-form'), accountsNewCancel: /** @type {HTMLButtonElement} */ ($('accounts-new-cancel')),
+    accountsNewForm: $('accounts-new-form'), accountsNewMachines: $('accounts-new-machines'), accountsNewCancel: /** @type {HTMLButtonElement} */ ($('accounts-new-cancel')),
     accountsLink: /** @type {HTMLInputElement} */ ($('accounts-link')), accountsLinkGo: /** @type {HTMLButtonElement} */ ($('accounts-link-go')),
     inviteBox: $('invite-box'), setupBox: $('setup-box'), accountsError: $('accounts-error'),
-    accountsJoin: /** @type {HTMLButtonElement} */ ($('accounts-join')), accountsScan: /** @type {HTMLButtonElement} */ ($('accounts-scan')), accountsOwn: $('accounts-own'),
+    accountsJoin: /** @type {HTMLButtonElement} */ ($('accounts-join')), accountsScan: /** @type {HTMLButtonElement} */ ($('accounts-scan')), accountsOwn: $('accounts-own'), accountsPasswordField: $('accounts-password-field'), accountsOwnClose: /** @type {HTMLButtonElement} */ ($('accounts-own-close')),
     settingsAllAccounts: /** @type {HTMLInputElement} */ ($('settings-all-accounts')), settingsAllAccountsField: $('settings-all-accounts-field'),
     e2eEnter: /** @type {HTMLButtonElement} */ ($('e2e-enter')), e2eDelete: /** @type {HTMLButtonElement} */ ($('e2e-delete')),
     pairCreate: /** @type {HTMLButtonElement} */ ($('pair-create')), pairBox: $('pair-box'), totpTitle: $('totp-title'), totpBox: $('totp-box'),
@@ -36,8 +35,8 @@ export const el = {
     loginFirstCode: /** @type {HTMLInputElement} */ ($('login-first-code')), loginFirstSend: /** @type {HTMLButtonElement} */ ($('login-first-send')), loginScan: /** @type {HTMLButtonElement} */ ($('login-scan')),
     devicesScan: /** @type {HTMLButtonElement} */ ($('devices-scan')),
     settingsPush: $('settings-push'), pushStatus: $('push-status'), pushEnable: /** @type {HTMLButtonElement} */ ($('push-enable')),
-    pushKinds: $('push-kinds'),
-    settings: $('settings'), settingsTheme: /** @type {HTMLSelectElement} */ ($('settings-theme')), settingsBubble: $('settings-bubble'), settingsAutoRead: /** @type {HTMLInputElement} */ ($('settings-auto-read')), settingsLanguage: /** @type {HTMLSelectElement} */ ($('settings-language')),
+    pushKinds: $('push-kinds'), pushAlwaysRow: $('push-always-row'), pushAlways: /** @type {HTMLInputElement} */ ($('push-always')),
+    settings: $('settings'), settingsTheme: /** @type {HTMLSelectElement} */ ($('settings-theme')), settingsBubble: $('settings-bubble'), settingsAutoRead: /** @type {HTMLInputElement} */ ($('settings-auto-read')), settingsDictation: /** @type {HTMLInputElement} */ ($('settings-dictation')), settingsLanguage: /** @type {HTMLSelectElement} */ ($('settings-language')),
     settingsMachines: $('settings-machines'), machineAddRow: $('machine-add-row'), machineAdd: /** @type {HTMLButtonElement} */ ($('machine-add')),
     machineJoin: $('machine-join'), settingsBots: $('settings-bots'), settingsBotsAsleep: $('settings-bots-asleep'),
     settingsAiAsleep: $('settings-ai-asleep'), aiList: $('settings-ai-list'), aiAddRow: $('settings-ai-add-row'), aiAdd: /** @type {HTMLButtonElement} */ ($('settings-ai-add')),
@@ -51,12 +50,14 @@ export const el = {
     textTitle: $('text-title'), textHint: $('text-hint'), textSubmit: /** @type {HTMLButtonElement} */ ($('text-submit')),
     agentStatus: $('agent-status'), chatList: $('chat-list'), account: $('account'), usage: $('usage'),
     btnNew: /** @type {HTMLButtonElement} */ ($('btn-new')), newMenu: $('new-menu'), searchBox: $('search-box'), search: /** @type {HTMLInputElement} */ ($('search')), searchResults: $('search-results'),
+    searchFilters: $('search-filters'), palette: $('palette'), paletteInput: /** @type {HTMLInputElement} */ ($('palette-input')), paletteList: $('palette-list'), paletteHint: $('palette-hint'),
+    shortcuts: $('shortcuts'), shortcutsList: $('shortcuts-list'), shortcutsNote: $('shortcuts-note'),
     chatEmpty: $('chat-empty'), panes: $('panes'), paneAdd: /** @type {HTMLButtonElement} */ ($('pane-add')), sidebarResize: $('sidebar-resize'),
     messageMenu: $('message-menu'),
-    speechBar: $('speech-bar'), speechBarOpen: $('speech-bar-open'), speechBarWho: $('speech-bar-who'), speechBarText: $('speech-bar-text'), speechBarStop: $('speech-bar-stop'),
+    speechBar: $('speech-bar'), speechBarAuto: /** @type {HTMLButtonElement} */ ($('speech-bar-auto')), speechBarOpen: $('speech-bar-open'), speechBarWho: $('speech-bar-who'), speechBarText: $('speech-bar-text'), speechBarStop: $('speech-bar-stop'),
     speechBarPlay: $('speech-bar-play'), speechBarSeek: /** @type {HTMLInputElement} */ ($('speech-bar-seek')), speechBarElapsed: $('speech-bar-elapsed'), speechBarTotal: $('speech-bar-total'),
-    editor: $('editor'), editorForm: /** @type {HTMLFormElement} */ ($('editor-form')), editorTitle: $('editor-title'), editorTemplateField: $('editor-template-field'),
-    editorTemplate: /** @type {HTMLSelectElement} */ ($('editor-template')), editorAvatar: $('editor-avatar'), editorImage: /** @type {HTMLInputElement} */ ($('editor-image')), editorImageRemove: /** @type {HTMLButtonElement} */ ($('editor-image-remove')),
+    editor: $('editor'), editorForm: /** @type {HTMLFormElement} */ ($('editor-form')), editorTitle: $('editor-title'), editorRoleSuggestions: $('editor-role-suggestions'),
+    editorMachineField: $('editor-machine-field'), editorAvatar: $('editor-avatar'), editorImage: /** @type {HTMLInputElement} */ ($('editor-image')), editorImageRemove: /** @type {HTMLButtonElement} */ ($('editor-image-remove')),
     editorAvatarAi: /** @type {HTMLButtonElement} */ ($('editor-avatar-ai')), avatarPicker: $('avatar-picker'), avatarGrid: $('avatar-grid'), avatarError: $('avatar-error'), avatarGenerate: /** @type {HTMLButtonElement} */ ($('avatar-generate')), editorNameSuggest: /** @type {HTMLButtonElement} */ ($('editor-name-suggest')), editorNameSuggestions: $('editor-name-suggestions'),
     editorRoleSuggest: /** @type {HTMLButtonElement} */ ($('editor-role-suggest')),
     editorName: /** @type {HTMLInputElement} */ ($('editor-name')), editorArea: /** @type {HTMLInputElement} */ ($('editor-area')), editorRole: /** @type {HTMLInputElement} */ ($('editor-role')), editorFolder: /** @type {HTMLInputElement} */ ($('editor-folder')), editorRepo: /** @type {HTMLInputElement} */ ($('editor-repo')), editorModel: /** @type {HTMLSelectElement} */ ($('editor-model')),
@@ -85,6 +86,7 @@ export const el = {
     tabBar: $('tab-bar'), tabRepos: $('tab-repos'), tabReposBadge: $('tab-repos-badge'),
     gitPage: $('git-page'), gitPageContent: $('git-page-content'), gitBack: /** @type {HTMLButtonElement} */ ($('git-back')), gitTitle: $('git-title'), gitSub: $('git-sub'),
     archive: $('archive'), archiveSub: $('archive-sub'), archiveList: $('archive-list'),
+    forward: $('forward'), forwardSub: $('forward-sub'), forwardSearch: /** @type {HTMLInputElement} */ ($('forward-search')), forwardList: $('forward-list'),
     vscode: $('vscode'), vsBack: /** @type {HTMLButtonElement} */ ($('vs-back')), vsTitle: $('vs-title'), vsSub: $('vs-sub'), vsList: $('vs-list'), vsShow: $('vs-show'), vsTerminal: $('vs-terminal'),
     talk: $('talk'), talkAvatar: $('talk-avatar'), talkAvatarButton: /** @type {HTMLButtonElement} */ ($('talk-avatar-button')), talkName: $('talk-name'), talkPhase: $('talk-phase'),
     talkHeard: $('talk-heard'), talkAnswer: $('talk-answer'), talkError: $('talk-error'), talkMic: /** @type {HTMLButtonElement} */ ($('talk-mic')), talkEnd: /** @type {HTMLButtonElement} */ ($('talk-end')),
@@ -92,10 +94,9 @@ export const el = {
 };
 
 /** Bot templates for the editor; texts are dictionary keys, the folder is left to the user. */
-// 'ask' (the first, the default): no presets. Every new bot asks the user in its chat and fills in what is still open itself
+// The role chips of a new bot (editors.js): a tap takes the role and, unseen, working instructions and approval level;
+// whatever stays open the bot asks in its chat
 export const TEMPLATES = [
-    { id: 'ask', name: '', role: '', tone: '', approval: 'risky' },
-    { id: '', name: '', role: '', tone: '', approval: 'risky' },
     { id: 'chief', name: 'template.chief.name', role: 'template.chief.role', tone: 'template.chief.tone', approval: 'risky' },
     { id: 'developer', name: 'template.developer.name', role: 'template.developer.role', tone: 'template.developer.tone', approval: 'risky' },
     { id: 'infra', name: 'template.infra.name', role: 'template.infra.role', tone: 'template.infra.tone', approval: 'risky' },
@@ -104,14 +105,6 @@ export const TEMPLATES = [
     { id: 'product', name: 'template.product.name', role: 'template.product.role', tone: 'template.product.tone', approval: 'write' },
     { id: 'mail', name: 'template.mail.name', role: 'template.mail.role', tone: 'template.mail.tone', approval: 'risky' },
 ];
-
-/** Values of a template in the current language, shaped like a bot for the editor. */
-export function templateValues(tpl) {
-    return {
-        name: tpl.name ? t(tpl.name) : '', role: tpl.role ? t(tpl.role) : '', tone: tpl.tone ? t(tpl.tone) : '',
-        folder: '', approval: tpl.approval, machine: '',
-    };
-}
 
 export const COLORS = ['#d97757', '#0f9d8a', '#7c5cff', '#e0a800', '#3b82f6', '#e5487c', '#16a34a', '#a16207'];
 // Stored edge length of avatars: large enough for the zoomed view, about 30-60 KB as JPEG
@@ -137,6 +130,7 @@ export const state = {
     stashedDevice: '',       // while adding an account: the current account's key, not used for signing in meanwhile
     online: [],              // machines that are awake (backends at the relay)
     onlineKnown: false,      // "online" is reliable only after the relay's machine list (per connection)
+    botsKnown: false,        // a backend has sent its bots: before that an empty list means "still loading", not "no bots"
     pinned: {},              // chatId -> pinned messages [{ id, text, ts, from }]
     perMachine: Object.create(null), // machine -> { states, activity, activeChats, queues } according to its backend
     pushKeys: {},            // machine -> public VAPID key
@@ -158,7 +152,8 @@ export const state = {
     people: [],              // whom this account can chat with [{ id, name, admin, reach }], from the backends
     personChats: [],         // favorite, mute and deletion of the person chats [{ id, favorite, muted, cleared, updatedAt }]
     usage: null, pushKey: '',
-    models: [],              // models of the CLI [{ value, resolvedModel, displayName }], 'default' points to the real one
+    models: [],              // models of the CLI [{ value, resolvedModel, displayName }], 'default' points to the real one; the last machine's
+    modelsPerMachine: {},    // machine -> its models (engines differ per machine, #63); modelsOf() in e2e.js picks
     history: {},             // chatId -> HistoryEntry[]
     voicePending: {},        // chatId -> { length (ms), since (ms) } of the sent recording until its transcript arrives
     historyFrom: {},         // chatId -> machine that sent the history (tool outputs are requested there)

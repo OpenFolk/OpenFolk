@@ -30,7 +30,8 @@ async function join(raw) {
     if (!raw) return fail('usage', 'Usage: npm run join -- "<link from the app>"   (Settings, Machines, "Add machine")', 2);
     let link;
     try {
-        link = new URL(raw.trim());
+        // Also the whole command from "Add machine" pasted into the desktop app's setup: npm run join -- "<link>"
+        link = new URL(raw.match(/https?:\/\/[^\s"'“”]+/)?.[0] ?? raw.trim());
     } catch {
         return fail('not_a_link', 'That is not a link. Copy the whole command from the app.', 2);
     }

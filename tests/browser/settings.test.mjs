@@ -197,6 +197,19 @@ export default async function ({ start, check }) {
     await h.wait(50);
     const folderSaved = h.sent.findLast((f) => f.type === 'machine_settings_save' && f.settings && 'botFolder' in f.settings);
     check('folder for bots goes to that machine', folderSaved?.machine === 'desk' && folderSaved.settings.botFolder === 'D:/work/OpenFolk', folderSaved);
+    const roots = await p.locator('#settings-machines .settings-roots code').allTextContents();
+    check('the allowed folders are listed above the default folder', roots.join() === 'D:/work,E:/more', roots);
+    // the default folder from the folder picker of that machine (#62)
+    await p.locator('#settings-machines .settings-folder button').click();
+    await h.wait(50);
+    const listAsked = h.sent.findLast((f) => f.type === 'folder_list');
+    check('"Choose …" lists the folders of that machine', listAsked?.machine === 'desk' && await p.isVisible('#folder-picker'), listAsked);
+    await h.push({ type: 'folder_listed', machine: 'desk', asked: listAsked?.folder, ok: true, folder: 'E:/more', parent: '', folders: [] });
+    await h.wait(50);
+    await p.click('#picker-choose');
+    await h.wait(50);
+    const picked = h.sent.findLast((f) => f.type === 'machine_settings_save' && f.settings && 'botFolder' in f.settings);
+    check('the chosen folder is the new default folder', picked?.machine === 'desk' && picked.settings.botFolder === 'E:/more' && await p.isHidden('#folder-picker'), picked);
 
     // The setup loads the speech model as a step of its own, with its size
     await h.push({ type: 'machine_settings', machine: 'desk', anthropicKey: false, gitPushToken: true, shutdownMethod: 'script', voice: { state: 'installing', detail: 'model:large-v3-turbo' },
@@ -224,9 +237,12 @@ export default async function ({ start, check }) {
     await h.push({ type: 'machine_join_link', machine: ask?.machine, url: 'https://test.local/#join=abc&e2e=key', command: 'npm run join -- "https://test.local/#join=abc&e2e=key"',
         expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), e2e: true });
     await h.wait(50);
-    check('the command to run on the new machine, in the settings dialog', (await p.inputValue('#machine-join input')) === 'npm run join -- "https://test.local/#join=abc&e2e=key"'
-        && await p.isVisible('#settings-dialog') && (await p.textContent('#settings-dialog-title')) === 'Add machine');
-    await p.click('#settings-dialog [data-close]');
+    const joinFields = await p.$$eval('#machine-join input', (l) => l.map((i) => i.value));
+    check('the link for the desktop app first, then the command, in the settings dialog', JSON.stringify(joinFields) === JSON.stringify(['https://test.local/#join=abc&e2e=key', 'npm run join -- "https://test.local/#join=abc&e2e=key"'])
+        && await p.isVisible('#settings-dialog') && (await p.textContent('#settings-dialog-title')) === 'Add machine', joinFields);
+    const joinButtons = await p.$$eval('#machine-join button', (l) => l.map((b) => b.textContent));
+    check('"Copy link" and "Copy command"', joinButtons.join() === 'Copy link,Copy command', joinButtons);
+    await p.click('#settings-dialog-actions [data-close]');
     await h.wait(50);
     check('closed: the box is back in the machines block', await p.isHidden('#settings-dialog') && await p.evaluate(() => document.getElementById('machine-join').hidden && document.getElementById('machine-join').parentElement.id !== 'settings-dialog-body'));
     await p.click('#settings-machines .settings-machine-joined button');

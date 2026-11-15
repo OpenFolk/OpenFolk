@@ -24,7 +24,7 @@ export default async function ({ start, check }) {
 
     await h.openChat('Skool Sven');
     await page();
-    check('Codex chip next to the Claude models', (await chips()).join('|') === 'Opus 5.5|Sonnet 5.5|Codex', await chips());
+    check('Codex chip next to the Claude models', (await chips()).join('|') === 'Opus|Sonnet|Codex', await chips());
     await p.locator('#info-switches .model-switch .chip', { hasText: 'Codex' }).click();
     await h.wait(150);
     const f = h.sent.findLast((x) => x.type === 'model');
@@ -72,7 +72,7 @@ export default async function ({ start, check }) {
     await h.push({ type: 'models', machine: 'desk', models: [...MODELS, { value: 'cursor', resolvedModel: 'cursor:auto', displayName: 'Cursor' }, { value: 'cursor:auto', resolvedModel: 'cursor:auto', displayName: 'Auto (Cursor)' }, { value: 'copilot', resolvedModel: 'copilot:auto', displayName: 'Copilot' }, { value: 'antigravity', resolvedModel: 'antigravity:g', displayName: 'Antigravity' }, { value: 'opencode', resolvedModel: 'opencode:opencode/big-pickle', displayName: 'OpenCode' }] });
     await h.wait(100);
     await page();
-    check('with Cursor and Copilot: chips next to Codex', (await chips()).join('|') === 'Opus 5.5|Sonnet 5.5|Codex|Cursor|Copilot|Antigravity|OpenCode', await chips());
+    check('with Cursor and Copilot: chips next to Codex', (await chips()).join('|') === 'Opus|Sonnet|Codex|Cursor|Copilot|Antigravity|OpenCode', await chips());
     await p.locator('#info-switches .model-switch .chip', { hasText: 'Cursor' }).click();
     await h.wait(150);
     await leave();
@@ -82,4 +82,28 @@ export default async function ({ start, check }) {
     await h.push({ type: 'account', subscription: null, model: 'Auto', version: '2026.10.01', apiKeySource: 'none', engine: 'cursor' });
     await h.wait(100);
     check('account shows Cursor', (await p.textContent('#account')).includes('Cursor 2026.10.01'), await p.textContent('#account'));
+
+    // a second machine with Claude only: its list does not replace the one of the bot's machine (#63)
+    await h.push({ type: 'agents', online: ['desk', 'laptop'] });
+    await h.push({ type: 'models', machine: 'laptop', models: MODELS.filter((m) => !m.value.startsWith('codex')) });
+    await h.wait(100);
+    await page();
+    // with two machines the page also has the machine switch, whose chips are not models
+    const models = (await chips()).filter((c) => !['DESK', 'LAPTOP'].includes(c));
+    check('the bot on desk keeps the engines of desk', models.join('|') === 'Opus|Sonnet|Codex|Cursor|Copilot|Antigravity|OpenCode', models);
+    await leave();
+    check('the badge still names the model of desk', (await badge()) === 'Auto (Cursor)', await badge());
+    const onLaptop = () => p.evaluate(() => {
+        openEditor(null);
+        const machine = /** @type {HTMLSelectElement} */ (document.getElementById('editor-machine'));
+        machine.value = 'laptop';
+        machine.dispatchEvent(new Event('change'));
+        const shown = ['cursor', 'codex'].map((v) => !document.querySelector(`#editor-model option[value="${v}"]`).hidden);
+        machine.value = 'desk';
+        machine.dispatchEvent(new Event('change'));
+        const back = !document.querySelector('#editor-model option[value="cursor"]').hidden;
+        document.getElementById('editor').hidden = true;
+        return [...shown, back];
+    });
+    check('a new bot on laptop: no Cursor, no Codex; back on desk: Cursor', JSON.stringify(await onLaptop()) === '[false,false,true]', await onLaptop());
 }

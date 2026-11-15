@@ -42,8 +42,18 @@ Tailscale restricts the backend connection further (`docs/tailscale.md`).
 > runs its bots without anyone signing in on Windows and Linux; a Mac needs a sign-in, and the automatic sign-in
 > of the desktop session is Windows-only. The relay runs anywhere Node 22 or Docker runs.
 
-**Try it in two minutes:** install the desktop app from the [releases](https://github.com/OpenFolk/OpenFolk/releases)
-(Windows, macOS, Linux) and choose "Start on this computer", or from source with Node 22:
+**Try it in two minutes:** install the desktop app and choose "Start on this computer":
+
+| System | Download | Note |
+| --- | --- | --- |
+| Windows 10 and 11 | [Installer (.exe)](https://openfolk.app/download.php?os=windows) | Signed ("Flowdesk GmbH") |
+| macOS, Apple Silicon | [Disk image (.dmg)](https://openfolk.app/download.php?os=mac) | Signed and notarized by Apple |
+| macOS, Intel | [Disk image (.dmg)](https://openfolk.app/download.php?os=mac-intel) | Signed and notarized by Apple |
+| Linux | [AppImage](https://openfolk.app/download.php?os=linux) · [.deb](https://openfolk.app/download.php?os=linux-deb) | AppImage: `chmod +x`, needs `libfuse2` |
+
+The links always lead to the latest [release](https://github.com/OpenFolk/OpenFolk/releases), whose `SHA256SUMS`
+lists the checksum of every package (`sha256sum -c SHA256SUMS --ignore-missing`). Installed apps update themselves.
+Or from source with Node 22:
 
 ```sh
 git clone https://github.com/OpenFolk/OpenFolk.git openfolk && cd openfolk && npm install && npm start
@@ -54,19 +64,23 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
 
 ## Features
 
-- **Bots and templates.** Create a bot with "+", optionally from a template. The default, "Set up in the chat", needs
-  only a name and a folder: the bot looks at the folder, asks a few questions with options in its chat and fills in
-  field of work, role and working instructions itself (`set_profile`); a bot from another template skips what that set.
-  Its chat opens right after saving; everything stays editable in its settings. Per bot: folder, model (default,
-  Opus, Sonnet, Haiku, Codex, Cursor, Copilot, Antigravity, OpenCode or a custom id), approval level, tone and the
-  voice that reads its answers aloud (guessed from the name unless chosen): male or female, and a voice of its own of
-  the provider reading right now (OpenAI's 13, Gemini's 30, Piper's per language) with "Listen" for a sample.
-  "AI avatar" opens a set of ready-made portraits (drawn, in `webapp/avatars/`; `npm run avatar-set` redraws them) with
-  the image model as the last entry.
-  "Suggest" proposes names (a first name with a field of work, kept in a field of its own), a role or a profile
-  picture from the folder's README/CLAUDE.md; with
-  a Gemini or OpenAI key in the settings the avatar is a generated photo, otherwise an SVG drawn by the model. The field
-  "Folder or repository" is a text field: the folder has to exist on the bot's machine and lie under that machine's
+- **Bots and templates.** "+" opens a short page: role, name, folder and repository, nothing more. The templates
+  (Chief of Staff, Developer, Infrastructure, Social Media, Landing Pages, Product Scout, Mail) stand under the role as
+  chips; a tap takes the role and, unseen, the template's working instructions and approval level. Under the name three
+  first names appear that alliterate with the role ("Others" for three more); the machine shows only when there is a
+  choice. After "Create" the bot's chat opens: the bot looks at its folder, asks a few questions with options and fills
+  in field of work, role and working instructions itself (`set_profile`), skipping what is already set, and offers a
+  profile picture last. Everything else is in its settings (the pencil on its page): picture, field of work, model
+  (default, Opus, Sonnet, Haiku, Codex, Cursor, Copilot, Antigravity, OpenCode or a custom id), approval level, tone,
+  folder of the list, whom it may message, and the voice that reads its answers aloud (guessed from the name unless
+  chosen): male or female, and a voice of its own of the provider reading right now (OpenAI's 13, Gemini's 30, Piper's
+  per language) with "Listen" for a sample. "AI avatar" there opens a set of ready-made portraits (drawn, in
+  `webapp/avatars/`; `npm run avatar-set` redraws them) with the image model as the last entry, and "Suggest" proposes
+  names (a first name with a field of work, kept in a field of its own), a role or a profile picture from the folder's
+  README/CLAUDE.md; with a Gemini or OpenAI key in the settings the avatar is a generated photo, otherwise an SVG drawn
+  by the model. "Duplicate bot" on its page makes a copy under a new name on the same machine: profile, model,
+  approval level, folder and picture, and its routines paused; history, knowledge and conversations stay with the
+  original. The field "Folder" is a text field: the folder has to exist on the bot's machine and lie under that machine's
   allowed folders (`docs/running.md`, "Allowed folders"), otherwise the backend refuses it with the reason. A git
   repository's address instead of a folder makes the backend clone it into the machine's folder for bots on save;
   "Browse" lists the folders of the bot's machine and creates a new one there. A bot without a project of its own
@@ -78,20 +92,31 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   fence: a script the bot writes and then runs is not looked into. Whoever wants every command confirmed uses
   *write*, which asks before every change; *never* never asks. Reading tools never get `.env` files or keys,
   whatever the level. The card offers allow, always allow (for the session), always for this bot (external MCP tools;
-  the bot editor lists them and takes them off again) and deny with a reason; unanswered requests are denied after
-  30 minutes. Rules: `local/src/policy.ts`.
+  the bot editor lists them and takes them off again) and deny with a reason. Unanswered requests are denied after 30 minutes; the card stays in
+  the chat, marked as expired. A new message in the chat instead of an answer closes the bot's open cards: nothing it
+  asked about happens, and the message is its next instruction (not in groups). Rules: `local/src/policy.ts`.
 - **Connectors.** The services connected in the claude.ai account Claude Code is signed in with (Gmail, Drive and
   so on) stay out of the bots' sessions unless the machine settings let them in ("Connectors"). MCP servers you
   configure yourself (`.mcp.json`, `claude mcp add`) are not affected.
 - **Questions.** Multiple-choice questions of a bot (AskUserQuestion) appear as a card with buttons and free text.
 - **Push notifications.** Per kind (bot done, routine done, approval/question, machine awake, usage limit, message from a person, hand-over) off,
-  quiet, normal or high, for all devices. Single bots and groups are muted on their page or in the list's menu. Sent directly from your machine:
+  quiet, normal or high, for all devices. Single bots and groups are muted on their page or in the list's menu.
+  While you use a computer (the desktop app or a browser on a wide screen, visible, with input in the last two
+  minutes), your phone stays quiet: no answers, routine results or messages, and approvals, questions and hand-overs
+  only after three minutes, if nobody opened the chat or answered by then. Machine awake and usage limits arrive as
+  always. "Always notify on this device" in the phone's notification settings turns this off for that phone. A
+  waiting notification lives in the backend's memory; a restart in those three minutes drops it. Sent directly from your machine:
   Web Push/VAPID to browsers (on iPhone only from the installed PWA), APNs and FCM to the mobile apps
   (`mobile/README.md`).
 - **Activity.** Tool calls as expandable rows with result and duration; the list shows what a bot is working on.
 - **Usage.** Five-hour and weekly window of the subscription; Codex limits are shown separately.
-- **Routines.** Scheduled prompts (daily, weekdays, weekly, hourly or cron) with "run now". A routine can wake
-  its machine (`docs/running.md`, "Machine settings") and shut it down afterwards.
+- **Routines.** Scheduled prompts (daily, weekdays, weekly, hourly or cron) on the bot's page: a row each with when
+  it runs in words ("weekdays 8:00", "every 2 hours"), the next run and a switch to pause it. Opened, a routine shows
+  its instruction, "Run now", "Edit" and the last 20 runs with start, duration, status and the reason of a failure;
+  "Show in chat" jumps to the answer. The runs travel with the routine to your other machines. "Edit in chat" starts
+  a request to the bot in the composer; the bot changes or creates its own routines itself (`set_routine`, with a
+  line in the chat), never another bot's. A routine can wake its machine (`docs/running.md`, "Machine settings") and
+  shut it down afterwards; that stays the user's choice.
 - **Slash commands.** In a bot's chat on Claude, "/" at the start of a message lists Claude Code's commands for the
   bot's folder: your own (`~/.claude/commands`, skills), the project's (`.claude/commands`), plugins' and a few
   built-in ones such as `/compact` and `/context`. Claude Code runs them as in the terminal. A message that starts
@@ -126,7 +151,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   (never the tools' output), so "what did we decide about the deploy?" gets answered from the conversation where
   it was decided. Other knowledge (wiki, Notion, Confluence) comes in through the MCP servers you connect.
 - **Voice messages.** Recorded in the browser, transcribed locally with faster-whisper on the machine that runs
-  the bot (`local/tools/transcribe.py`; model and language in the settings). This is the only part in Python and optional:
+  the bot (`local/tools/transcribe.py`; model and language in the settings). Set per device, the microphone dictates
+  instead: the text field stays usable while recording, the checkmark writes the text where the cursor was, and the
+  message goes out as text with the send button. For a dictation Whisper gets the bot's name, folder and repository as hints. This is the only part in Python and optional:
   with Python 3.9 or newer on the machine, "Set up voice messages" in its settings installs the rest
   (`local/tools/requirements-voice.txt`, also by hand), with the CUDA libraries where there is an NVIDIA card, and
   loads the model: about 1.6 GB for the default `large-v3-turbo` (without a graphics card `small`, about 0.5 GB). A
@@ -143,11 +170,24 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   `gpt-realtime-2.1` (or the cheaper mini) listens, notices the end of a sentence and lets you interrupt; it passes
   every request on to the bot and speaks the bot's answer. Your voice then goes to OpenAI and costs a few cents a
   minute; the key stays on the machine, which opens the connection.
+- **Forwarding.** "Forward" in a message's ⋯ menu hands it to another bot, conversation, group or person: the chosen
+  chat opens with the message above the input, you add a few words or none and send it. The bot gets the whole message
+  and where it came from. In the chat the forward shows a few lines; a tap opens the whole text in place, the line
+  "from …" below it leads to the chat it came from.
 - **Read state, favorites, pinned messages** are synced across all devices and machines.
 - **Columns on wide screens.** Ctrl-click (or the middle button) opens a chat in a column of its own next to the
   others, as many as fit (one per 640 px); "+" at the right edge adds an empty one. With the mouse a chat can also
   be dragged from the list onto a column or onto "+". Every column has its own input,
   queue and search. The bot info docks as a column of its own. Phones and laptops keep one chat.
+- **Command palette and shortcuts.** Ctrl+K (Cmd+K on a Mac) opens a palette over everything: bots, groups, people,
+  conversations, routines, the settings' sections and actions (new bot, new group, settings, status, waking a machine
+  that is off), plus the messages of the last four weeks ("Search older messages" goes further back) and attached
+  files by name; a hit opens the chat at the message. Further keys: Ctrl+N new bot, Ctrl+Shift+N new group, Ctrl+F
+  search in the chat, Ctrl+1 to 9 the n-th chat of the list, Alt+Up/Down the previous or next one, Ctrl+[ and Ctrl+]
+  back and forward through the chats opened, Ctrl+I the input field, Ctrl+Enter send from anywhere, Ctrl+B hide the
+  list, Ctrl+, the settings, Ctrl+/ the overview of all keys. A browser tab keeps Ctrl+N, Ctrl+Shift+N and Ctrl+1 to 9
+  for itself; the desktop app has them all and lists them in its menu "Go". On the phone the search above the list
+  has chips instead: messages, bots, files, routines; messages there too from the last four weeks first, newest first.
 - **Tabs.** Floating at the bottom of the list: Bots, Repos (open changes of all bots, with a badge), Status
   (the machines with their bots, engines and backend, waking and shutting down, the plans' quota with the 5-hour and weekly windows, a separate one for Fable, and when
   each resets) and Settings.
@@ -171,7 +211,7 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   signed-in session of that machine, opens them for it.
 - **Several machines.** The same backend runs on every machine; bots exist once. Every bot lives on one machine
   and works in a folder there; while that machine sleeps, the bot sleeps and the app offers to wake it. Every machine
-  has a folder for bots (its settings, "Folder for bots"; the first allowed folder unless chosen), and a bot's machine
+  has a folder for bots (its settings, "Default folder for new bots", chosen with the folder picker; the first allowed folder unless chosen), and a bot's machine
   writes down where the bot lives below it, with its repository. Moving a bot is a tap on the other machine on the
   bot's page, nothing else: the bot goes to the same place below that machine's folder for bots, the repository is
   cloned there if it is missing, a folder without one is created, a sleeping machine is woken for it, and the sessions
@@ -179,8 +219,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   allowed folders, the app asks for folder and repository. Work that is not on the git server yet (uncommitted changes,
   new files, unpushed commits) comes along by itself, end-to-end encrypted through the relay, without a push; the new machine applies
   what fits cleanly and parks the rest in the repo's `.git/openfolk-work/`.
-- **Settings.** Language, theme, notifications, devices and security; per device whether the answer to a voice
-  message is read aloud by itself once it is done (on by default). Shared by all machines: the AI services (the API
+- **Settings.** Language, theme, notifications, devices and security; per device whether the microphone sends voice
+  messages (the default) or dictates into the input field, and whether the answer to a voice message is read aloud
+  by itself once it is done (on by default). Shared by all machines: the AI services (the API
   keys of OpenAI and Google Gemini as a list), the image model for profile pictures, how the voice conversation runs (in the app or over OpenAI Realtime), the voice for reading answers aloud (with one of those keys an OpenAI or Gemini
   voice, else the bot's machine where voice messages are set up, otherwise the device's own; with a cloud voice the text goes to that provider), the language of voice messages, what app
   notifications show, keeping the repos current. Per machine (main account only): the AI providers that run there, each on its subscription or a key,
@@ -235,14 +276,16 @@ check incoming frames with Zod (`local/src/frames.ts`) and answer malformed ones
 
 - Node 22.18 or newer and npm (not for the desktop apps, which bring their own).
 - Claude Code CLI signed in with your subscription (run `claude` once), or an Anthropic API key in the settings of
-  the machine. Please respect Anthropic's terms for subscription use; for automated or shared use the
+  the machine (created at platform.claude.com/settings/keys; the machine asks Anthropic whether it is valid before
+  storing it, which costs nothing, and use is billed against the Console account's credit). Please respect Anthropic's terms for subscription use; for automated or shared use the
   API key mode is the safe choice.
 - Every provider signs in either with its subscription or with a key stored in the machine's settings under "AI
   providers": an OpenAI API key for Codex, a Cursor API key, a GitHub token with Copilot access, a Gemini API key for
   Antigravity. Keys from the environment (`OPENAI_API_KEY`, `GH_TOKEN`, `GEMINI_API_KEY`, …) are never passed to
   an engine. With its key Codex keeps a folder of its own in the data folder, so the ChatGPT login stays for
   switching back; Codex chats started before a switch begin a new thread. Providers switched off there are not
-  started on that machine; a new installation starts with all of them off until you pick yours in the first steps.
+  started on that machine; a new installation starts with all of them off until you pick yours in the first steps,
+  except Claude when Claude Code is signed in on that computer already.
 - Claude can also run on both: "Subscription and API key, by rules" uses the subscription until it reports its limit
   (or already Anthropic's warning before it), then the API key until the limit resets, at most up to a daily cap in
   US dollars. The turn the limit stopped runs again on the key. The other engines do not report their limit before a
@@ -263,7 +306,8 @@ check incoming frames with Zod (`local/src/frames.ts`) and answer malformed ones
 
 The desktop apps for Windows, Linux (AppImage, .deb) and macOS bring the backend along: choose "Start on this computer" on
 their first start, sign in to Claude Code when the app asks, and that is all (`desktop/README.md`). They come from
-the [releases](https://github.com/OpenFolk/OpenFolk/releases) and update themselves from there. Their first update check
+the [releases](https://github.com/OpenFolk/OpenFolk/releases) (direct links [above](#openfolk)) and update themselves
+from there. Their first update check
 of a day is counted anonymously on openfolk.app (a daily total per system and version, no IP, no identifier, public at
 [openfolk.app/update/stats.json](https://openfolk.app/update/stats.json)); the app's menu switches that off. From source:
 
@@ -278,9 +322,13 @@ That is the whole setup on one computer. Without a `.env` the backend runs the r
 `http://127.0.0.1:8787`, generates every key on its first start (`local/data/`) and opens the web app in the browser
 with a pairing link, which signs the browser in and hands it the end-to-end key. The app then walks you through the
 first steps: whether a backend is connected, which AI providers it runs (a new installation starts with none, you
-tick your own) and whether it is signed in to one (Claude Code in a terminal the app opens on that computer, or
-with an Anthropic API key typed into the step; Codex and Copilot with a device code that you enter on any device),
-the first bot and the pairing of your phone. Each step ticks itself off.
+tick your own; with Claude Code signed in on that computer already, Claude is on and the question skipped) and
+whether it is signed in to one (Claude Code with your subscription in the browser the app opens on that computer, a
+terminal there when the backend runs without a desktop, or with an Anthropic API key typed into the step; Codex and
+Copilot with a device code that you enter on any device), the first bot and the
+pairing of your phone. Each step ticks itself off. Without a subscription or key at hand, "Try it without signing
+in" switches on OpenCode's free models, which need no sign-in (their providers may train on the data); the first bot
+then starts on OpenCode, and Claude can be added later.
 `?chat=<id>` opens a chat directly. The UI follows the device's language: German on German devices, English
 everywhere else; change it in the settings.
 
@@ -341,6 +389,12 @@ main account; nothing changes until a second one exists.
   admin also creates a new person there ("Create account and invitation link"). The invitation is a pairing link with
   a QR code, valid for 15 minutes; whoever opens it is signed in to the new account and may set a password of their own
   afterwards. The main account always is an admin.
+- **Machines per account:** in the form for a new account and under "Edit" in its row an admin ticks which of the
+  relay's machines the account runs on: "All my machines, new ones too" (the default) or one by one, for example only
+  the cloud server for a colleague and none for a customer. A machine not ticked does not serve the account, and its
+  devices do not see it; unticked later, the machine keeps the account's data and has it back when ticked again. On every
+  machine ticked the account signs in to Claude or Codex with a login of its own (see "AI sign-ins per account"), never
+  with yours. The main account runs on every machine; a computer joined by a setup link counts on top of the ticks.
 - **Order when inviting:** the invitation signs the person's device in to the new account at once, and there the
   setup checklist waits with the Claude sign-in for that account (a command for a terminal on the machine, see below),
   which cannot be done on a phone. So create the account first and open the invitation on your own PC (a signed-in
@@ -375,7 +429,7 @@ main account; nothing changes until a second one exists.
 - **Chats between accounts:** every account can write to the other accounts on its relay ("+" → "Person"). A customer
   should reach their team and no other customer: tick "Customer: chats with the admins only" when creating the account,
   or choose "Admins only" or "Reaches everyone" in the list later. Admins reach everyone. An account that only chats needs
-  no Claude sign-in; while it has no bots, the app shows it the people it can write to instead of the checklist. Each
+  no Claude sign-in; while it has no bots, the app shows it the people it can write to instead of the checklist. The people come from the machines: while none of them is awake, such an account sees a note saying so, not the owner's first steps with "npm start". Each
   side keeps its own copy: deleting the chat deletes one's own. A customer's support bot hands over to you when your
   account is set under "Hand over to" in its settings.
 
@@ -385,7 +439,7 @@ An employee or customer can run their bots on their own computer, with their own
 those bots up from your OpenFolk. They install the desktop app (Windows or macOS) and sign in to Claude there; you
 prepare everything and send them one link.
 
-1. **Prepare:** create an account for the person (settings → Accounts → "Add"), then "Set up" in its row. Choose the
+1. **Prepare:** create an account for the person (settings → Accounts → "Add"), then "Edit" in its row. Choose the
    bots: a support bot that only reads (level "only reads", it answers questions about the project from the code
    and changes nothing) and a development bot that changes the project and pushes, each with the https address of
    the repository and a token of its own for it (read-only for the support bot). Tick whom the person can write to
@@ -396,8 +450,8 @@ prepare everything and send them one link.
    relay as a machine bound to that account. It clones each repository into a folder of its own with its token and
    makes the bots. The person sees their bots and the people they may write to, nothing else.
 
-What the binding means: a machine joined by a setup link serves only its account, and that account runs only on such
-machines. Your bots, chats and machines never reach it, and its chats do not reach your machines: person chats and
+What the binding means: a machine joined by a setup link serves only its account, and the first setup link unticks
+your machines for that account (you can tick some again under "Edit"). Your bots, chats and machines never reach it, and its chats do not reach your machines: person chats and
 the setup travel between the machines through the relay, which stores nothing (a message waits on the sending
 machine until the other one is online, for up to a week). The person cannot change or delete the bots of the setup;
 you change them in the same dialog, and the change reaches their computer the next time it is online. The tokens lie

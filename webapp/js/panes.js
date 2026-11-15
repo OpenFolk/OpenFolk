@@ -62,6 +62,8 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {HTMLElement} recLevel
  * @property {HTMLButtonElement} recPause
  * @property {HTMLButtonElement} recSend
+ * @property {HTMLButtonElement} recDone
+ * @property {HTMLButtonElement} recAutoread
  */
 
 /**
@@ -74,6 +76,8 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {any} queueSettle
  * @property {any[]} uploads           { name, type, size, data, thumb }
  * @property {any} replyTo             quote for the next message
+ * @property {string | null} dictating id of the dictation whose text is awaited from the machine
+ * @property {{ start: number, end: number, value: string } | null} caret  where the text field's cursor was when it lost the focus
  * @property {string | null} jumpTo    message to jump to once the history is there
  * @property {any} globalSearch        { word, target } from the search across all chats
  * @property {{ id: string | null, snapshot: string }} rendered
@@ -93,6 +97,18 @@ export const SIDEBAR_MIN_PX = 260;
 export const SIDEBAR_MAX_PX = 640;
 export const INFO_PX = 400;
 let sidebarPx = SIDEBAR_PX;
+/** Ctrl+B on a wide screen: the chats take the sidebar's room until it comes back. */
+let sidebarHidden = false;
+/** Width the sidebar takes from the panes. */
+const sidebarSpace = () => (sidebarHidden && window.innerWidth > NARROW_PX ? 0 : sidebarPx);
+
+/** Hides or shows the sidebar on a wide screen (a phone shows the list or a chat anyway); false where it does nothing. */
+export function toggleSidebar() {
+    if (window.innerWidth <= NARROW_PX) return false;
+    sidebarHidden = !sidebarHidden;
+    el.app.classList.toggle('sidebar-hidden', sidebarHidden);
+    return true;
+}
 
 /** Sets the sidebar's width (the desktop apps let the user drag it) and returns the width it got. */
 export function setSidebarWidth(px) {
@@ -119,7 +135,7 @@ export function createPane() {
     applyI18n(root);
     /** @type {Pane} */
     const p = {
-        root, el: els, chatId: null, follow: true, queueOpen: false, queueSettle: null, uploads: [], replyTo: null,
+        root, el: els, chatId: null, follow: true, queueOpen: false, queueSettle: null, uploads: [], replyTo: null, dictating: null, caret: null,
         jumpTo: null, globalSearch: null, rendered: { id: null, snapshot: '' }, fxIndex: 0,
         cs: { hits: [], index: 0, timer: null }, mention: { start: -1, hits: [], active: 0, kind: 'bot' }, loadingTimer: null,
         dispose: () => undefined,
@@ -134,8 +150,8 @@ export function createPane() {
     resize.observe(m);
     m.addEventListener('load', stick, true);
     p.dispose = () => { mutations.disconnect(); resize.disconnect(); };
-    // the settings stay the last column
-    el.panes.insertBefore(root, el.settings.parentElement === el.panes ? el.settings : null);
+    // the settings stay the first column (placeSettings)
+    el.panes.appendChild(root);
     panes.push(p);
     if (!active) active = p;
     return p;
@@ -179,10 +195,10 @@ export function removePane(p) {
 }
 
 /** Whether there is room for more than one pane. */
-export const isWide = () => window.innerWidth >= sidebarPx + 2 * MIN_PANE_PX;
+export const isWide = () => window.innerWidth >= sidebarSpace() + 2 * MIN_PANE_PX;
 
 /** The info panel docks as a column of its own when a pane still fits next to it. */
-export const canDockInfo = () => window.innerWidth >= sidebarPx + MIN_PANE_PX + INFO_PX;
+export const canDockInfo = () => window.innerWidth >= sidebarSpace() + MIN_PANE_PX + INFO_PX;
 
 function infoDocked() {
     return !el.info.hidden && canDockInfo();
@@ -192,13 +208,17 @@ function infoDocked() {
 export function capacity() {
     const w = window.innerWidth;
     if (w <= NARROW_PX) return 1;
-    return Math.max(1, Math.floor((w - sidebarPx - (infoDocked() ? INFO_PX : 0)) / MIN_PANE_PX));
+    return Math.max(1, Math.floor((w - sidebarSpace() - (infoDocked() ? INFO_PX : 0)) / MIN_PANE_PX));
 }
 
-/** On wide screens the settings are a pane of their own after the chats; on a phone a page over everything. */
+/**
+ * On wide screens the settings are the first pane and the chats give way to them (parked, back when the settings
+ * close); what opens from them (settings dialog) is the pane next to them. On a phone a page over everything.
+ */
 function placeSettings() {
-    const target = window.innerWidth > NARROW_PX ? el.panes : el.app;
-    if (el.settings.parentElement !== target) target.appendChild(el.settings);
+    const wide = window.innerWidth > NARROW_PX;
+    if (wide && el.panes.firstElementChild !== el.settings) el.panes.prepend(el.settings);
+    if (!wide && el.settings.parentElement !== el.app) el.app.appendChild(el.settings);
     // Same z-index as the settings page on a phone: later in the DOM, the tabs stay on top of it
     if (el.app.lastElementChild !== el.tabBar) el.app.appendChild(el.tabBar);
 }
@@ -222,15 +242,25 @@ function renderTabs() {
 /** Whether the settings take the room of a pane. */
 const settingsInPanes = () => !el.settings.hidden && el.settings.parentElement === el.panes;
 
+/** Whether the settings dialog stands as a pane next to the settings rather than over them. */
+export const settingsDialogDocked = () => el.settingsDialog.parentElement === el.panes;
+
+/** Called when the settings leave the panes while their dialog stands next to them (menus.js closes it). */
+let settingsGone = () => {};
+/** @param {() => void} f */
+export function onSettingsGone(f) {
+    settingsGone = f;
+}
+
 export function closeSettings() {
     el.settings.hidden = true;
     layoutPanes();
 }
 
-/** Panes on screen: the active one plus the others from the left, as many as fit next to the settings; the rest is parked. */
+/** Panes on screen: the active one plus the others from the left, as many as fit; none next to the settings. The rest is parked. */
 export function visiblePanes() {
-    if (!el.gitPage.hidden) return [];
-    const cap = capacity() - (settingsInPanes() ? 1 : 0);
+    if (!el.gitPage.hidden || settingsInPanes()) return [];
+    const cap = capacity();
     if (cap < 1) return [];
     const shown = new Set(active ? [active] : []);
     for (const p of panes) {
@@ -256,8 +286,9 @@ function markActive() {
  */
 export function layoutPanes() {
     placeSettings();
-    const shown = visiblePanes();
     const settings = settingsInPanes();
+    if (!settings && settingsDialogDocked()) settingsGone();
+    const shown = visiblePanes();
     for (const p of panes) {
         p.root.hidden = !shown.includes(p);
         p.root.classList.toggle('no-chat', !p.chatId);
@@ -266,9 +297,9 @@ export function layoutPanes() {
     el.panes.hidden = !el.gitPage.hidden;
     el.chatEmpty.hidden = !el.gitPage.hidden || !single || !!panes[0].chatId || settings;
     el.app.classList.toggle('chat-open', !el.gitPage.hidden || !!(active && active.chatId));
-    el.app.classList.toggle('multi', shown.length + (settings ? 1 : 0) > 1);
+    el.app.classList.toggle('multi', shown.length + (settings ? 1 : 0) + (settingsDialogDocked() && !el.settingsDialog.hidden ? 1 : 0) > 1);
     el.app.classList.toggle('info-docked', infoDocked());
-    el.paneAdd.hidden = !isWide() || !el.gitPage.hidden || panes.length >= capacity() - (settings ? 1 : 0);
+    el.paneAdd.hidden = !isWide() || !el.gitPage.hidden || settings || panes.length >= capacity();
     for (const p of panes) p.el.btnClose.hidden = single;
     markActive();
     renderTabs();

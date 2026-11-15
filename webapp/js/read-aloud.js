@@ -7,6 +7,7 @@ import { jumpToEntry } from './list.js';
 import { openChat } from './chat.js';
 import { showEvent } from './queue.js';
 import { alertDialog } from './dialogs.js';
+import { rec } from './voice.js';
 
 // Two voices: a cloud voice (the backend asks OpenAI or Gemini with the key of the shared settings, local/src/speech.ts)
 // or the browser's speech output (on the iPhone the iOS voices). Either way the text is read in parts: some browsers
@@ -168,6 +169,7 @@ function showSpeaking(e, chatId) {
     speech.botId = e ? e.botId || botIdOf(chatId) : null;
     for (const k of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.speak'))) k.classList.toggle('speaking', k.dataset.speak === speech.active);
     el.speechBar.hidden = !e;
+    if (e) renderAutoRead();
     el.app.classList.toggle('speaking', !!e);
     if (!e) return;
     el.speechBarWho.textContent = senderName(speech.botId);
@@ -537,6 +539,26 @@ export function autoReadOn() {
     return storage.get(AUTO_READ_KEY) !== 'off';
 }
 
+/** On or off, from the settings or the buttons next to recording and reading; every place shows the new state. */
+export function setAutoRead(on) {
+    storage.set(AUTO_READ_KEY, on ? 'on' : 'off');
+    if (!on && expected.chatId) dropExpected(expected.chatId);
+    renderAutoRead();
+}
+
+/** The buttons (recording bar of every pane, speech bar) and the switch in the settings. */
+export function renderAutoRead() {
+    const on = autoReadOn();
+    const label = t(on ? 'speak.autoReadOn' : 'speak.autoReadOff');
+    for (const b of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-autoread]'))) {
+        b.classList.toggle('off', !on);
+        b.title = label;
+        b.setAttribute('aria-label', label);
+        b.setAttribute('aria-pressed', String(on));
+    }
+    el.settingsAutoRead.checked = on;
+}
+
 /** In the tap that sends a voice message: unlocks both voices unless something is being read right now. */
 export function primeReadAloud() {
     if (!autoReadOn() || speech.active) return;
@@ -567,7 +589,8 @@ export function dropExpected(chatId) {
 /** A finished entry of a chat (connection.js); in the background it waits for the app to come back. */
 export function answerDone(chatId, e) {
     if (expected.chatId !== chatId || e.role !== 'assistant' || !e.text || !e.id) return;
-    if (document.hidden) {
+    // in the background, or while the user records the next voice message: it waits (see readWaitingAnswer)
+    if (document.hidden || rec.recorder) {
         Object.assign(expected, { entry: e, doneAt: Date.now() });
         return;
     }
@@ -578,7 +601,7 @@ export function answerDone(chatId, e) {
 /** The app is visible again (start.js). */
 export function readWaitingAnswer() {
     const { chatId, entry, doneAt } = expected;
-    if (!chatId || !entry) return;
+    if (!chatId || !entry || rec.recorder) return;
     dropExpected(chatId);
     if (Date.now() - doneAt < AUTO_READ_FRESH_MS) readAloud(entry, chatId);
 }

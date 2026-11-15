@@ -10,7 +10,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 
 /** Starts main.js against a profile folder; returns what the stand-in recorded. */
 function startApp(profile, config) {
-    const state = { handlers: {}, whenReady: null, win: null, tray: null, menu: null, restarts: 0, appEvents: {}, protocols: [], dialogs: [], answer: 0 };
+    const state = { handlers: {}, whenReady: null, win: null, tray: null, menu: null, restarts: 0, appEvents: {}, protocols: [], dialogs: [], answer: 0, scripts: [] };
     if (config) fs.writeFileSync(path.join(profile, 'config.json'), JSON.stringify(config));
     class Win {
         constructor() {
@@ -18,7 +18,7 @@ function startApp(profile, config) {
             this.events = {};
             this.hidden = false;
             this.agent = '';
-            this.webContents = { userAgent: 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', setUserAgent: (a) => { this.agent = a; }, setWindowOpenHandler: () => undefined, on: () => undefined };
+            this.webContents = { userAgent: 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', setUserAgent: (a) => { this.agent = a; }, setWindowOpenHandler: () => undefined, on: () => undefined, executeJavaScript: (code) => { state.scripts.push(code); return Promise.resolve(); } };
             state.win = this;
         }
         once() {}
@@ -159,6 +159,15 @@ export default async function ({ check }) {
         app.whenReady();
         await settle();
         check('main: a display-only window carries no mark', app.win.agent === 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', app.win.agent);
+
+        // The web app's keyboard shortcuts as a menu: shown with their keys, the keys themselves left to the page
+        const go = app.menu?.find((m) => m.label === 'Go')?.submenu ?? [];
+        const keys = go.filter((i) => i.accelerator);
+        check('main: the menu "Go" lists the shortcuts of the web app', keys.find((i) => i.label.startsWith('Command palette'))?.accelerator === 'CmdOrCtrl+K' && keys.length >= 10, go.map((i) => `${i.label} ${i.accelerator ?? ''}`));
+        check('main: … without registering them, so a key does not run twice', keys.every((i) => i.registerAccelerator === false), keys.map((i) => i.registerAccelerator));
+        check('main: … and none takes the zoom keys', !keys.some((i) => /\+(Plus|-|=|0)$/.test(i.accelerator)), keys.map((i) => i.accelerator));
+        go.find((i) => i.accelerator === 'CmdOrCtrl+B').click();
+        check('main: a menu entry hands its command to the page', /CustomEvent\('openfolk:command', \{ detail: "sidebar" \}\)/.test(app.scripts.at(-1) ?? ''), app.scripts.at(-1));
 
         // A profile from before the folder list: its bots worked in the whole user folder, and still do after the update
         const before = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-main-before-'));

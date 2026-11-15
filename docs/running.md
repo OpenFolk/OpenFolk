@@ -214,7 +214,7 @@ home volume. The image cannot shut down (`OPENFOLK_CONTAINER=1`) and `AUTOLOGON_
 machine. `npm run restart -w local` inside the container ends the process once no bot is working and Docker
 starts it again (`restart: unless-stopped`); `docker compose restart` does the same at once. The image has no
 Python, so bots on this machine do not transcribe voice messages. For them take the same tag with `-voice`
-(`ghcr.io/openfolk/openfolk-local:latest-voice`, `:0.5.0-voice` …; `OPENFOLK_LOCAL_IMAGE` in the `.env`): larger, with
+(`ghcr.io/openfolk/openfolk-local:latest-voice`, `:0.6.0-voice` …; `OPENFOLK_LOCAL_IMAGE` in the `.env`): larger, with
 Python, faster-whisper and Piper (`local/Dockerfile.voice`). It transcribes on the CPU with the model `small`
 unless the machine settings choose another; the model is downloaded into `/home/node` with the first voice message,
 the voices for reading aloud with the first message read with "the bot's machine" as the voice.
@@ -239,8 +239,8 @@ first folder of `ALLOWED_ROOTS`, or the one that holds it already). Is the folde
 repository into it, so no machine needs a terminal for it.
 
 **One more machine:** in the app, Settings, Machines, "Add machine". A backend that is awake mints a one-time invitation
-at the relay (15 minutes) and builds the command with the end-to-end key behind '#', which no server sees. On the new
-machine, the desktop app takes the link on its setup page ("Connect this computer to my server") or shows a QR code
+at the relay (15 minutes) and builds the link with the end-to-end key behind '#', which no server sees, and the command around it, each with a
+button to copy it. On the new machine, the desktop app takes the link (a pasted command too) on its setup page ("Connect this computer to my server") or shows a QR code
 there that a signed-in phone scans (Settings, Devices, "Scan QR code"), which fetches the invitation and sends it back
 sealed; from a checkout,
 after `npm install`: `npm run join -- "<link>"` (`local/tools/join.mjs`). Either redeems it for an agent token of
@@ -264,7 +264,7 @@ compose file; there `/work` is the allowed folder and `WORK_DIR` the host folder
 folders in its log on start; restart it after a change. The bot editor's folder field takes a folder that exists
 there or a repository address, which the backend clones into the machine's folder for bots.
 
-The **folder for bots** (the machine's settings in the app, "Folder for bots") lies inside the allowed folders; empty
+The **folder for bots** (the machine's settings in the app, "Default folder for new bots", which also lists the allowed folders) lies inside the allowed folders; empty
 means the first of them. A bot moving to this machine gets the same place below it as below the folder for bots of its
 previous machine (`C:/www/apps/shop` with `C:/www` there becomes `D:/OpenFolk/apps/shop` with `D:/OpenFolk` here), its
 repository cloned if it is missing. Machines with the same layout below their folder for bots move bots without a

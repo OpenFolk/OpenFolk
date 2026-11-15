@@ -46,7 +46,7 @@ one-pane case, not a separate mode.
   they were opened from. Messages without a chat (errors, file saving) go to the active pane.
 - **Visible means read.** Chats in visible panes count as seen; panes parked because the window got narrower keep
   their draft and scroll position but not the read state. Push is unaffected; the backend only knows whether the
-  app is visible.
+  app is visible and, on a desktop, in use (`activity.js`, [push.md](./push.md)).
 
 ## The platform layer
 

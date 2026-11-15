@@ -2,12 +2,13 @@
 import { t } from './i18n.js';
 import { $, el, node, state, closest } from './core.js';
 import { activePane, capacity, closeSettings, createPane, isWide, layoutPanes, paneFor, panes, removePane, savePanes, setActivePane } from './panes.js';
-import { bot, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
+import { bot, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, modelsOfChat, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
 import { backgroundOf, backgroundText, chatStatus, closeChatSearch, renderChatList } from './list.js';
 import { renderMembers } from './machines.js';
 import { closeMention, markSeen, renderHistory, renderPinned, setReply } from './chat-features.js';
 import { rec, renderUploads, stopRecording } from './voice.js';
 import { closeGitPage, gitPageFromChat, modelDisplay, renderInfoChat, tokensShort } from './menus.js';
+import { allChats } from './connection.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -24,8 +25,8 @@ import { closeGitPage, gitPageFromChat, modelDisplay, renderInfoChat, tokensShor
  * @param {Pane} [target]
  */
 export function openChat(id, jumpTo, searchWord, target) {
-    // Settings that take the only column give way to the chat
-    if (!el.settings.hidden && capacity() < 2) closeSettings();
+    // The settings give way to the chat: on wide screens no chat stands next to them
+    if (!el.settings.hidden) closeSettings();
     const open = paneFor(id);
     if (open && !jumpTo) {
         setActivePane(open);
@@ -102,11 +103,33 @@ export function addEmptyPane() {
     paneActivated();
 }
 
+// The chats opened one after the other, for back and forward (Ctrl+[ and Ctrl+]), like a browser's history
+const visited = { list: /** @type {string[]} */ ([]), at: -1, stepping: false };
+
+function noteVisited(id) {
+    if (!id || visited.stepping || visited.list[visited.at] === id) return;
+    visited.list.splice(visited.at + 1, Infinity, id);
+    if (visited.list.length > 100) visited.list.shift();
+    visited.at = visited.list.length - 1;
+}
+
+/** Back (-1) or forward (+1) through the chats opened before, skipping deleted ones; false at either end. */
+export function stepVisited(step) {
+    let i = visited.at + step;
+    while (i >= 0 && i < visited.list.length && !allChats().includes(visited.list[i])) i += step;
+    if (i < 0 || i >= visited.list.length) return false;
+    visited.at = i;
+    visited.stepping = true;
+    try { openChat(visited.list[i]); } finally { visited.stepping = false; }
+    return true;
+}
+
 /** After the active pane changed: the list marks its chat, the address names it. */
 export function paneActivated() {
     layoutPanes();
     renderChatList();
     const id = activePane().chatId;
+    noteVisited(id);
     try { history.replaceState(null, '', id ? '?chat=' + encodeURIComponent(id) : location.pathname); } catch { /* ignore */ }
 }
 
@@ -300,7 +323,7 @@ export function renderChatHeader(p) {
     p.el.chatSettings.title = p.el.chatSettings.ariaLabel = t(g ? 'header.groupSettings' : 'header.botSettings');
     // the model stays in sight while the line below shows what the bot is doing
     p.el.chatModel.hidden = !b;
-    if (b) p.el.chatModel.textContent = modelDisplay(modelOf(id));
+    if (b) p.el.chatModel.textContent = modelDisplay(modelOf(id), modelsOfChat(id));
     // where the bot lives, or would live once its machine wakes
     const home = b ? b.machine || where : '';
     p.el.chatMachine.hidden = !home;

@@ -30,8 +30,33 @@ export default async function ({ start, check }) {
     check('help link for newcomers', (await en.page.textContent('.start-help[data-i18n-html="login.help"]')).includes('set it up'));
     await en.close();
 
+    // ---- loading: the first steps do not flash up while the machines and their bots are on their way
+    const ld = await start({ bots: [], agentsLater: true, botsLater: true, device: 'test' });
+    await ld.wait(200);
+    const loading = () => ld.page.evaluate(() => !!document.querySelector('#chat-list .list-loading') && !document.querySelector('#chat-list .welcome'));
+    check('before the machine list: loading, no first steps', await loading());
+    await ld.push({ type: 'agents', online: ['desk'] });
+    await ld.wait(100);
+    check('machine there, its bots not yet: still loading', await loading());
+    await ld.push({ type: 'bots', machine: 'desk', bots: [], groups: [], categories: [], states: {}, activity: {}, activeChats: {}, approvals: [] });
+    await ld.wait(100);
+    check('bots there, none yet: the first steps', await ld.page.evaluate(() => !!document.querySelector('#chat-list .welcome') && !document.querySelector('#chat-list .list-loading')));
+    await ld.close();
+
+    // ---- another account (an invitation) while none of its machines is awake: no "npm start", a note instead
+    const inv = await start({ bots: [], online: [], device: 'test', auth: () => ({ type: 'auth', ok: true, account: { id: 'erik', name: 'Erik', admin: false } }) });
+    await inv.wait(200);
+    check('invited account, no machine: a note, not the first steps', await inv.page.evaluate(() => !!document.querySelector('#chat-list .welcome h2') && !document.querySelector('.welcome-steps')),
+        await inv.page.textContent('#chat-list'));
+    check('… which says that no machine is reachable', (await inv.page.textContent('#chat-list .welcome h2')) === 'No machine reachable yet');
+    await inv.push({ type: 'agents', online: ['desk'] });
+    await inv.push({ type: 'bots', machine: 'desk', bots: [], groups: [], categories: [], states: {}, activity: {}, activeChats: {}, approvals: [] });
+    await inv.wait(100);
+    check('machine awake: the first steps of the account', await inv.page.evaluate(() => !!document.querySelector('.welcome-steps')));
+    await inv.close();
+
     // ---- first steps: no machine, no bot
-    const h = await start({ bots: [], online: [], device: 'test' });
+    const h =await start({ bots: [], online: [], device: 'test' });
     const p = h.page;
     const steps = () => p.evaluate(() => [...document.querySelectorAll('.welcome-steps li')].map((li) => `${li.classList.contains('done') ? '✓' : '·'} ${li.querySelector('strong').textContent}`).join('|'));
     check('welcome instead of an empty list', await p.evaluate(() => !!document.querySelector('#chat-list .welcome h2')));
@@ -76,6 +101,15 @@ export default async function ({ start, check }) {
     const pick = `${step2} .welcome-engines`;
     check('main account: a tick per engine, none ticked, the button waits', (await p.evaluate((sel) => [...document.querySelectorAll(`${sel} input`)].map((b) => `${b.dataset.engine}:${b.checked}`).join(), pick))
         === 'claude:false,codex:false,cursor:false,copilot:false,antigravity:false,opencode:false' && await p.isDisabled(`${pick} button`));
+    const tryButton = `${step2} .welcome-try button`;
+    check('the choice offers a try without signing in, naming the training', await p.isVisible(tryButton)
+        && (await p.textContent(`${step2} .welcome-try`)).includes('training'));
+    h.sent.length = 0;
+    await p.click(tryButton);
+    await h.wait(100);
+    const tried = h.sent.find((x) => x.type === 'machine_settings_save');
+    check('… which switches on OpenCode alone, on that machine', tried?.machine === 'desk'
+        && JSON.stringify(tried.settings.disabledEngines) === '["claude","codex","cursor","copilot","antigravity"]', tried);
     await p.click(`${pick} input[data-engine="codex"]`);
     await p.click(`${pick} input[data-engine="copilot"]`);
     h.sent.length = 0;
@@ -90,26 +124,36 @@ export default async function ({ start, check }) {
     check('without Claude: no Claude command, the device codes of the picked ones', !(await p.isVisible(`${step2} code`))
         && (await p.evaluate((sel) => [...document.querySelectorAll(sel)].map((x) => x.textContent).join('|'), `${step2} button`)) === 'Sign in to Codex|Sign in to Copilot');
 
-    // ---- Claude with the machine's own terminal and, for the main account, an API key instead
+    // ---- Claude signed in by the machine itself (browser or terminal there) and, for the main account, an API key instead
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'embedded', container: false, engines: { claude: 'sign_in' }, claudeTerminal: true });
     await h.wait(500);
     const buttons = () => p.evaluate((sel) => [...document.querySelectorAll(`${sel} button.primary`)].map((x) => x.textContent).join('|'), step2);
-    check('terminal offered: a button instead of the command', !(await p.isVisible(`${step2} code`)) && (await buttons()) === 'Open a terminal for the sign-in', await buttons());
+    check('sign-in offered: a button instead of the command', !(await p.isVisible(`${step2} code`)) && (await buttons()) === 'Sign in to Claude', await buttons());
     h.sent.length = 0;
     await p.click(`${step2} button.primary`);
     await h.wait(500);
-    check('the button asks that machine for the terminal', h.sent.some((x) => x.type === 'claude_sign_in' && x.machine === 'desk'), h.sent);
-    check('while it opens, the button waits', await p.isDisabled(`${step2} button.primary`));
+    check('the button asks that machine for the sign-in', h.sent.some((x) => x.type === 'claude_sign_in' && x.machine === 'desk'), h.sent);
+    check('while it starts, the button waits', await p.isDisabled(`${step2} button.primary`));
+    await h.push({ type: 'claude_sign_in', machine: 'desk', via: 'browser' });
+    await h.wait(500);
+    check('browser open: says where to sign in, the button starts over', (await p.textContent(`${step2} .welcome-extra`)).includes('browser on DESK shows the Claude sign-in')
+        && !(await p.isDisabled(`${step2} button.primary`)));
+    await p.click(`${step2} button.primary`);
     await h.push({ type: 'claude_sign_in', machine: 'desk' });
     await h.wait(500);
-    check('terminal open: says where to sign in', (await p.textContent(`${step2} .welcome-extra`)).includes('terminal is open on DESK') && !(await p.isDisabled(`${step2} button.primary`)));
+    check('terminal open (no desktop there, or an older backend): says where to sign in', (await p.textContent(`${step2} .welcome-extra`)).includes('terminal is open on DESK')
+        && !(await p.isDisabled(`${step2} button.primary`)));
     await p.click(`${step2} button.primary`);
     await h.push({ type: 'error', machine: 'desk', request: 'claude_sign_in', message: 'No desktop app answered.' });
     await h.wait(500);
-    check('terminal failed: the reason in the step', (await p.textContent(`${step2} .welcome-extra .error`)).includes('No desktop app answered.'));
+    check('sign-in failed: the reason in the step', (await p.textContent(`${step2} .welcome-extra .error`)).includes('No desktop app answered.'));
 
     const keyInput = `${step2} .welcome-key input`;
     check('main account: an API key field for Claude', await p.isVisible(keyInput));
+    check('… with a link to the Console page for keys, opening outside', (await p.getAttribute(`${step2} .welcome-extra p a`, 'href')) === 'https://platform.claude.com/settings/keys'
+        && (await p.getAttribute(`${step2} .welcome-extra p a`, 'target')) === '_blank');
+    check('… and what it costs: the check nothing, the use the Console credit', (await p.textContent(`${step2} .welcome-extra`)).includes('costs nothing')
+        && (await p.textContent(`${step2} .welcome-extra`)).includes('credit'));
     await p.fill(keyInput, 'sk-ant-test');
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'embedded', container: false, engines: { claude: 'sign_in', codex: 'missing' }, claudeTerminal: true });
     await h.wait(100);
@@ -120,6 +164,21 @@ export default async function ({ start, check }) {
     await h.wait(100);
     const saved = h.sent.find((x) => x.type === 'machine_settings_save');
     check('saving sends the key and switches Claude to it, on that machine', saved?.machine === 'desk' && saved.anthropicKey === 'sk-ant-test' && saved.settings.claudeAuth === 'apikey', saved);
+    h.sent.length = 0;
+    await p.click(`${step2} .welcome-try button`);
+    await h.wait(100);
+    const added = h.sent.find((x) => x.type === 'machine_settings_save');
+    check('Claude not signed in: trying without signing in adds OpenCode to what is on', added?.machine === 'desk'
+        && JSON.stringify(added.settings.disabledEngines) === '["claude","codex","cursor","copilot","antigravity"]', added);
+
+    // ---- OpenCode ready, Claude not: the step is done and a new bot starts on OpenCode
+    await h.push({ type: 'setup_status', machine: 'desk', relay: 'remote', container: false, engines: { claude: 'sign_in', opencode: 'ready' } });
+    await h.wait(500);
+    check('OpenCode ready: sign-in step done', (await steps()).startsWith('✓ Connect a machine|✓ Sign in to an AI provider|· Create your first bot'), await steps());
+    await p.click('.welcome-steps li:nth-child(3) button');
+    await h.wait(100);
+    check('… and a new bot starts on OpenCode', (await p.inputValue('#editor-model')) === 'opencode', await p.inputValue('#editor-model'));
+    await p.evaluate(() => closeDialog(document.getElementById('editor')));
 
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'remote', container: false, engines: { claude: 'ready', codex: 'sign_in' } });
     await h.wait(500);
@@ -128,7 +187,8 @@ export default async function ({ start, check }) {
 
     await p.click('.welcome-steps li:nth-child(3) button');
     await h.wait(100);
-    check('bot button opens the editor for a new bot', await p.isVisible('#editor') && (await p.textContent('#editor-title')) === 'New bot');
+    check('bot button opens the editor for a new bot, on Claude', await p.isVisible('#editor') && (await p.textContent('#editor-title')) === 'New bot'
+        && (await p.inputValue('#editor-model')) === 'default');
     await p.evaluate(() => closeDialog(document.getElementById('editor')));
 
     await p.click('.welcome-steps li:nth-child(4) button');

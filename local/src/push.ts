@@ -7,7 +7,7 @@ import { nativeChannels, sendNative, visibleText, type NativeChannel, type Nativ
 import { config } from './config.ts';
 import { pushPreview } from './settings.ts';
 import { currentAccount, DEFAULT_ACCOUNT, readJson, readMachineJson, writeJson, writeMachineJson } from './store.ts';
-import type { NativePushMessage, PushKind, PushPriority, PushSettings } from '../../shared/protocol.ts';
+import type { DeviceForm, NativePushMessage, PushKind, PushPriority, PushSettings } from '../../shared/protocol.ts';
 
 /** The relay as a second way to the apps (index.ts wires the relay client in). */
 export const relayPush: {
@@ -15,24 +15,45 @@ export const relayPush: {
     send: (subscriptions: NativeSubscription[], message: NativePushMessage) => boolean;
 } = { channels: () => [], send: () => false };
 
-/** A browser's Web Push subscription or an app installation's device token. */
-export type StoredSubscription = PushSubscription | NativeSubscription;
+/** What a device said about itself with its subscription (push_subscribe); synced with it, the newer state wins. */
+export interface DeviceTraits {
+    form?: DeviceForm;
+    /** The device opted out of staying quiet while a desktop is in use. */
+    always?: true;
+    traitsAt?: string;
+}
 
-const isNativeSub = (s: StoredSubscription): s is NativeSubscription => 'channel' in s;
+/** A browser's Web Push subscription or an app installation's device token. */
+export type StoredSubscription = (PushSubscription | NativeSubscription) & DeviceTraits;
+
+const isNativeSub = (s: StoredSubscription): s is NativeSubscription & DeviceTraits => 'channel' in s;
 const sameSub = (a: StoredSubscription, b: StoredSubscription) => isNativeSub(a)
     ? isNativeSub(b) && a.channel === b.channel && a.token === b.token
     : !isNativeSub(b) && a.endpoint === b.endpoint;
+/** The apps run on phones and tablets only; a browser says what it is (old ones do not, they count as neither). */
+const isPhone = (s: StoredSubscription) => isNativeSub(s) || s.form === 'phone';
+
+function traitsOf(s: Partial<DeviceTraits>): DeviceTraits {
+    return {
+        ...(s.form === 'desktop' || s.form === 'phone' ? { form: s.form } : {}),
+        ...(s.always === true ? { always: true as const } : {}),
+        ...(typeof s.traitsAt === 'string' && s.traitsAt.length <= 40 ? { traitsAt: s.traitsAt } : {}),
+    };
+}
 
 /** Checks and trims what a browser, an app or another machine sent; null if it is no subscription. */
 function cleanSubscription(input: unknown): StoredSubscription | null {
-    const s = input as Partial<PushSubscription & NativeSubscription> | null;
+    const s = input as Partial<PushSubscription & NativeSubscription & DeviceTraits> | null;
     if (!s || typeof s !== 'object') return null;
     if ((s.channel === 'apns' || s.channel === 'fcm') && typeof s.token === 'string' && s.token.length >= 8 && s.token.length <= 4096) {
-        return { channel: s.channel, token: s.token, ...(typeof s.app === 'string' && s.app ? { app: s.app } : {}), ...(s.env === 'sandbox' ? { env: 'sandbox' as const } : {}) };
+        return { channel: s.channel, token: s.token, ...(typeof s.app === 'string' && s.app ? { app: s.app } : {}), ...(s.env === 'sandbox' ? { env: 'sandbox' as const } : {}), ...traitsOf(s) };
     }
-    if (typeof s.endpoint === 'string' && s.keys?.p256dh && s.keys?.auth) return { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth } };
+    if (typeof s.endpoint === 'string' && s.keys?.p256dh && s.keys?.auth) return { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth }, ...traitsOf(s) };
     return null;
 }
+
+/** The subscription without the device's traits: what the relay gets for delivery. */
+const bare = ({ channel, token, app, env }: NativeSubscription): NativeSubscription => ({ channel, token, ...(app ? { app } : {}), ...(env ? { env } : {}) });
 
 /** Push channels this machine can deliver to: always Web Push, the apps' channels once configured here or on the relay. */
 export function pushChannels(): ('web' | NativeChannel)[] {
@@ -139,26 +160,104 @@ export function subscriptions(): StoredSubscription[] {
     return readJson<StoredSubscription[]>('push.json', []);
 }
 
-/** Take over the subscriptions of another machine; returns the number of new ones. */
+/** Take over the subscriptions of another machine and newer device traits; returns the number of new ones. */
 export function mergeSubscriptions(others: unknown[]): number {
     const list = subscriptions();
     let added = 0;
+    let changed = false;
     for (const f of others) {
         const s = cleanSubscription(f);
-        if (!s || list.some((a) => sameSub(a, s))) continue;
-        list.push(s);
-        added++;
+        if (!s) continue;
+        const i = list.findIndex((a) => sameSub(a, s));
+        if (i < 0) {
+            list.push(s);
+            added++;
+        } else if (s.traitsAt && s.traitsAt > (list[i].traitsAt ?? '')) {
+            // Old backends drop the traits; their copy has no time and never wins
+            const { form: _form, always: _always, traitsAt: _at, ...rest } = list[i];
+            list[i] = { ...rest, ...traitsOf(s) } as StoredSubscription;
+            changed = true;
+        }
     }
-    if (added) writeJson('push.json', list);
+    if (added || changed) writeJson('push.json', list);
     return added;
 }
 
-export function saveSubscription(sub: unknown): void {
+/** Stores a device's subscription; `traits` from the frame, missing ones (old clients) keep what was stored. */
+export function saveSubscription(sub: unknown, traits: { form?: DeviceForm; always?: boolean } = {}): void {
     const s = cleanSubscription(sub);
     if (!s) throw new Error('Invalid push subscription');
-    const list = subscriptions().filter((a) => !sameSub(a, s));
-    list.push(s);
+    const all = subscriptions();
+    const old = all.find((a) => sameSub(a, s));
+    const form = traits.form ?? old?.form ?? s.form;
+    const always = traits.always ?? (old ? old.always : s.always) ?? false;
+    const same = old && form === old.form && always === Boolean(old.always);
+    const traitsAt = same ? old?.traitsAt : form || always ? new Date().toISOString() : old?.traitsAt;
+    const { form: _form, always: _always, traitsAt: _at, ...rest } = s;
+    const list = all.filter((a) => !sameSub(a, s));
+    list.push({ ...rest, ...traitsOf({ form, always: always || undefined, traitsAt }) } as StoredSubscription);
     writeJson('push.json', list);
+}
+
+/** What a connected client last said in `presence`, with the time it arrived. */
+export interface Presence {
+    visible: boolean;
+    desktop?: boolean;
+    active?: boolean;
+    at: number;
+}
+
+/**
+ * A desktop's report of being in use holds this long: its two minutes without input plus the minute it may wait
+ * before reporting again. Without a fresh report (a socket that died quietly) the desktop no longer counts.
+ */
+export const ACTIVE_MS = 3 * 60_000;
+
+/**
+ * Who is looking: `others` = a visible client that counts as watching the way it always did (a phone, or a client too
+ * old to say what it is), `desk` = a desktop in use. A visible desktop without input is neither: whoever left it gets
+ * the push on the phone.
+ */
+export function attention(clients: Iterable<Presence>, now = Date.now()): { others: boolean; desk: boolean } {
+    let others = false;
+    let desk = false;
+    for (const c of clients) {
+        if (!c.visible) continue;
+        if (c.desktop !== true) others = true;
+        else if (c.active && now - c.at < ACTIVE_MS) desk = true;
+    }
+    return { others, desk };
+}
+
+/** How long a phone's request waits while a desktop is in use (an object so the tests can shorten it). */
+export const phoneDelay = { ms: 3 * 60_000 };
+
+export interface PushContext {
+    /** A desktop is in use (attention()). */
+    desk?: boolean;
+    /** For a phone's delayed notification: still worth sending when the wait is over (not answered, chat not opened). */
+    due?: () => boolean;
+}
+
+/**
+ * Whether a subscription gets a notification now, after phoneDelay or not at all, while a desktop is in use. Answers
+ * and routine results are read at the desk; requests (approval, hand-over) reach the phone once nobody at the desk
+ * took them up. Everything else, and a device set to "always notify", as without a desktop.
+ */
+export function route(kind: PushKind | undefined, desk: boolean, s: StoredSubscription): 'now' | 'later' | 'skip' {
+    if (!desk || !kind || s.always) return 'now';
+    switch (kind) {
+        case 'approval':
+        case 'handover':
+            return isPhone(s) ? 'later' : 'now';
+        case 'done':
+        case 'routine':
+        case 'message':
+            // The desk is watching: what the old rule did for every visible client
+            return 'skip';
+        default:
+            return 'now';
+    }
 }
 
 export interface PushMessage {
@@ -193,9 +292,9 @@ const DELIVERY: Record<Exclude<PushPriority, 'off'>, { urgency: 'low' | 'normal'
 
 /**
  * Sends to all subscriptions. `kind` decides via the settings whether and with which priority; without `kind`
- * (security warnings) always with high priority.
+ * (security warnings) always with high priority. While a desktop is in use (`context.desk`) route() holds some back.
  */
-export async function sendPush(n: PushMessage, kind?: PushKind): Promise<void> {
+export async function sendPush(n: PushMessage, kind?: PushKind, context: PushContext = {}): Promise<void> {
     // A device can be signed in to several accounts: the notification opens its own one, and the same chat id in two
     // accounts does not replace the other's notification
     const account = currentAccount();
@@ -204,7 +303,27 @@ export async function sendPush(n: PushMessage, kind?: PushKind): Promise<void> {
     }
     const priority: PushPriority = kind ? pushSettings().kinds[kind] : 'high';
     if (priority === 'off') return;
-    const list = subscriptions();
+    const now: StoredSubscription[] = [];
+    const later: StoredSubscription[] = [];
+    for (const s of subscriptions()) {
+        const r = route(kind, Boolean(context.desk), s);
+        if (r === 'now') now.push(s);
+        else if (r === 'later') later.push(s);
+    }
+    if (later.length) {
+        const message = n;
+        // In memory only: a restart of the backend drops what is still waiting. The timer runs in this account's context.
+        setTimeout(() => {
+            if (context.due && !context.due()) return;
+            // Re-read: a token may have been dropped meanwhile
+            const still = subscriptions().filter((s) => later.some((l) => sameSub(l, s)));
+            deliver(still, message, priority).catch((e) => console.log(`push: ${(e as Error).message}`));
+        }, phoneDelay.ms).unref();
+    }
+    await deliver(now, n, priority);
+}
+
+async function deliver(list: StoredSubscription[], n: PushMessage, priority: Exclude<PushPriority, 'off'>): Promise<void> {
     if (list.length === 0) return;
     keys();
     const body = n.body.length > 240 ? n.body.slice(0, 239) + '…' : n.body;
@@ -220,7 +339,7 @@ export async function sendPush(n: PushMessage, kind?: PushKind): Promise<void> {
     const viaRelay = list.filter((s): s is NativeSubscription => isNativeSub(s) && !native.includes(s.channel) && relayPush.channels().includes(s.channel));
     if (viaRelay.length) {
         const text = visibleText({ title: n.title, body }, pushPreview());
-        relayPush.send(viaRelay, { ...text, url: n.url, ...(n.tag ? { tag: n.tag } : {}), priority, ttlSeconds: DELIVERY[priority].TTL });
+        relayPush.send(viaRelay.map(bare), { ...text, url: n.url, ...(n.tag ? { tag: n.tag } : {}), priority, ttlSeconds: DELIVERY[priority].TTL });
     }
     await Promise.all(list.map(async (sub) => {
         if (isNativeSub(sub)) {

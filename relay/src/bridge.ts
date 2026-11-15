@@ -11,8 +11,10 @@
 // account if it signs in with X-Accounts: 1; an older one does not know the field and would take everything for its
 // own data, so it gets the traffic of 'main' only.
 //
-// A machine joined by a setup link is bound to one account (owner.ts): it serves that account only, and that account
-// is served by no other machine. Such a machine belongs to someone else (an employee, a customer), so nothing of other
+// Which of the relay's own machines serve an account other than 'main' is the account's choice (Accounts.runsOn); the
+// relay tells a backend with account_added and account_released when that changes, its data stays on the machine.
+//
+// A machine joined by a setup link is bound to one account (owner.ts): it serves that account only. Such a machine belongs to someone else (an employee, a customer), so nothing of other
 // accounts reaches it, not even machine names, and nothing it sends counts for another account. Person chats and
 // setups cross that line through the person route: one message to one awake machine of the other account, allowed by
 // the relay's accounts (Accounts.mayRoute).
@@ -52,6 +54,7 @@ interface Client {
 
 interface Agent {
     ws: WebSocket;
+    name: string;
     /** Signed in with X-Accounts: 1, so it keeps accounts apart. */
     accounts: boolean;
     /** Where it connected from: a second sign-in from the same address is a restart, not an intruder. */
@@ -80,8 +83,10 @@ export class Bridge {
     onFirstDevice: (id: string, box: PairBox | undefined, error: string | undefined) => void = () => undefined;
     /** The accounts there are and the deleted ones, for the hello of a backend that knows accounts. */
     accountList: () => { ids: string[]; deleted: string[]; people: Person[] } = () => ({ ids: [MAIN], deleted: [], people: [] });
-    /** The admin who set an account up; such an account runs only on machines bound to it. */
+    /** The admin who set an account up with a setup link. */
     setupBy: (account: string) => string | undefined = () => undefined;
+    /** Whether one of the relay's own machines (not bound to an account) serves the account (Accounts.runsOn). */
+    runsOn: (account: string, machine: string) => boolean = (account) => account === MAIN;
     /** May account `from` send to account `to` through the person route (Accounts.mayRoute). */
     mayRoute: (from: string, to: string) => boolean = () => false;
     /** Machines bound to an account, also those not connected: name -> account. */
@@ -162,12 +167,22 @@ export class Bridge {
         for (const a of this.agents.values()) if (a.accounts && this.serves(a, account)) this.toAgent(a.ws, { type: 'account_added', account });
     }
 
+    /** The machines awake that serve the account, to compare with after a change (accountMachinesChanged). */
+    servedBy(account: string): Set<string> {
+        return new Set([...this.agents.values()].filter((a) => a.accounts && this.serves(a, account)).map((a) => a.name));
+    }
+
     /**
-     * The account was set up for machines of its own: the others stop serving it (they started when it was created) and
-     * its browsers see other machines no more.
+     * The machines an account runs on changed (an admin's choice, a setup link): those that start serving it hear
+     * account_added, those that stop account_released (they keep its data), and its browsers get the machines again.
      */
-    accountSetUp(account: string): void {
-        for (const a of this.agents.values()) if (a.accounts && !a.bound) this.toAgent(a.ws, { type: 'account_released', account });
+    accountMachinesChanged(account: string, before: Set<string>): void {
+        for (const a of this.agents.values()) {
+            if (!a.accounts || a.bound) continue;
+            const now = this.serves(a, account);
+            if (now && !before.has(a.name)) this.toAgent(a.ws, { type: 'account_added', account });
+            if (!now && before.has(a.name)) this.toAgent(a.ws, { type: 'account_released', account });
+        }
         for (const c of this.clients.values()) if (c.account === account) this.toClient(c.ws, this.agentsFrame(account));
     }
 
@@ -195,19 +210,19 @@ export class Bridge {
     }
 
     /**
-     * Whether a backend serves the account: a bound machine only its own, every other one every account that is not
-     * bound (an old backend 'main' only).
+     * Whether a backend serves the account: a bound machine only its own, every other one the accounts that run on it
+     * (an old backend 'main' only).
      */
     private serves(agent: Agent, account: string): boolean {
         if (agent.bound) return account === agent.bound;
-        if (this.setupBy(account)) return false;
-        return account === MAIN || agent.accounts;
+        if (account === MAIN) return true;
+        return agent.accounts && this.runsOn(account, agent.name);
     }
 
     /** Whether the machine `machine` (connected or not) is one an account's browsers see. */
     private visibleTo(machine: string, account: string): boolean {
         const bound = this.boundMachines().get(machine);
-        return bound ? bound === account : !this.setupBy(account);
+        return bound ? bound === account : this.runsOn(account, machine);
     }
 
     /** Whether machine `machine` is one the backend sees: a bound machine sees its own kind, every other the unbound. */
@@ -316,7 +331,7 @@ export class Bridge {
             ws.close(4010, 'Update OpenFolk on this machine');
             return;
         }
-        const agent: Agent = { ws, accounts, ip, ...(bound ? { bound } : {}) };
+        const agent: Agent = { ws, name: machine, accounts, ip, ...(bound ? { bound } : {}) };
         this.agents.set(machine, agent);
         this.seen?.record([machine]);
         this.log(`Agent ${machine} connected from ${ip}${accounts ? '' : ' (without accounts, serves main only)'}${bound ? ` (bound to account ${bound})` : ''} (${this.online().join(', ')})`);
@@ -327,7 +342,7 @@ export class Bridge {
             : bound
                 ? { type: 'relay_hello', pushChannels: this.pushChannels, accounts: [bound], deletedAccounts: [], people: this.peopleFor(agent, list.people), bound, ...(setupBy ? { setupBy } : {}) }
                 : {
-                    type: 'relay_hello', pushChannels: this.pushChannels, accounts: list.ids.filter((id) => !this.setupBy(id)), deletedAccounts: list.deleted,
+                    type: 'relay_hello', pushChannels: this.pushChannels, accounts: list.ids.filter((id) => this.serves(agent, id)), deletedAccounts: list.deleted,
                     people: list.people,
                 });
         this.announceOnline();

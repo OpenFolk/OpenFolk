@@ -1,11 +1,11 @@
 /* OpenFolk web app: voice messages, files and images. */
 import { t } from './i18n.js';
-import { node, state } from './core.js';
+import { node, state, storage } from './core.js';
 import { paneFor, panes } from './panes.js';
 import { bot, responsibleMachine, send, showImageLarge, upper } from './e2e.js';
 import { scroll, setReply } from './chat-features.js';
 import { approvalsToBottom, composerButtons, showEvent, textHeight } from './queue.js';
-import { expectAnswer } from './read-aloud.js';
+import { expectAnswer, readWaitingAnswer, renderAutoRead, stopReadAloud } from './read-aloud.js';
 import { alertDialog } from './dialogs.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
@@ -13,10 +13,23 @@ import { alertDialog } from './dialogs.js';
 // ---------------------------------------------------------------- Voice messages
 // One microphone, one recording: it belongs to the pane and the chat it was started in (`pane`, `chatId`).
 
-export const rec = { pane: null, chatId: null, recorder: null, stream: null, ctx: null, analyser: null, chunks: [], mime: '', start: 0, pausedSince: 0, paused: 0, timer: null, levels: [] };
+// talk: the recording is the voice conversation's (talk.js), which sends it as a voice message itself
+export const rec = { pane: null, chatId: null, recorder: null, stream: null, ctx: null, analyser: null, chunks: [], mime: '', start: 0, pausedSince: 0, paused: 0, timer: null, levels: [], talk: false };
 const MAX_RECORDING_MS = 15 * 60 * 1000;
 
 export const canRecord = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder && window.isSecureContext);
+
+// The composer's microphone sends a voice message (the default) or, set on this device, dictates into the field (#59)
+const DICTATION_KEY = 'openfolk-dictation';
+
+export function dictationOn() {
+    return storage.get(DICTATION_KEY) === 'on';
+}
+
+export function setDictation(on) {
+    storage.set(DICTATION_KEY, on ? 'on' : 'off');
+    for (const x of panes) composerButtons(x);
+}
 
 function durationText(ms) {
     const s = Math.max(0, Math.round((ms || 0) / 1000));
@@ -28,10 +41,13 @@ function recordingDuration() {
     return (rec.pausedSince || Date.now()) - rec.start - rec.paused;
 }
 
-/** @param {Pane} p */
-export async function startRecording(p) {
+/** @param {Pane} p @param {boolean} [talk] from the voice conversation */
+export async function startRecording(p, talk = false) {
     if (rec.recorder || !p.chatId) return;
     const chatId = p.chatId;
+    // whoever speaks now does not want to hear an answer meanwhile
+    stopReadAloud();
+    renderAutoRead();
     let stream;
     try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
@@ -47,7 +63,7 @@ export async function startRecording(p) {
     // Chrome/Android: WebM/Opus, Safari/iOS: MP4/AAC – the backend decodes both
     const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/webm'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
     const recorder = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : undefined);
-    Object.assign(rec, { pane: p, chatId, recorder, stream, chunks: [], mime: recorder.mimeType || mime, start: Date.now(), pausedSince: 0, paused: 0, levels: [] });
+    Object.assign(rec, { pane: p, chatId, recorder, stream, chunks: [], mime: recorder.mimeType || mime, start: Date.now(), pausedSince: 0, paused: 0, levels: [], talk });
     recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) rec.chunks.push(ev.data); };
     recorder.start(1000);
     // load the speech model on the machine while speaking (saves the cold start afterwards)
@@ -70,7 +86,7 @@ export async function startRecording(p) {
             renderLevels(p);
         }
         p.el.recTime.textContent = durationText(recordingDuration());
-        if (recordingDuration() > MAX_RECORDING_MS) stopRecording(true);
+        if (recordingDuration() > MAX_RECORDING_MS) void (dictationOn() && !rec.talk ? finishDictation() : stopRecording(true));
     }, 100);
     p.el.recDot.classList.remove('paused');
     p.el.recTime.textContent = '0:00';
@@ -104,12 +120,9 @@ export function pauseRecording() {
     rec.pane.el.recPause.title = rec.pausedSince ? t('voice.resume') : t('voice.pause');
 }
 
-/** Ends the recording; with `submit` it goes out as a voice message, otherwise it is discarded. `spoken`: from the
- *  voice conversation (talk.js), which reads the answer itself and asks the bot for a short one. Resolves to whether it
- *  went out. */
-export async function stopRecording(submit, spoken = false) {
+/** Stops the microphone; resolves to what was recorded, with the pane and chat it belongs to. */
+async function endRecording() {
     const recorder = rec.recorder;
-    if (!recorder) return false;
     const length = recordingDuration();
     clearInterval(rec.timer);
     const stopped = new Promise((r) => { recorder.onstop = r; });
@@ -117,28 +130,42 @@ export async function stopRecording(submit, spoken = false) {
     await stopped;
     rec.stream.getTracks().forEach((track) => track.stop());
     if (rec.ctx) rec.ctx.close().catch(() => undefined);
-    const chunks = rec.chunks;
-    const mime = (rec.mime || 'audio/webm').split(';')[0];
-    const p = rec.pane;
-    const chatId = rec.chatId;
-    Object.assign(rec, { pane: null, chatId: null, recorder: null, stream: null, ctx: null, analyser: null, chunks: [], start: 0, pausedSince: 0, paused: 0, timer: null });
+    const ended = { p: rec.pane, chatId: rec.chatId, chunks: rec.chunks, mime: (rec.mime || 'audio/webm').split(';')[0], length };
+    Object.assign(rec, { pane: null, chatId: null, recorder: null, stream: null, ctx: null, analyser: null, chunks: [], start: 0, pausedSince: 0, paused: 0, timer: null, talk: false });
     for (const x of panes) composerButtons(x);
+    return ended;
+}
+
+/** The recording as an upload of the send and transcribe frames. */
+async function recordingUpload(chunks, mime, length) {
+    const ext = mime === 'audio/mp4' ? 'm4a' : mime === 'audio/ogg' ? 'ogg' : 'webm';
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return { name: `voice-message-${stamp}.${ext}`, type: mime, data: await readFile(new Blob(chunks, { type: mime })), durationMs: Math.round(length) };
+}
+
+/** Ends the recording; with `submit` it goes out as a voice message, otherwise it is discarded. `spoken`: from the
+ *  voice conversation (talk.js), which reads the answer itself and asks the bot for a short one. Resolves to whether it
+ *  went out. */
+export async function stopRecording(submit, spoken = false) {
+    if (!rec.recorder) return false;
+    const { p, chatId, chunks, mime, length } = await endRecording();
     // discarded, or its pane has closed or switched chats meanwhile
-    if (!submit || !panes.includes(p) || p.chatId !== chatId) return false;
+    if (!submit || !panes.includes(p) || p.chatId !== chatId) {
+        // discarded: an answer that arrived while recording is read now
+        if (!submit) readWaitingAnswer();
+        return false;
+    }
     if (length < 600 || chunks.length === 0) {
         showEvent(t('voice.tooShort'), true, chatId);
         return false;
     }
-    const blob = new Blob(chunks, { type: mime });
-    const ext = mime === 'audio/mp4' ? 'm4a' : mime === 'audio/ogg' ? 'ogg' : 'webm';
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const data = await readFile(blob);
+    const audio = await recordingUpload(chunks, mime, length);
     const b = bot(chatId);
     // Pasted images and files go along; the backend only transcribes the recording
     const more = p.uploads.map((u) => ({ name: u.name, type: u.type, data: u.data, thumb: u.thumb }));
     send({
         type: 'send', chatId, text: p.el.text.value.trim(),
-        attachments: [{ name: `voice-message-${stamp}.${ext}`, type: mime, data, durationMs: Math.round(length) }, ...more],
+        attachments: [audio, ...more],
         replyTo: p.replyTo || undefined,
         spoken: spoken || undefined,
     }, b ? responsibleMachine(b) : undefined);
@@ -150,6 +177,71 @@ export async function stopRecording(submit, spoken = false) {
     showVoicePending(chatId, length);
     if (!spoken) expectAnswer(chatId);
     return true;
+}
+
+// ---------------------------------------------------------------- Dictation (#59)
+// With dictation on, the checkmark ends the recording and asks the chat's machine for the text alone; it goes into the
+// input field at the cursor, and the message leaves only with the send button, as text: no recording in the chat, no
+// answer read aloud.
+
+const DICTATION_TIMEOUT_MS = 3 * 60 * 1000;
+/** id -> { p, chatId, timer } of a dictation whose text is awaited */
+const dictations = new Map();
+
+export async function finishDictation() {
+    if (!rec.recorder) return;
+    const { p, chatId, chunks, mime, length } = await endRecording();
+    if (!panes.includes(p) || p.chatId !== chatId) return;
+    if (length < 600 || chunks.length === 0) {
+        showEvent(t('voice.tooShort'), true, chatId);
+        return;
+    }
+    // randomUUID needs a secure context, getRandomValues does not
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
+    const timer = setTimeout(() => dictationDone(id, false, '', t('voice.dictationNoAnswer')), DICTATION_TIMEOUT_MS);
+    dictations.set(id, { p, chatId, timer });
+    p.dictating = id;
+    composerButtons(p);
+    const b = bot(chatId);
+    send({ type: 'transcribe', id, chatId, audio: await recordingUpload(chunks, mime, length) }, b ? responsibleMachine(b) : undefined);
+}
+
+/** The machine's answer, or a failure with its `message`. */
+export function dictationDone(id, ok, text, message = '') {
+    const d = dictations.get(id);
+    if (!d) return;
+    dictations.delete(id);
+    clearTimeout(d.timer);
+    const p = d.p;
+    if (p.dictating === id) p.dictating = null;
+    if (panes.includes(p)) composerButtons(p);
+    if (!panes.includes(p) || p.chatId !== d.chatId) return;
+    if (!ok) { void alertDialog(message || t('voice.dictationFailed')); return; }
+    if (!text) { showEvent(t('voice.nothingHeard'), true, d.chatId); return; }
+    insertAtCaret(p, text);
+}
+
+/** An older backend answers the frame with an error for the request. */
+export function dictationRefused(message) {
+    for (const id of dictations.keys()) dictationDone(id, false, '', t('voice.dictationOld', { error: message }));
+}
+
+/** Puts dictated text where the cursor was (the end if the field changed since or never had the focus), with spaces. */
+function insertAtCaret(p, text) {
+    const field = p.el.text;
+    const value = field.value;
+    const focused = document.activeElement === field;
+    const c = focused ? { start: field.selectionStart, end: field.selectionEnd } : p.caret && p.caret.value === value ? p.caret : { start: value.length, end: value.length };
+    const before = value.slice(0, c.start);
+    const after = value.slice(c.end);
+    const lead = before && !/\s$/.test(before) ? ' ' : '';
+    const trail = after && !/^\s/.test(after) ? ' ' : '';
+    field.value = before + lead + text + trail + after;
+    const caret = (before + lead + text).length;
+    field.focus();
+    field.setSelectionRange(caret, caret);
+    p.caret = null;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 /** Placeholder until the transcript comes back from the machine. */

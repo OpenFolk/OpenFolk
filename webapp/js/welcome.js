@@ -10,21 +10,24 @@ import { relayClaimForm } from './relay-claim.js';
 const DEVICE_LOGIN = ['codex', 'copilot'];
 const ENGINES = ['claude', 'codex', 'cursor', 'copilot', 'antigravity', 'opencode'];
 const ENGINE_NAMES = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', copilot: 'Copilot', antigravity: 'Antigravity', opencode: 'OpenCode' };
+/** Where the Claude Console creates API keys. */
+const CONSOLE_KEYS = 'https://platform.claude.com/settings/keys';
 /** The engines ticked in the first steps, sent together with the button: one at a time would end the step at the first. */
 const picked = new Set();
-/** The sign-in terminal asked for on a machine: on its way, open, or why it failed. */
-let terminal = /** @type {{ machine: string, state: 'opening' | 'open' | 'failed', message?: string } | null} */ (null);
+/** The Claude sign-in asked for on a machine: on its way, open in the browser or a terminal there, or why it failed. */
+let terminal = /** @type {{ machine: string, state: 'opening' | 'browser' | 'open' | 'failed', message?: string } | null} */ (null);
 /** The API key being typed: the list renders anew with every state that arrives, the field must not lose it. */
 const keyDraft = { value: '', focused: false };
 
 /**
- * The backend's answer to "claude_sign_in": the terminal is open, or why not.
+ * The backend's answer to "claude_sign_in": the browser or the terminal is open, or why not.
  * @param {string} machine
  * @param {string} [message]
+ * @param {'browser'} [via]
  */
-export function signInTerminalAnswer(machine, message = '') {
+export function signInTerminalAnswer(machine, message = '', via = undefined) {
     if (!terminal || terminal.machine !== machine) return;
-    terminal = message ? { machine, state: 'failed', message } : { machine, state: 'open' };
+    terminal = message ? { machine, state: 'failed', message } : { machine, state: via === 'browser' ? 'browser' : 'open' };
     renderChatList();
 }
 
@@ -60,7 +63,24 @@ function chooseStep(machine) {
     }
     button.addEventListener('click', () => send({ type: 'machine_settings_save', settings: { disabledEngines: ENGINES.filter((e) => !picked.has(e)) } }, machine));
     box.append(button);
-    return { done: false, text: t('welcome.aiChoose', { machine: upper(machine) }), extra: box };
+    const extra = node('div', 'welcome-extra');
+    extra.append(box, tryWithoutSignIn(machine, () => ENGINES.filter((e) => e !== 'opencode' && !picked.has(e))));
+    return { done: false, text: t('welcome.aiChoose', { machine: upper(machine) }), extra };
+}
+
+/**
+ * OpenCode's free models need no sign-in at all: a way to try OpenFolk without a subscription or a key, with what it
+ * costs said next to it. Switches OpenCode on, besides what `off` leaves on.
+ * @param {string} machine
+ * @param {() => string[]} off the engines to stay off, at the time of the tap
+ */
+function tryWithoutSignIn(machine, off) {
+    const box = node('div', 'welcome-try');
+    const button = /** @type {HTMLButtonElement} */ (node('button', 'btn small', t('welcome.aiTry')));
+    button.type = 'button';
+    button.addEventListener('click', () => send({ type: 'machine_settings_save', settings: { disabledEngines: off() } }, machine));
+    box.append(node('p', 'hint', t('welcome.aiTryHint')), button);
+    return box;
 }
 
 /**
@@ -80,7 +100,7 @@ function signInStep() {
     if (!Object.keys(engines).length) return { done: false, text: t('welcome.aiChecking', { machine: upper(machine) }) };
     // Without Claude among the engines picked: the others' sign-in, the commands are in the settings
     const claude = 'claude' in engines;
-    // The backend opens a terminal with Claude Code itself: the desktop apps bring it without a `claude` on the PATH
+    // The backend signs in itself, in the browser there or a terminal: the desktop apps bring Claude Code without a `claude` on the PATH
     const opens = claude && Boolean(s.claudeTerminal);
     /** @type {Step} */
     const step = {
@@ -90,10 +110,11 @@ function signInStep() {
         code: !claude || opens ? '' : s.claudeCommand || (s.container ? 'docker compose -f docker-compose.server.yml exec -u node local claude' : 'claude'),
         buttons: [
             ...(opens ? [{
-                label: t('welcome.aiTerminalButton'),
+                label: t('welcome.aiSignInButton'),
                 disabled: terminal?.machine === machine && terminal.state === 'opening',
                 run: () => {
-                    // The list renders again only after the tap lock: a second tap before must not open a second terminal
+                    // The list renders again only after the tap lock: a second tap before must not open a second terminal.
+                    // A tap after the browser opened starts over there, for a tab closed too early.
                     if (terminal?.machine === machine && terminal.state === 'opening') return;
                     terminal = { machine, state: 'opening' };
                     send({ type: 'claude_sign_in' }, machine);
@@ -108,8 +129,8 @@ function signInStep() {
     };
     const extra = node('div', 'welcome-extra');
     if (opens && terminal?.machine === machine && terminal.state !== 'opening') {
-        extra.append(terminal.state === 'open' ? node('p', 'welcome-login', t('welcome.aiTerminalOpen', { machine: upper(machine) }))
-            : node('p', 'welcome-login error', t('welcome.aiTerminalFailed', { error: terminal.message || '' })));
+        extra.append(terminal.state === 'failed' ? node('p', 'welcome-login error', t('welcome.aiSignInFailed', { error: terminal.message || '' }))
+            : node('p', 'welcome-login', t(terminal.state === 'browser' ? 'welcome.aiBrowserOpen' : 'welcome.aiTerminalOpen', { machine: upper(machine) })));
     }
     // The machine's owner may use an API key instead; the key is the owner's only, another account cannot use it
     if (claude && state.machineSettings[machine]) {
@@ -124,9 +145,18 @@ function signInStep() {
         input.addEventListener('focus', () => { keyDraft.focused = true; });
         // Taking the field off the page blurs it too; only a field still on the page lost the focus to the user
         input.addEventListener('blur', () => setTimeout(() => { if (input.isConnected) keyDraft.focused = false; }));
-        extra.append(node('p', 'hint', t('welcome.aiKey')), key);
+        const hint = node('p', 'hint', `${t('welcome.aiKey')} `);
+        const link = /** @type {HTMLAnchorElement} */ (node('a', '', t('welcome.aiKeyLink')));
+        link.href = CONSOLE_KEYS;
+        link.target = '_blank';
+        link.rel = 'noreferrer';
+        hint.append(link);
+        extra.append(hint, key, node('p', 'hint', t('welcome.aiKeyBilling')));
         // Once the list has put the field on the page again
         if (keyDraft.focused) queueMicrotask(() => input.focus());
+        // Neither a subscription nor a key at hand: OpenCode, if it is not on already (then it would be ready or missing)
+        const disabled = state.machineSettings[machine].settings?.disabledEngines;
+        if (Array.isArray(disabled) && disabled.includes('opencode')) extra.append(tryWithoutSignIn(machine, () => disabled.filter((e) => e !== 'opencode')));
     }
     // A device code on its way or shown: the link and the code to enter there, or why it failed
     const login = DEVICE_LOGIN.map((e) => state.engineLogin[`${machine}:${e}`]).find((l) => l && l.state !== 'done');
@@ -166,9 +196,8 @@ export function renderWelcome(actions) {
         {
             done: machineDone,
             title: t('welcome.machine'),
-            text: machineDone ? t('welcome.machineDone', { machines: state.online.map(upper).join(', ') })
-                : state.onlineKnown ? t('welcome.machineOff') : t('welcome.machineConnecting'),
-            code: machineDone || !state.onlineKnown ? '' : 'npm start',
+            text: machineDone ? t('welcome.machineDone', { machines: state.online.map(upper).join(', ') }) : t('welcome.machineOff'),
+            code: machineDone ? '' : 'npm start',
         },
         { title: t('welcome.ai'), ...ai },
         {

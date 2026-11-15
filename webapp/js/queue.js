@@ -10,7 +10,7 @@ import { machineToWake, openChat } from './chat.js';
 import { isRead, renderEntry, scroll, setReply } from './chat-features.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
-import { canRecord, imageRequested, rec, renderUploads } from './voice.js';
+import { canRecord, dictationOn, imageRequested, rec, renderUploads } from './voice.js';
 import { dropExpected } from './read-aloud.js';
 
 // ---------------------------------------------------------- Queue
@@ -467,7 +467,7 @@ export function finishLiveText(l) {
 export function renderApprovals(p) {
     if (!p) return;
     const messages = p.el.messages;
-    messages.querySelectorAll('.approval').forEach((k) => k.remove());
+    messages.querySelectorAll('.approval:not(.expired)').forEach((k) => k.remove());
     for (const a of openApprovals(p.chatId)) messages.appendChild(approvalCard(a));
     scroll(p);
 }
@@ -477,6 +477,13 @@ export function approvalsToBottom(p) {
     if (!p) return;
     const messages = p.el.messages;
     messages.querySelectorAll('.approval').forEach((k) => messages.appendChild(k));
+}
+
+/** A card nobody answered in time: no more buttons or fields, the backend's word that nothing happened. */
+export function expireApprovalCard(k, result) {
+    k.classList.add('expired');
+    k.querySelectorAll('.actions, .free, .options').forEach((x) => x.remove());
+    k.appendChild(node('p', 'approval-expired', result));
 }
 
 function approvalCard(a) {
@@ -575,7 +582,7 @@ function approvalCard(a) {
 export function sendMessage(p) {
     const text = p.el.text.value.trim();
     const chatId = p.chatId;
-    if ((!text && p.uploads.length === 0) || !chatId || !state.agentOnline || machineToWake(chatId)) return;
+    if ((!text && p.uploads.length === 0 && !(p.replyTo && p.replyTo.forwarded)) || !chatId || !state.agentOnline || machineToWake(chatId)) return;
     // Single chat directly to the bot's machine (the attachments land there too); groups to the first one awake
     const b = bot(chatId);
     send({
@@ -606,14 +613,25 @@ export function textHeight(p) {
 export function composerButtons(p) {
     const e = p.el;
     const noText = !e.text.value.trim();
-    const empty = noText && p.uploads.length === 0;
+    // a forwarded message goes out without words of its own too
+    const empty = noText && p.uploads.length === 0 && !(p.replyTo && p.replyTo.forwarded);
     const recording = !!rec.recorder && rec.pane === p;
-    e.btnMic.hidden = !noText || recording || !canRecord();
+    // Dictation (a setting of this device, #59): the field stays usable and the microphone dictates more into it
+    const dictate = dictationOn() && !(recording && rec.talk);
+    e.btnMic.hidden = (!noText && !dictate) || recording || !canRecord();
     e.btnTalk.hidden = !empty || recording || !canRecord() || !p.chatId || isGroup(p.chatId) || isPerson(p.chatId);
     e.btnSend.hidden = (empty && canRecord()) || recording;
     e.recording.hidden = !recording;
-    e.text.hidden = recording;
-    e.btnAttach.hidden = recording;
-    e.btnMic.disabled = e.btnSend.disabled || (!!rec.recorder && !recording);
+    e.recording.classList.toggle('dictate', dictate);
+    e.text.hidden = recording && !dictate;
+    e.btnAttach.hidden = recording && !dictate;
+    e.recPause.hidden = e.recSend.hidden = e.recAutoread.hidden = dictate;
+    e.recDone.hidden = !dictate;
+    const micLabel = t(dictate ? 'composer.dictate' : 'composer.record');
+    e.btnMic.title = micLabel;
+    e.btnMic.setAttribute('aria-label', micLabel);
+    e.recDiscard.setAttribute('aria-label', t(dictate ? 'composer.discardDictation' : 'composer.discardLabel'));
+    e.btnMic.disabled = e.btnSend.disabled || (!!rec.recorder && !recording) || !!p.dictating;
+    e.btnMic.classList.toggle('busy', !!p.dictating);
     e.btnTalk.disabled = e.btnMic.disabled;
 }

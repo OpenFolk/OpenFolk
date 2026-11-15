@@ -107,7 +107,7 @@ export default async function ({ start, check }) {
     await a.click('[data-tab=settings]');
     await add.wait(200);
     const signedIn = () => a.evaluate(() => [...document.querySelectorAll('#accounts-list li')].map((li) => `${li.querySelector('strong').firstChild.textContent}${li.querySelector('.tag') ? ' *' : ''}: ${[...li.querySelectorAll('button')].map((b) => b.textContent).join(',')}`));
-    check('the list: the relay, then the account, marked, nothing to remove', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Alex *: ']), await signedIn());
+    check('the list: the relay, then the account, marked, nothing to remove, only edit', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Alex *: Edit']), await signedIn());
     // "Add" (an admin: the form) with the address of this relay: the login with the account field
     await a.click('#accounts-join');
     await a.fill('#accounts-link', 'http://test.local');
@@ -125,12 +125,12 @@ export default async function ({ start, check }) {
         && await a.evaluate(() => JSON.parse(localStorage.getItem('openfolk-accounts')).map((x) => x.id).sort().join() === 'kunde,main'));
     await a.evaluate(() => openSettings());
     await add.wait(200);
-    check('both in the list, the first one with switch and remove', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Alex *: Switch,Remove', 'Kunde *: ']), await signedIn());
+    check('both in the list, the first one with switch and remove', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Alex *: Switch,Remove', 'Kunde *: Edit']), await signedIn());
     check('… and the setting for one list offered', await a.isVisible('#settings-all-accounts'));
     await onDialog(a, (d) => void d.accept());
     await a.locator('#accounts-list li', { hasText: 'Alex' }).locator('button.danger').click();
     await add.wait(100);
-    check('removed: only this device forgets it', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Kunde *: '])
+    check('removed: only this device forgets it', JSON.stringify(await signedIn()) === JSON.stringify(['test.local: Rename', 'Kunde *: Edit'])
         && await a.evaluate(() => JSON.parse(localStorage.getItem('openfolk-accounts')).map((x) => x.id).join() === 'kunde') && !add.sent.some((f) => f.type === 'device_logout'));
     await add.close();
 
@@ -179,15 +179,22 @@ export default async function ({ start, check }) {
     await m.evaluate(() => openAccounts());
     await admin.wait(200);
     const rows = () => m.evaluate(() => [...document.querySelectorAll('#accounts-list li')].map((li) => `${li.querySelector('strong').firstChild.textContent}${li.querySelector('.tag') ? ' *' : ''}: ${[...li.querySelectorAll('button')].map((b) => b.textContent).join(',')}`));
-    check('admin: the relay, then every account on it; the one not signed in here gets the invitation and "Set up", main and oneself nothing',
-        JSON.stringify(await rows()) === JSON.stringify(['test.local: Rename', 'Alex *: ', 'Work: Create invitation link,Set up']), await rows());
+    check('admin: the relay, then every account on it; the one not signed in here gets the invitation and "Edit", main (oneself) "Edit"',
+        JSON.stringify(await rows()) === JSON.stringify(['test.local: Rename', 'Alex *: Edit', 'Work: Create invitation link,Edit']), await rows());
     check('… in a row like the devices: text left, the buttons right of it', await m.evaluate(() => {
         const li = document.querySelectorAll('#accounts-list li')[2];
         const text = li.querySelector('.d-text').getBoundingClientRect();
         const actions = li.querySelector('.account-actions').getBoundingClientRect();
         return actions.left >= text.right - 1 && Math.abs(actions.top - text.top) < text.height;
     }));
-    check('main: nothing of its own to edit (its password is the relay setup)', await m.isHidden('#accounts-own'));
+    check('main: its form waits behind "Edit"', await m.isHidden('#accounts-own'));
+    await m.locator('#accounts-list li').nth(1).locator('button', { hasText: 'Edit' }).click();
+    check('main: "Edit" opens its name in the dialog, no password (that is the relay setup)', await m.isVisible('#settings-dialog') && (await m.textContent('#settings-dialog-title')) === 'Edit Alex'
+        && await m.locator('#accounts-own-name').inputValue() === 'Alex' && await m.isHidden('#accounts-password'));
+    await m.fill('#accounts-own-name', 'Alex B.');
+    await m.click('#accounts-own-save');
+    await admin.wait(100);
+    check('… saving renames main at the relay and closes the dialog', admin.sent.some((f) => f.type === 'account_update' && f.id === 'main' && f.name === 'Alex B.' && !('password' in f)) && await m.isHidden('#settings-dialog'));
     check('the admin\'s form waits behind "Add"', await m.isHidden('#accounts-new-form') && await m.isVisible('#accounts-join'));
     await m.click('#accounts-join');
     check('… and opens with it in the settings dialog: a link to redeem, a new person', await m.isVisible('#settings-dialog') && await m.evaluate(() => document.getElementById('accounts-new-form').parentElement.id === 'settings-dialog-body')
@@ -211,7 +218,7 @@ export default async function ({ start, check }) {
     check('a backend wraps the relay\'s token, it mints none', wrap?.token === 'tok-work', wrap);
     check('invitation with link and QR code in the dialog, with a Close row', await m.isVisible('#invite-box') && (await m.inputValue('#invite-box input')).includes('pair=tok-work') && (await m.textContent('#invite-box')).includes('Work')
         && (await m.textContent('#settings-dialog-title')) === 'Invitation for Work' && await m.isVisible('#settings-dialog-actions'));
-    await m.click('#settings-dialog [data-close]');
+    await m.click('#settings-dialog-actions [data-close]');
     await admin.wait(100);
     check('closed: the box is back in its block, hidden', await m.isHidden('#settings-dialog') && await m.isHidden('#invite-box') && await m.evaluate(() => document.getElementById('invite-box').parentElement.id === 'settings-accounts'));
     oldBackend = true;
@@ -219,11 +226,11 @@ export default async function ({ start, check }) {
     await admin.wait(300);
     check('new invitation for an existing account', admin.sent.some((f) => f.type === 'account_invite' && f.id === 'work'));
     check('a backend that ignores the token: no link for main to a stranger', (await m.textContent('#accounts-error')).includes('too old'), await m.textContent('#accounts-error'));
-    // "Set up" of an account without reach (a relay from before person chats): the account itself, no bots
-    await m.locator('#accounts-list li').nth(2).locator('button', { hasText: 'Set up' }).click();
+    // "Edit" of an account without reach (a relay from before person chats): the account itself, no bots
+    await m.locator('#accounts-list li').nth(2).locator('button', { hasText: 'Edit' }).click();
     await admin.wait(200);
     const setupButtons = await m.locator('#setup-box button').allTextContents();
-    check('"Set up": name, admin and delete in the dialog, no bots without reach', await m.isVisible('#setup-box') && await m.locator('#setup-box .setup-account input').inputValue() === 'Work'
+    check('"Edit": name, admin and delete in the dialog, no bots without reach', await m.isVisible('#setup-box') && await m.locator('#setup-box .setup-account input').inputValue() === 'Work'
         && JSON.stringify(setupButtons) === JSON.stringify(['Save name', 'Make admin', 'Delete', 'Close']) && await m.locator('#setup-box .setup-bot').count() === 0, setupButtons);
     await m.locator('#setup-box button', { hasText: 'Make admin' }).click();
     await admin.wait(200);
@@ -244,8 +251,8 @@ export default async function ({ start, check }) {
     list[1] = { ...WORK, created: '2026-10-01T08:00:00Z', reach: 'admins' };
     await m.evaluate(() => send({ type: 'accounts' }));
     await admin.wait(200);
-    check('a customer account: tagged, with the same two buttons', (await rows())[2] === 'Work *: Create invitation link,Set up', await rows());
-    await m.locator('#accounts-list li').nth(2).locator('button', { hasText: 'Set up' }).click();
+    check('a customer account: tagged, with the same two buttons', (await rows())[2] === 'Work *: Create invitation link,Edit', await rows());
+    await m.locator('#accounts-list li').nth(2).locator('button', { hasText: 'Edit' }).click();
     await admin.wait(200);
     check('… "Reaches everyone" in its dialog, and the bots below', await m.locator('#setup-box button', { hasText: 'Reaches everyone' }).isVisible() && await m.locator('#setup-box .setup-bot').count() === 2);
     await m.locator('#setup-box button', { hasText: 'Reaches everyone' }).click();
@@ -270,7 +277,8 @@ export default async function ({ start, check }) {
     });
     await own.page.evaluate(() => openAccounts());
     await own.wait(200);
-    check('other account: name and password of its own', await own.page.isVisible('#accounts-own') && await own.page.isVisible('#accounts-password'));
+    await own.page.locator('#accounts-list li.current-device button', { hasText: 'Edit' }).click();
+    check('other account: name and password of its own behind "Edit"', await own.page.isVisible('#accounts-own') && await own.page.isVisible('#accounts-password'));
     await own.page.fill('#accounts-own-name', 'Work 2');
     await own.page.click('#accounts-own-save');
     await own.wait(200);

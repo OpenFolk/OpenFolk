@@ -1,13 +1,15 @@
 /* OpenFolk web app: bot, group and routine editors, info panel, knowledge. */
-import { locale, t } from './i18n.js';
+import { locale, t, tn } from './i18n.js';
 import { desktopLocal } from './platform.js';
-import { AVATAR_EDGE, TEMPLATES, el, node, state, templateValues, toast } from './core.js';
-import { layoutPanes } from './panes.js';
-import { bot, clockTime, fillAvatar, group, isConversation, responsibleMachine, send, upper } from './e2e.js';
+import { AVATAR_EDGE, TEMPLATES, el, node, state, toast } from './core.js';
+import { initialOf, namesWith } from './names.js';
+import { layoutPanes, paneFor } from './panes.js';
+import { bot, clockTime, duration, fillAvatar, group, isConversation, modelsOf, responsibleMachine, send, upper } from './e2e.js';
+import { openChat } from './chat.js';
 import { shrinkImage } from './voice.js';
 import { backendVoice, guessVoice, previewVoice, stopPreview } from './read-aloud.js';
 import { VOICE_CATALOG } from './voices.js';
-import { chatMenuButtons, closeDialog, gitOpenOf, menuButton, renderInfoChat, showGitChanges } from './menus.js';
+import { chatMenuButtons, closeDialog, gitOpenOf, leaveInfo, menuButton, renderInfoChat, showGitChanges } from './menus.js';
 import { sortedCategories } from './connection.js';
 import { alertDialog } from './dialogs.js';
 import { openGitSettings } from './settings.js';
@@ -30,6 +32,8 @@ export function openEditor(b, machine) {
     el.editor.classList.toggle('side-edit', Boolean(b && !moving && !el.info.hidden && state.infoBot === b.id));
     el.editor.classList.toggle('moving', moving);
     el.editor.classList.toggle('page', !moving);
+    // A new bot: the short page (role, name, folder, repository); the rest it asks in its chat or waits in its settings
+    el.editor.classList.toggle('new', !b);
     state.editorAvatar = b ? b.avatar : '';
     // The repository the bot's machine wrote down; the folder check below brings it too, if that machine is awake
     state.editorRemote = b?.place?.repo || '';
@@ -38,12 +42,16 @@ export function openEditor(b, machine) {
     folderAsked = '';
     el.editorMachine.value = '';
     el.editorTitle.textContent = moving ? t('editor.moveTitle', { name: b.name, machine: upper(machine) }) : b ? t('editor.editBot') : t('editor.newBot');
-    el.editorTemplateField.hidden = !!b;
-    el.editorTemplate.value = TEMPLATES[0].id;
-    editorValues(b || templateValues(TEMPLATES[0]));
+    editorValues(b || BLANK_BOT);
+    // The machine only where there is a choice; a new bot starts on the first machine awake
+    el.editorMachineField.hidden = !b && el.editorMachine.options.length < 2;
     el.editorError.hidden = true;
     el.editorNameSuggestions.hidden = true;
     for (const k of Object.keys(suggestionsShown)) suggestionsShown[k] = [];
+    pickedTemplate = null;
+    nameInitial = '';
+    el.editorRoleSuggestions.hidden = !!b;
+    if (!b) renderRoleChips();
     renderEditorAvatar();
     setSaving(false);
     // The folder's repository, for when the bot gets a folder on another machine
@@ -53,7 +61,67 @@ export function openEditor(b, machine) {
         machineChanged();
     }
     el.editor.hidden = false;
-    (moving ? el.editorFolder : b ? el.editorName : el.editorTemplate).focus();
+    (moving ? el.editorFolder : b ? el.editorName : el.editorRole).focus();
+}
+
+/** A new bot before anything is typed. */
+const BLANK_BOT = { name: '', role: '', tone: '', folder: '', approval: 'risky', machine: '' };
+
+// ---------------------------------------------------------------- A new bot: role and name chips
+// The templates stand behind the role chips: a tap takes the role and, unseen on this page, the template's working
+// instructions and approval level, which a role typed over it drops again. The names come from names.js.
+let pickedTemplate = null;
+/** The initial the shown names share; the chips are drawn anew only when it changes (or on "Others"). */
+let nameInitial = '';
+
+function renderRoleChips() {
+    el.editorRoleSuggestions.replaceChildren(...TEMPLATES.map((tpl) => {
+        const chip = node('button', 'chip', t(tpl.name));
+        chip.type = 'button';
+        chip.title = t(tpl.role);
+        chip.addEventListener('click', () => {
+            pickedTemplate = tpl;
+            el.editorRole.value = t(tpl.role);
+            el.editorTone.value = t(tpl.tone);
+            el.editorApproval.value = tpl.approval;
+            renderNameChips();
+        });
+        return chip;
+    }));
+    el.editorRoleSuggestions.hidden = false;
+}
+
+/** The role typed (new bot only): a template's presets stay only while its role does; the names follow the initial. */
+export function roleChanged() {
+    if (state.editorBot) return;
+    if (pickedTemplate && el.editorRole.value.trim() !== t(pickedTemplate.role)) {
+        pickedTemplate = null;
+        el.editorTone.value = '';
+        el.editorApproval.value = 'risky';
+    }
+    renderNameChips();
+}
+
+/** Three names alliterating with the role, and "Others" for three more; none without a role. */
+function renderNameChips(again = false) {
+    const initial = initialOf(el.editorRole.value);
+    if (initial === nameInitial && !again) return;
+    nameInitial = initial;
+    const shown = again ? [...el.editorNameSuggestions.querySelectorAll('.chip')].map((c) => c.textContent) : [];
+    const names = namesWith(initial, 3, shown);
+    el.editorNameSuggestions.replaceChildren(...names.map((n) => {
+        const chip = node('button', 'chip', n);
+        chip.type = 'button';
+        chip.addEventListener('click', () => { el.editorName.value = n; renderEditorAvatar(); });
+        return chip;
+    }));
+    if (names.length) {
+        const more = node('button', 'chip', t('editor.otherNames'));
+        more.type = 'button';
+        more.addEventListener('click', () => renderNameChips(true));
+        el.editorNameSuggestions.appendChild(more);
+    }
+    el.editorNameSuggestions.hidden = !names.length;
 }
 
 export function editorValues(v) {
@@ -62,12 +130,9 @@ export function editorValues(v) {
     el.editorRole.value = v.role || '';
     el.editorFolder.value = v.folder || '';
     const known = ['default', 'fable', 'opus', 'sonnet', 'haiku', 'codex', 'cursor', 'copilot', 'antigravity', 'opencode'];
-    const model = v.model || 'default';
-    // Other engines only if the machine offers them (login present) or the bot already uses them
-    for (const engine of ['codex', 'cursor', 'copilot', 'antigravity', 'opencode']) {
-        const option = /** @type {HTMLOptionElement | null} */ (el.editorModel.querySelector(`option[value="${engine}"]`));
-        if (option) option.hidden = state.models.length > 0 && !state.models.some((m) => m.value === engine) && model !== engine;
-    }
+    // A new bot starts on the first machine awake
+    const machine = v.machine || (v.id ? responsibleMachine(v) : '') || el.editorMachine.value || [...state.online].sort()[0] || '';
+    const model = v.model || (v.id ? 'default' : newBotModel(machine));
     el.editorModel.value = known.includes(model) ? model : 'custom';
     el.editorModelCustom.value = known.includes(model) ? '' : model;
     el.editorModelCustom.hidden = el.editorModel.value !== 'custom';
@@ -79,9 +144,18 @@ export function editorValues(v) {
     canMessageValues(v);
     contactValues(v);
     allowedToolValues(v);
-    // A template keeps the machine already chosen; a new bot starts on the first machine awake
-    machineOptions(v.machine || (v.id ? responsibleMachine(v) : '') || el.editorMachine.value || [...state.online].sort()[0] || '');
+    machineOptions(machine);
+    engineOptions(model);
     renderVoiceChoice();
+}
+
+/**
+ * A new bot runs on Claude, unless its machine has Claude not ready but OpenCode's free models (the first steps' "try
+ * without signing in"): a first bot that cannot answer would be a worse start than one on a free model.
+ */
+function newBotModel(machine) {
+    const engines = state.setupPerMachine[machine]?.engines || {};
+    return engines.claude !== 'ready' && engines.opencode === 'ready' ? 'opencode' : 'default';
 }
 
 /** The folders of the list to choose from ('' = none); a folder that no longer exists counts as none. */
@@ -184,6 +258,15 @@ function machineOptions(value) {
     folderHint();
 }
 
+/** Other engines only if the chosen machine offers them (login present) or the bot already uses them (#63). */
+function engineOptions(model = state.editorBot?.model || 'default') {
+    const models = modelsOf(el.editorMachine.value);
+    for (const engine of ['codex', 'cursor', 'copilot', 'antigravity', 'opencode']) {
+        const option = /** @type {HTMLOptionElement | null} */ (el.editorModel.querySelector(`option[value="${engine}"]`));
+        if (option) option.hidden = models.length > 0 && !models.some((m) => m.value === engine) && model !== engine;
+    }
+}
+
 function folderHint() {
     el.editorFolderHint.textContent = t('editor.folderHint', { machine: upper(el.editorMachine.value) || '–' });
 }
@@ -274,6 +357,7 @@ function offerRemote() {
 
 export function machineChanged() {
     folderHint();
+    engineOptions();
     const b = state.editorBot;
     // A folder derived from the repository is the one on the previous machine: derive it there again
     if (filled.folder) repoChanged();
@@ -288,17 +372,27 @@ export function machineChanged() {
  * The folder the picker shows ('' = the allowed roots), the machine it lists, the folder still awaited and the name
  * of a new folder still being created.
  */
-const picker = { folder: '', machine: '', asked: null, creating: null };
+const picker = { folder: '', machine: '', asked: null, creating: null, onChoose: /** @type {((folder: string) => void) | null} */ (null) };
 
 export function openFolderPicker() {
     const machine = el.editorMachine.value;
     if (!state.online.includes(machine)) { showEditorError(t('editor.machineAsleep', { machine: upper(machine) })); return; }
+    showPicker(machine, el.editorFolder.value.trim(), null);
+}
+
+/** The picker outside the bot editor (the default folder in a machine's settings); the machine must be awake. */
+export function pickFolderOn(machine, folder, onChoose) {
+    showPicker(machine, folder, onChoose);
+}
+
+function showPicker(machine, folder, onChoose) {
     picker.machine = machine;
     picker.creating = null;
+    picker.onChoose = onChoose;
     el.pickerPath.textContent = '';
     el.pickerNewName.value = '';
     el.folderPicker.hidden = false;
-    listPicker(el.editorFolder.value.trim());
+    listPicker(folder);
 }
 
 function listPicker(folder) {
@@ -375,6 +469,11 @@ export function pickerFailed(message) {
 
 export function chooseFolder() {
     if (!picker.folder) return;
+    if (picker.onChoose) {
+        closeDialog(el.folderPicker);
+        picker.onChoose(picker.folder);
+        return;
+    }
     el.editorFolder.value = picker.folder;
     filled.folder = false;
     closeDialog(el.folderPicker);
@@ -395,7 +494,7 @@ let creating = null;
 function setSaving(on, label = t('editor.checkingFolder')) {
     const button = /** @type {HTMLButtonElement} */ (el.editorForm.querySelector('button[type="submit"]'));
     button.disabled = on;
-    button.textContent = on ? label : t(moving ? 'editor.move' : 'common.save');
+    button.textContent = on ? label : t(moving ? 'editor.move' : state.editorBot ? 'common.save' : 'editor.create');
     if (!on && saving) { clearTimeout(saving.timer); saving = null; }
     if (!on && cloning) { clearTimeout(cloning.timer); cloning = null; }
     if (!on && creating) { clearTimeout(creating.timer); creating = null; }
@@ -790,6 +889,12 @@ function showEditorError(text, refused) {
 
 // ================================================================ Group editor
 
+/** "New group" from the "+" menu, the palette or Ctrl+Shift+N: a group needs two bots. */
+export function newGroup() {
+    if (state.bots.length < 2) { void alertDialog(t('group.needTwoBots')); return; }
+    openGroupEditor(null);
+}
+
 export function openGroupEditor(g) {
     state.groupEditorGroup = g || null;
     state.groupAvatarData = g ? g.avatar : '';
@@ -849,6 +954,8 @@ export function openInfo(chatId) {
     el.infoSkills.textContent = t('common.loading');
     el.infoClaude.textContent = '';
     renderRoutines();
+    // the next runs as of now; the list in hand may be hours old
+    send({ type: 'routines' }, responsibleMachine(b) || undefined);
     // The machine: a tap opens the editor at its machine field, to move the bot (the chips above do the same)
     const where = node('button', 'link info-machine', upper(b.machine || responsibleMachine(b)) || '–');
     where.type = 'button';
@@ -981,34 +1088,167 @@ export function knowledgeError(text) {
 
 const WEEKDAYS = ['routine.day.sun', 'routine.day.mon', 'routine.day.tue', 'routine.day.wed', 'routine.day.thu', 'routine.day.fri', 'routine.day.sat'];
 
-function cronText(cron) {
-    const m = /^(\d+) (\d+) \* \* (\*|1-5|[0-6])$/.exec(cron);
-    if (m) {
-        const time = `${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')}`;
-        if (m[3] === '*') return t('routine.dailyAt', { time });
-        if (m[3] === '1-5') return t('routine.weekdaysAt', { time });
-        return `${t(WEEKDAYS[Number(m[3])])} ${time}`;
-    }
-    if (cron === '0 * * * *') return t('routine.hourly');
-    return cron;
+/** The weekday field in words; '' for every day, null for what has no short form. */
+function cronDays(field) {
+    if (field === '*') return '';
+    if (field === '1-5') return t('routine.days.weekdays');
+    if (field === '0,6' || field === '6,0' || field === '6,7' || field === '6-7') return t('routine.days.weekends');
+    const day = (d) => t(WEEKDAYS[Number(d) % 7]);
+    const parts = field.split(',').map((p) => {
+        const m = /^([0-7])(?:-([0-7]))?$/.exec(p);
+        if (!m) return null;
+        return m[2] ? `${day(m[1])}–${day(m[2])}` : day(m[1]);
+    });
+    return parts.includes(null) ? null : parts.join(', ');
 }
 
+/**
+ * A cron expression in words ("weekdays 8:00", "every 2 hours"), in the forms the editor and bots write; anything
+ * else stays the expression itself.
+ */
+export function cronText(cron) {
+    const f = cron.trim().split(/\s+/);
+    if (f.length !== 5 || f[3] !== '*') return cron;
+    const [min, hour, dom, , dow] = f;
+    const days = cronDays(dow);
+    if (days === null || (dom !== '*' && dow !== '*')) return cron;
+    const num = /^\d+$/;
+    // fixed times: one or a few hours at one minute
+    if (num.test(min) && /^\d+(,\d+)*$/.test(hour)) {
+        const time = hour.split(',').map((h) => `${Number(h)}:${min.padStart(2, '0')}`).join(', ');
+        if (num.test(dom)) return t('routine.monthly', { day: Number(dom), time });
+        if (dom !== '*') return cron;
+        return `${days || t('routine.days.daily')} ${time}`;
+    }
+    if (dom !== '*') return cron;
+    let every = '';
+    const hourStep = /^(\*|(\d+)-(\d+))(?:\/(\d+))?$/.exec(hour);
+    const minStep = /^\*\/(\d+)$/.exec(min);
+    if (num.test(min) && hourStep) {
+        const n = Number(hourStep[4] || 1);
+        every = n === 1 && Number(min) ? t('routine.hourlyAt', { minute: min.padStart(2, '0') }) : tn('routine.everyHours', n);
+    } else if ((min === '*' || minStep) && hourStep && !hourStep[4]) {
+        every = tn('routine.everyMinutes', minStep ? Number(minStep[1]) : 1);
+    } else {
+        return cron;
+    }
+    if (hourStep[2] !== undefined) every += ' ' + t('routine.hoursRange', { from: Number(hourStep[2]), to: Number(hourStep[3]) });
+    return days ? `${days}, ${every}` : every;
+}
+
+/** Date and time of a run or the next one: today only the time, otherwise with weekday and date. */
+function runTime(iso) {
+    const d = new Date(iso);
+    if (d.toDateString() === new Date().toDateString()) return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleString(locale(), { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+const RUN_STATUS = { ok: 'routine.status.ok', error: 'routine.status.error', running: 'routine.status.running' };
+
+/** Routines opened on the bot's page; they stay open when the list comes again. */
+const openRoutines = new Set();
+
+/**
+ * The bot's routines on its page: a row each with name, when in words, next run and a switch active/paused; a tap on
+ * the row opens the instruction, the actions and the last runs.
+ */
 export function renderRoutines() {
     el.infoRoutines.innerHTML = '';
     const list = state.routines.filter((r) => r.botId === state.infoBot);
     if (list.length === 0) el.infoRoutines.appendChild(node('li', 'empty-small', t('routine.none')));
     for (const r of list) {
-        const li = node('li', r.enabled ? '' : 'off');
-        const text = node('div', 'r-text');
-        const status = r.lastStatus === 'error' ? '✗' : r.lastStatus === 'running' ? '…' : '✓';
-        text.append(node('strong', '', r.name), node('span', '', `${cronText(r.cron)}${r.wake ? ' · ' + t('routine.wakesMachine') : ''}${r.enabled ? '' : ' · ' + t('routine.paused')}${r.lastRun ? ` · ${t('routine.lastRun', { time: clockTime(r.lastRun) })} ${status}` : ''}`));
-        const now = node('button', 'btn small', '▶ ' + t('routine.runNow'));
-        now.addEventListener('click', () => send({ type: 'routine_run', id: r.id }));
-        const edit = node('button', 'btn small', t('routine.edit'));
-        edit.addEventListener('click', () => openRoutineEditor(r));
-        li.append(text, now, edit);
+        const open = openRoutines.has(r.id);
+        const li = node('li', 'routine' + (r.enabled ? '' : ' off') + (open ? ' open' : ''));
+        li.dataset.id = r.id;
+        const head = node('div', 'r-head');
+        const toggle = node('button', 'r-text');
+        toggle.type = 'button';
+        toggle.setAttribute('aria-expanded', String(open));
+        const status = r.lastStatus === 'error' ? ' ✗' : r.lastStatus === 'running' ? ' …' : ' ✓';
+        const when = [cronText(r.cron)];
+        if (!r.enabled) when.push(t('routine.paused'));
+        else if (r.nextRun) when.push(t('routine.next', { time: runTime(r.nextRun) }));
+        if (r.lastRun) when.push(t('routine.lastRun', { time: clockTime(r.lastRun) }) + status);
+        toggle.append(node('strong', '', r.name), node('span', '', when.join(' · ')));
+        toggle.addEventListener('click', () => {
+            if (open) openRoutines.delete(r.id);
+            else openRoutines.add(r.id);
+            renderRoutines();
+        });
+        const active = /** @type {HTMLInputElement} */ (node('input', 'switch'));
+        active.type = 'checkbox';
+        active.checked = r.enabled;
+        active.setAttribute('role', 'switch');
+        active.title = t(r.enabled ? 'routine.activeOn' : 'routine.activeOff');
+        active.setAttribute('aria-label', t('routine.activeSwitch', { name: r.name }));
+        active.addEventListener('change', () => send({
+            type: 'routine_save',
+            routine: { id: r.id, botId: r.botId, name: r.name, cron: r.cron, prompt: r.prompt, enabled: active.checked, wake: !!r.wake },
+        }));
+        head.append(toggle, active);
+        li.append(head);
+        if (open) li.append(routineDetails(r));
         el.infoRoutines.appendChild(li);
     }
+}
+
+/** What an opened routine shows: instruction, actions, the last runs. */
+function routineDetails(r) {
+    const body = node('div', 'r-body');
+    body.append(node('div', 'r-label', t('routine.instruction')), node('p', 'r-prompt', r.prompt));
+    if (r.wake) body.append(node('p', 'hint', t('routine.wakesMachine')));
+    const actions = node('div', 'r-actions');
+    const button = (text, run) => {
+        const k = node('button', 'btn small', text);
+        k.type = 'button';
+        k.addEventListener('click', run);
+        actions.append(k);
+        return k;
+    };
+    button(t('routine.runNow'), () => send({ type: 'routine_run', id: r.id })).dataset.action = 'run';
+    button(t('routine.edit'), () => openRoutineEditor(r)).dataset.action = 'edit';
+    button(t('routine.editInChat'), () => editRoutineInChat(r)).dataset.action = 'chat';
+    body.append(actions, node('div', 'r-label', t('routine.history')));
+    const runs = r.runs || [];
+    if (!runs.length) {
+        body.append(node('p', 'hint', t('routine.noRuns')));
+        return body;
+    }
+    const ul = node('ul', 'r-runs');
+    for (const x of runs) {
+        const li = node('li', 'r-run st-' + x.status);
+        const took = x.end ? duration(new Date(x.end).getTime() - new Date(x.start).getTime()) : '';
+        li.append(node('span', 'r-when', runTime(x.start)), node('span', 'r-took', took), node('span', 'r-status', t(RUN_STATUS[x.status] || x.status)));
+        if (x.entryId) {
+            const go = node('button', 'link', t('routine.toAnswer'));
+            go.type = 'button';
+            go.addEventListener('click', () => {
+                leaveInfo();
+                openChat(r.botId, x.entryId);
+            });
+            li.append(go);
+        }
+        if (x.error) li.append(node('div', 'r-error', x.error));
+        ul.append(li);
+    }
+    body.append(ul);
+    return body;
+}
+
+/** "Edit in chat": the composer of the bot's chat gets the start of the request, the bot changes it (set_routine). */
+function editRoutineInChat(r) {
+    const chatId = state.infoChat || r.botId;
+    leaveInfo();
+    openChat(chatId);
+    const p = paneFor(chatId);
+    if (!p) return;
+    const text = p.el.text;
+    const start = t('routine.editInChatText', { name: r.name });
+    // a draft stays; the request starts on a line of its own after it
+    text.value = text.value.trim() ? `${text.value.trimEnd()}\n${start}` : start;
+    text.dispatchEvent(new Event('input', { bubbles: true }));
+    text.focus();
+    text.setSelectionRange(text.value.length, text.value.length);
 }
 
 // ================================================================ Routine editor

@@ -6,7 +6,9 @@
 <meta name="theme-color" content="#111b21">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- default, not black-translucent, which Apple calls deprecated: the page starts below the status bar. The blur
+     iOS 27 lays over the top of the home screen app goes only with #top-edge below (#65). -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>OpenFolk</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -16,6 +18,11 @@
 <link rel="stylesheet" href="chat.css">
 </head>
 <body>
+<!-- iOS home screen app only (chat.css): a fixed strip in the header's color at the very top. iOS 27 blurs the top of
+     the page, header included, unless a fixed element with a background lies there (at least 6px high, 80% wide,
+     within 4px of the top; a pseudo-element does not count); the status bar takes its color. In the HTML so it is
+     there before any script runs. -->
+<div id="top-edge"></div>
 
 <!-- Start page: a page of its own, not a dialog over the app. The fields hide with their labels (CSS :has). -->
 <div id="login" class="start" hidden>
@@ -107,6 +114,13 @@
         </header>
         <div class="search-box closed" id="search-box">
             <span class="field-x"><input type="search" id="search" data-i18n-placeholder="search.allChats" autocomplete="off" enterkeyhint="search" data-i18n-aria-label="search.allChats"><button type="button" class="field-clear" data-i18n-title="search.clear" data-i18n-aria-label="search.clear" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M8 8l8 8M16 8l-8 8"/></svg></button></span>
+            <!-- What the search looks for; phone only (list.js), larger screens have the command palette (palette.js) -->
+            <div class="search-filters" id="search-filters" role="radiogroup" data-i18n-aria-label="search.filters">
+                <button type="button" class="chip" role="radio" aria-checked="true" data-filter="messages" data-i18n="search.filterMessages"></button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-filter="bots" data-i18n="search.filterBots"></button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-filter="files" data-i18n="search.filterFiles"></button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-filter="routines" data-i18n="search.filterRoutines"></button>
+            </div>
         </div>
         <ul class="search-results" id="search-results" hidden></ul>
         <ul class="chat-list" id="chat-list"></ul>
@@ -243,8 +257,14 @@
                         <button type="button" class="round" data-el="rec-pause" data-i18n-title="voice.pause" data-i18n-aria-label="composer.pauseLabel">
                             <svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg>
                         </button>
+                        <!-- Read the answer aloud by itself: the setting of this device, switchable right here -->
+                        <button type="button" class="round auto-read" data-el="rec-autoread" data-autoread><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7"/><path class="slash" d="M3 3l18 18"/></svg></button>
                         <button type="button" class="round send" data-el="rec-send" data-i18n-title="composer.sendVoice" data-i18n-aria-label="composer.sendVoice">
                             <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7z"/></svg>
+                        </button>
+                        <!-- Dictation (a setting): the text goes into the field, which stays usable -->
+                        <button type="button" class="round send" data-el="rec-done" data-i18n-title="composer.transcribe" data-i18n-aria-label="composer.transcribe" hidden>
+                            <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
                         </button>
                     </div>
                 </form>
@@ -368,6 +388,7 @@
                         <option value="gemini" data-i18n="settings.readAloudGemini"></option>
                     </select>
                 </label>
+                <label class="check"><input type="checkbox" id="settings-dictation"> <span data-i18n="settings.dictation"></span></label>
                 <label class="check"><input type="checkbox" id="settings-auto-read"> <span data-i18n="settings.autoRead"></span></label>
                 <label><span data-i18n="settings.talkMode"></span>
                     <select id="settings-talk-mode">
@@ -412,6 +433,11 @@
                 <div class="actions left">
                     <button type="button" class="btn" id="push-enable" data-i18n="push.enable" hidden></button>
                 </div>
+                <!-- This device only (a phone): skip the quiet while a desktop is in use -->
+                <div id="push-always-row" hidden>
+                    <label class="check"><input type="checkbox" id="push-always"> <span data-i18n="push.always"></span></label>
+                    <p class="hint" data-i18n="push.alwaysHint"></p>
+                </div>
                 <h4 data-i18n="push.whenTitle"></h4>
                 <div class="push-kinds" id="push-kinds"></div>
             </div>
@@ -455,6 +481,8 @@
                     <label><span data-i18n="accounts.name"></span><input id="accounts-new-name" maxlength="60" autocomplete="off" data-i18n-placeholder="accounts.newNamePlaceholder"></label>
                     <label class="check"><input type="checkbox" id="accounts-new-admin"> <span data-i18n="accounts.adminRight"></span></label>
                     <label class="check"><input type="checkbox" id="accounts-new-customer"> <span data-i18n="accounts.customerRight"></span></label>
+                    <!-- The relay's machines the account runs on (setups.js machinePicker), filled when the form opens -->
+                    <div id="accounts-new-machines"></div>
                     <div class="actions left">
                         <button type="button" class="btn" id="accounts-create" data-i18n="accounts.createButton"></button>
                         <button type="button" class="btn" id="accounts-new-cancel" data-i18n="common.cancel"></button>
@@ -472,13 +500,13 @@
                 <div id="settings-all-accounts-field" hidden>
                     <label class="check"><input type="checkbox" id="settings-all-accounts"> <span data-i18n="settings.allAccounts"></span></label>
                 </div>
-                <!-- Hidden on a relay without accounts -->
+                <!-- The own account behind "Edit" in its row, in the settings dialog; main has no password here (the relay's setup) -->
                 <div id="accounts-own" hidden>
-                    <h4 data-i18n="accounts.own"></h4>
                     <label><span data-i18n="accounts.name"></span><input id="accounts-own-name" maxlength="60" autocomplete="off"></label>
-                    <label><span data-i18n="accounts.newPassword"></span><input type="password" id="accounts-password" autocomplete="new-password" data-i18n-placeholder="accounts.passwordPlaceholder"></label>
+                    <label id="accounts-password-field"><span data-i18n="accounts.newPassword"></span><input type="password" id="accounts-password" autocomplete="new-password" data-i18n-placeholder="accounts.passwordPlaceholder"></label>
                     <div class="actions left">
-                        <button type="button" class="btn" id="accounts-own-save" data-i18n="common.save"></button>
+                        <button type="button" class="btn primary" id="accounts-own-save" data-i18n="common.save"></button>
+                        <button type="button" class="btn" id="accounts-own-close" data-i18n="common.close"></button>
                     </div>
                 </div>
                 <p class="error" id="accounts-error" hidden></p>
@@ -509,6 +537,7 @@
                 <svg viewBox="0 0 24 24" class="icon-pause"><path d="M9 5v14M15 5v14"/></svg>
                 <svg viewBox="0 0 24 24" class="icon-play"><path d="M7 4.5v15l12-7.5z"/></svg>
             </button>
+            <button type="button" class="round auto-read" id="speech-bar-auto" data-autoread><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7"/><path class="slash" d="M3 3l18 18"/></svg></button>
             <button type="button" class="round" id="speech-bar-stop" data-i18n-title="message.stopReading" data-i18n-aria-label="message.stopReading">
                 <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
             </button>
@@ -546,40 +575,42 @@
 <!-- Create / edit a bot -->
 <!-- The bot editor; moving a bot to another machine uses it as a small dialog with only the .on-move parts -->
 <div id="editor" class="overlay page" hidden>
+    <!-- A new bot: only the .on-new parts, the role first (chat.css); everything else waits in its settings -->
     <form class="dialog" id="editor-form">
-        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
-        <h2 id="editor-title" class="on-move" data-i18n="editor.newBot"></h2>
-        <label id="editor-template-field"><span data-i18n="editor.template"></span>
-            <select id="editor-template"></select>
-        </label>
+        <button type="button" class="round page-back on-new" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 id="editor-title" class="on-move on-new" data-i18n="editor.newBot"></h2>
+        <p class="hint on-new" id="editor-new-hint" data-i18n="editor.newHint"></p>
         <div class="avatar-picker">
             <div class="avatar large" id="editor-avatar"></div>
             <label class="btn"><span data-i18n="editor.chooseImage"></span><input type="file" id="editor-image" accept="image/*" hidden></label>
             <button type="button" class="btn" id="editor-image-remove" data-i18n="editor.removeImage"></button>
             <button type="button" class="btn" id="editor-avatar-ai" data-i18n="editor.aiAvatar" data-i18n-title="editor.aiAvatarTitle"></button>
         </div>
-        <label class="required"><span data-i18n="editor.name"></span>
+        <label class="required on-new"><span data-i18n="editor.name"></span>
             <span class="with-button"><input id="editor-name" required maxlength="40" data-i18n-placeholder="editor.namePlaceholder"><button type="button" class="btn small" id="editor-name-suggest" data-i18n="editor.suggest" data-i18n-title="editor.suggestNameTitle"></button></span>
         </label>
-        <div class="suggestions" id="editor-name-suggestions" hidden></div>
+        <!-- For a new bot: three names alliterating with the role (names.js); when editing: the model's suggestions -->
+        <div class="suggestions on-new" id="editor-name-suggestions" hidden></div>
         <label><span data-i18n="editor.area"></span>
             <input id="editor-area" maxlength="40" data-i18n-placeholder="editor.areaPlaceholder">
         </label>
-        <label><span data-i18n="editor.role"></span>
+        <label class="on-new field-role"><span data-i18n="editor.role"></span>
             <span class="with-button"><input id="editor-role" maxlength="80" data-i18n-placeholder="editor.rolePlaceholder"><button type="button" class="btn small" id="editor-role-suggest" data-i18n="editor.suggest" data-i18n-title="editor.suggestRoleTitle"></button></span>
         </label>
-        <label><span data-i18n="editor.machine"></span>
+        <!-- For a new bot: the templates as chips, each a role with working instructions and approval level behind it -->
+        <div class="suggestions on-new field-role" id="editor-role-suggestions" hidden></div>
+        <label class="on-new" id="editor-machine-field"><span data-i18n="editor.machine"></span>
             <select id="editor-machine"></select>
         </label>
         <!-- Folder and repository: each fills the other where it can (the folder's origin, the folder a clone goes to) -->
         <p class="hint on-move" data-i18n="editor.requiredNote"></p>
-        <label class="on-move"><span data-i18n="editor.folder"></span>
+        <label class="on-move on-new"><span data-i18n="editor.folder"></span>
             <span class="with-button"><input id="editor-folder" data-i18n-placeholder="editor.folderPlaceholder" spellcheck="false" autocapitalize="off"><button type="button" class="btn small" id="editor-folder-browse" data-i18n="editor.browse" data-i18n-title="editor.browseTitle"></button></span>
         </label>
-        <label class="on-move"><span data-i18n="editor.repo"></span>
+        <label class="on-move on-new"><span data-i18n="editor.repo"></span>
             <input id="editor-repo" data-i18n-placeholder="editor.repoPlaceholder" spellcheck="false" autocapitalize="off">
         </label>
-        <p class="hint on-move" id="editor-folder-hint"></p>
+        <p class="hint on-move on-new" id="editor-folder-hint"></p>
         <div class="two-columns">
             <label><span data-i18n="editor.model"></span>
                 <select id="editor-model">
@@ -640,8 +671,8 @@
             <p class="hint" data-i18n="editor.contactHint"></p>
         </div>
         <fieldset class="choice" id="editor-allowed-tools" hidden><legend data-i18n="editor.allowedTools"></legend></fieldset>
-        <p class="error on-move" id="editor-error" hidden></p>
-        <div class="actions on-move">
+        <p class="error on-move on-new" id="editor-error" hidden></p>
+        <div class="actions on-move on-new">
             <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
             <button type="submit" class="primary" data-i18n="common.save"></button>
         </div>
@@ -683,6 +714,46 @@
         </header>
         <p class="hint" data-i18n="menu.archiveHint"></p>
         <div class="menu menu-inline" id="archive-list"></div>
+    </section>
+</div>
+
+<!-- Forward a message: the chats to pick from; the chosen one opens with the message above its input field -->
+<div id="forward" class="overlay side page" hidden>
+    <section class="dialog panel vscode">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <header class="vs-head">
+            <div class="vs-title">
+                <h2 data-i18n="forward.title"></h2>
+                <p id="forward-sub"></p>
+            </div>
+            <button type="button" class="round" data-close data-i18n-aria-label="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </header>
+        <input id="forward-search" type="search" autocomplete="off" data-i18n-placeholder="forward.search" data-i18n-aria-label="forward.search">
+        <div class="menu menu-inline forward-list" id="forward-list"></div>
+    </section>
+</div>
+
+<!-- Command palette (Ctrl+K, palette.js): chats, actions, routines, settings, messages and files; a page on the phone -->
+<div id="palette" class="overlay page palette" hidden>
+    <section class="dialog" role="dialog" aria-modal="true" data-i18n-aria-label="palette.title">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <input id="palette-input" type="search" autocomplete="off" spellcheck="false" enterkeyhint="go" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="palette-list"
+            data-i18n-placeholder="palette.placeholder" data-i18n-aria-label="palette.placeholder">
+        <ul id="palette-list" class="palette-list" role="listbox" data-i18n-aria-label="palette.results"></ul>
+        <p class="palette-hint" id="palette-hint"></p>
+    </section>
+</div>
+
+<!-- Overview of the keyboard shortcuts (Ctrl+/, palette.js) -->
+<div id="shortcuts" class="overlay page" hidden>
+    <section class="dialog shortcuts" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <header class="shortcuts-head">
+            <h2 id="shortcuts-title" data-i18n="shortcuts.title"></h2>
+            <button type="button" class="round" data-close data-i18n-aria-label="common.close" data-i18n-title="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </header>
+        <dl class="shortcuts-list" id="shortcuts-list"></dl>
+        <p class="shortcuts-note" id="shortcuts-note" hidden></p>
     </section>
 </div>
 
@@ -827,10 +898,15 @@
 
 <!-- One line of text instead of prompt() (rename a conversation, commit message), see askText() in menus.js -->
 <!-- Adding something in the settings (a key, a person, a machine, a device): the form or the result moves into this
-     small dialog, like the bot editor, and back into its block when it closes (menus.js openSettingsDialog) -->
+     small dialog, like the bot editor, and back into its block when it closes (menus.js openSettingsDialog). Next to
+     the settings pane on wide screens, it is the pane to their right -->
 <div id="settings-dialog" class="overlay page" hidden>
     <section class="dialog">
         <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <!-- Only as the pane next to the settings (class docked): the X of a pane's head -->
+        <button type="button" class="round pane-close settings-dialog-close" data-close data-i18n-title="common.close" data-i18n-aria-label="common.close">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
         <h2 id="settings-dialog-title"></h2>
         <div id="settings-dialog-body"></div>
         <div class="actions" id="settings-dialog-actions">

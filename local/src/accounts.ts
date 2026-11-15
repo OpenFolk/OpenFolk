@@ -135,11 +135,11 @@ export class Accounts implements AccountRouter {
         this.serve(DEFAULT_ACCOUNT);
     }
 
-    /** The account runs on machines bound to it now: stop serving it, its data stays where it is. */
+    /** The account no longer runs on this machine (an admin's choice, a setup link): stop serving it, its data stays where it is. */
     released(account: string): void {
         if (account === ownerAccount() || !this.managers.has(account)) return;
         this.stop(account);
-        this.log(`account ${account} runs on machines of its own now`);
+        this.log(`account ${account} no longer runs on this machine, its data stays`);
     }
 
     /** Person route: to the receiving account's manager, if this machine serves it; a copy that came before is dropped. */

@@ -76,6 +76,8 @@ export interface TurnResult {
     error?: string;
     /** Stopped by the user: no error in the chat; requesters (bots, routines) see it as not done via `error`. */
     stopped?: boolean;
+    /** The answer's history entry; the bot manager sets it when it records the answer, before `onDone`. */
+    entryId?: string;
 }
 
 export interface AccountInfo {
@@ -942,6 +944,8 @@ export function toolSummary(name: string, input: unknown): string {
             return shorten(s('chat'));
         case 'mcp__openfolk__hand_over':
             return shorten(s('summary'));
+        case 'mcp__openfolk__set_routine':
+            return shorten(s('name'));
         default:
             return shorten(JSON.stringify(i));
     }

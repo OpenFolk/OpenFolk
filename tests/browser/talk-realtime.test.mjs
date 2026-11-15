@@ -4,6 +4,8 @@
 import { bot } from './harness.mjs';
 
 export default async function ({ start, check }) {
+    // how long the scripted backend takes to answer a talk_connect
+    let answerDelay = 50;
     const h = await start({
         bots: [bot('pdf', 'PDF-Reader')],
         before: () => {
@@ -32,7 +34,7 @@ export default async function ({ start, check }) {
             window.__server = (e) => window.__dc.listeners.message({ data: JSON.stringify(e) });
         },
         onSend: async (f, push) => {
-            if (f.type === 'talk_connect') setTimeout(() => push({ type: 'talk_answer', machine: 'desk', id: f.id, sdp: 'v=0 answer' }), 50);
+            if (f.type === 'talk_connect') setTimeout(() => push({ type: 'talk_answer', machine: 'desk', id: f.id, sdp: 'v=0 answer' }), answerDelay);
         },
     });
     const p = h.page;
@@ -103,8 +105,9 @@ export default async function ({ start, check }) {
     await h.wait(100);
     check('end: connection closed, page gone', await p.evaluate(() => window.__closed === true && document.getElementById('talk').hidden));
 
-    // the backend refuses (no key): the test answers first with an error; onSend's valid answer 50 ms later finds the
-    // id answered already and is dropped
+    // the backend refuses (no key): the test answers first with an error; onSend's valid answer comes well after it
+    // (a fixed 50 ms lost the race on a loaded machine), finds the id answered already and is dropped
+    answerDelay = 500;
     await p.evaluate(() => { window.__closed = false; });
     const before = h.sent.length;
     await p.click('[data-el=btn-talk]');
@@ -113,6 +116,9 @@ export default async function ({ start, check }) {
     await h.push({ type: 'talk_answer', machine: 'desk', id: second.id, error: 'The voice conversation over OpenAI needs an OpenAI key in the settings.' });
     await h.wait(150);
     check('refused: the reason on the page, the connection closed', await p.evaluate(() => document.getElementById('talk-error').textContent.includes('OpenAI key') && window.__closed === true));
+    await h.wait(450);
+    check('the late valid answer changes nothing', await p.evaluate(() => document.getElementById('talk-error').textContent.includes('OpenAI key') && window.__closed === true));
+    answerDelay = 50;
     await p.click('#talk-end');
 
     // without a key: the app's own way, no offer

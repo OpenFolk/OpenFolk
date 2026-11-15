@@ -1,4 +1,4 @@
-// The bots' own tools (list_bots, list_conversations, message_bot, send_file, set_avatar, make_avatar, set_profile, knowledge, history, hand_over), the same for every engine: Claude gets
+// The bots' own tools (list_bots, list_conversations, message_bot, send_file, set_avatar, make_avatar, set_profile, routines, knowledge, history, hand_over), the same for every engine: Claude gets
 // them as an MCP server, the other engines as plain functions (EngineTool). What a tool needs of the bot manager
 // comes through ToolHost; this module imports only types from agent.ts.
 
@@ -12,6 +12,7 @@ import { config } from './config.ts';
 import { botFile } from './files.ts';
 import { AROUND_MAX, readHistoryText, searchHistoryText } from './history-tools.ts';
 import { deleteFact, factName, folderKey, knowledgeSections, locationText, readFact, saveFact, sees } from './knowledge.ts';
+import { routinesWithNextRun } from './routines.ts';
 import type { BotSession } from './session.ts';
 import { KNOWLEDGE_TYPES, type Bot, type KnowledgeLocation, type KnowledgeScope } from '../../shared/protocol.ts';
 
@@ -20,6 +21,14 @@ const SCOPES = ['bot', 'folder', 'group', 'all'] as const;
 export type ToolText = { content: { type: 'text'; text: string }[]; isError: boolean };
 /** What a bot may set of its own profile with set_profile. The approval level stays with the user. */
 export type BotProfile = Partial<Pick<Bot, 'name' | 'area' | 'role' | 'tone'>>;
+/** What a bot may set of one of its own routines with set_routine, found by `name`. Waking machines stays with the user. */
+export interface RoutineChange {
+    name: string;
+    new_name?: string;
+    cron?: string;
+    prompt?: string;
+    enabled?: boolean;
+}
 export const toolText = (text: string, isError = false): ToolText => ({ content: [{ type: 'text', text }], isError });
 
 /** What the tools need of the bot manager. */
@@ -38,6 +47,8 @@ export interface ToolHost {
     setAvatar(s: BotSession, avatar: string): ToolText;
     /** Stores what the bot sets of its own profile (empty = unchanged) and says so in the chat. */
     setProfile(s: BotSession, profile: BotProfile): ToolText;
+    /** Creates or changes one of the bot's own routines and says so in the chat. */
+    setRoutine(s: BotSession, change: RoutineChange): ToolText;
     /** Makes the bot's own profile picture like the editor's "AI avatar" (wish: what it should show) and stores it. */
     makeAvatar(s: BotSession, wish: string): Promise<ToolText>;
     knowledgeChanged(locations: KnowledgeLocation[], by: BotSession): void;
@@ -46,7 +57,7 @@ export interface ToolHost {
 export function botToolServer(s: BotSession, host: ToolHost): McpServerConfig {
     return createSdkMcpServer({
         name: 'openfolk',
-        version: '0.5.0',
+        version: '0.6.0',
         // available directly, without going through the tool search
         alwaysLoad: true,
         tools: botTools(s, host),
@@ -266,6 +277,27 @@ export function botTools(s: BotSession, host: ToolHost) {
             async (args) => host.setProfile(s, args),
         ),
         tool(
+            'list_routines',
+            'Lists your own routines (jobs the app gives you on a schedule): name, schedule, active or paused, next run, the last runs and the instruction.',
+            {},
+            async () => toolText(routinesText(s.bot.id)),
+        ),
+        tool(
+            'set_routine',
+            'Creates or changes one of your own routines. Only when the user asks for it or agrees. The routine is found by '
+            + 'its name (see list_routines); a field left out stays as it is, a new routine needs cron and prompt. The chat '
+            + 'shows the change, the user sees the routine on your page and can change it there.',
+            {
+                name: z.string().min(1).max(60).describe('Name of the routine to change, or of the new one'),
+                new_name: z.string().max(60).optional().describe('A new name for it'),
+                cron: z.string().max(100).optional()
+                    .describe('When it runs: cron with 5 fields (minute hour day month weekday), local time of the machine, e.g. "0 8 * * 1-5" weekdays at 8:00, "0 */2 * * *" every 2 hours'),
+                prompt: z.string().max(20000).optional().describe('The instruction you get at every run, fully phrased'),
+                enabled: z.boolean().optional().describe('false pauses it, true resumes it'),
+            },
+            async (args) => host.setRoutine(s, args),
+        ),
+        tool(
             'make_avatar',
             'Makes your profile picture and sets it: a portrait photo by the image model when its key is in the shared settings '
             + '(about 6 cents, up to two minutes), otherwise a drawn portrait. Only when the user asks for it or agrees. Your name '
@@ -297,6 +329,22 @@ export function imageType(data: Buffer): string | null {
     if (data.subarray(0, 4).toString('latin1') === 'RIFF' && data.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
     if (/^GIF8[79]a$/.test(data.subarray(0, 6).toString('latin1'))) return 'image/gif';
     return null;
+}
+
+/** list_routines: the bot's own routines with what set_routine changes and how the last runs went. */
+function routinesText(botId: string): string {
+    const list = routinesWithNextRun().filter((r) => r.botId === botId);
+    if (!list.length) return 'You have no routines yet. set_routine creates one.';
+    return list.map((r) => {
+        const runs = (r.runs ?? []).slice(0, 3).map((x) => `${x.start.slice(0, 16)} ${x.status}${x.error ? ` (${x.error})` : ''}`);
+        return [
+            `# ${r.name}`,
+            `cron: ${r.cron} (local time of the machine) · ${r.enabled ? 'active' : 'paused'}${r.wake ? ' · wakes the machine' : ''}`,
+            r.nextRun ? `next run: ${r.nextRun}` : '',
+            runs.length ? `last runs: ${runs.join('; ')}` : '',
+            `prompt: ${r.prompt}`,
+        ].filter(Boolean).join('\n');
+    }).join('\n\n');
 }
 
 /** Scope for a knowledge tool; a string = error message. */

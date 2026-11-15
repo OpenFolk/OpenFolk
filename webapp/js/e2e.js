@@ -232,18 +232,27 @@ export function colorOf(id) {
     return COLORS[h % COLORS.length];
 }
 
+/**
+ * A profile picture as the backends store it: a data URL of an image (uploads, the set, the image model, set_avatar)
+ * or an object URL. Anything else, such as a link a foreign backend or an old record carries, shows the initials.
+ */
+export function pictureUrl(src) {
+    return typeof src === 'string' && /^(data:image\/[a-z0-9.+-]+[;,]|blob:)/i.test(src) ? src : '';
+}
+
 // zoom: a click shows the picture large (only where the avatar has no other job)
 export function fillAvatar(container, obj, id, zoom = false) {
+    const src = pictureUrl(obj && obj.avatar);
     container.innerHTML = '';
-    container.style.background = obj && obj.avatar ? '' : colorOf(id || (obj && obj.id) || '');
-    container.classList.toggle('zoomable', Boolean(zoom && obj && obj.avatar));
+    container.style.background = src ? '' : colorOf(id || (obj && obj.id) || '');
+    container.classList.toggle('zoomable', Boolean(zoom && src));
     container.onclick = null;
-    if (obj && obj.avatar) {
+    if (src) {
         const img = document.createElement('img');
-        img.src = obj.avatar;
+        img.src = src;
         img.alt = '';
         container.appendChild(img);
-        if (zoom) container.onclick = (ev) => { ev.stopPropagation(); showImageLarge(obj.avatar, obj.name); };
+        if (zoom) container.onclick = (ev) => { ev.stopPropagation(); showImageLarge(src, obj.name); };
     } else {
         container.textContent = initials(obj ? obj.name : '');
     }
@@ -314,6 +323,17 @@ export function sendOn(ws, ch, frame, machine, key = e2e.key) {
  * Machine a bot runs on (same rule as in the backend, tests/browser/shared-rules.test.mjs): its own if it is awake,
  * otherwise none. One not placed yet (saved before 0.2) runs on the first machine awake, which claims it.
  */
+/** The models and engines of a machine; until it has sent its list, the last list any machine sent (#63). */
+export function modelsOf(machine) {
+    return (machine && state.modelsPerMachine[machine]) || state.models;
+}
+
+/** The models of the machine a chat's bot works on. */
+export function modelsOfChat(chatId) {
+    const b = bot(chatId);
+    return modelsOf(b ? responsibleMachine(b) : null);
+}
+
 export function responsibleMachine(b, online = state.online) {
     if (!b.machine) return [...online].sort()[0] || null;
     return online.includes(b.machine) ? b.machine : null;

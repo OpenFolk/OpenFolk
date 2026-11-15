@@ -19,12 +19,35 @@ export const desktopVersion = platformKind === 'desktop' ? /\bOpenFolk\/([\w.+-]
 export const desktopLocal = platformKind === 'desktop' && /OpenFolkLocal/.test(navigator.userAgent);
 // For CSS, e.g. the desktop apps fill the whole window instead of capping the layout width
 document.documentElement.dataset.platform = platformKind;
+
+/**
+ * 'desktop' for the desktop app and a browser with a mouse on a wide screen, 'phone' for the mobile apps and every
+ * other browser (phones, tablets). The backends keep a phone quiet while a desktop is in use (docs/internals/push.md).
+ * The screen, not the window: a narrow window on a monitor is still a desktop.
+ * @returns {'desktop' | 'phone'}
+ */
+export function deviceForm() {
+    if (platformKind === 'desktop') return 'desktop';
+    if (platformKind !== 'web') return 'phone';
+    const wide = Math.max(screen.width, screen.height) > 1000;
+    return wide && matchMedia('(pointer: fine)').matches ? 'desktop' : 'phone';
+}
 /**
  * The page brings the web app along instead of being served by a relay: the mobile apps, and the desktop app, which
  * serves it under its own scheme (desktop/main.js). Such a page asks for the relay's address and may know several
  * relays (relays.js); the browser's page belongs to the relay it came from.
  */
 export const bundled = isNative || location.protocol === 'openfolk:';
+
+/** An Apple keyboard: the shortcuts take Cmd instead of Ctrl, and the overview shows the keys' symbols. */
+export const appleKeys = /Mac|iPhone|iPad/.test(/** @type {any} */ (navigator).userAgentData?.platform || navigator.platform || '');
+/** The key of the shortcuts held alone: Cmd on a Mac, Ctrl elsewhere (AltGr reports Ctrl and Alt, and is no shortcut). */
+export const shortcutKey = (/** @type {KeyboardEvent} */ ev) => (appleKeys ? ev.metaKey && !ev.ctrlKey : ev.ctrlKey && !ev.metaKey) && !ev.altKey;
+/**
+ * A browser tab keeps some keys for itself (Ctrl+N, Ctrl+Shift+N, Ctrl+1 to 9 never reach the page); the desktop app
+ * and the mobile apps get every key.
+ */
+export const browserOwnsKeys = platformKind === 'web';
 
 /** A native plugin of the mobile app, or null (browser, desktop, plugin not built into the app). */
 function plugin(name) {

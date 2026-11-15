@@ -40,11 +40,11 @@ export default async function ({ start, check }) {
     await p.evaluate(() => openAccounts());
     await h.wait(200);
     const kunde = p.locator('#accounts-list li').filter({ hasText: 'Kunde' });
-    check('an account that is no admin can be set up', await kunde.locator('button', { hasText: 'Set up' }).isVisible());
-    await kunde.locator('button', { hasText: 'Set up' }).click();
+    check('an account that is no admin can be set up', await kunde.locator('button', { hasText: 'Edit' }).isVisible());
+    await kunde.locator('button', { hasText: 'Edit' }).click();
     await h.wait(200);
     check('the dialog opens with a support and a development bot', await p.isVisible('#setup-box') && (await p.locator('#setup-box .setup-bot').count()) === 2
-        && (await p.textContent('#settings-dialog-title')) === 'Set up Kunde');
+        && (await p.textContent('#settings-dialog-title')) === 'Edit Kunde');
     const levels = await p.locator('#setup-box .setup-bot select').evaluateAll((s) => s.map((x) => x.value));
     check('support only reads, development asks before what is risky', levels.join() === 'read,risky', levels);
     const ticked = await p.locator('#setup-box .setup-contacts input:checked').evaluateAll((l) => l.map((x) => x.value));
@@ -78,7 +78,7 @@ export default async function ({ start, check }) {
 
     // Opened again: the stored bots closed, each named in its head with repository and level
     await p.locator('#setup-box button', { hasText: 'Close' }).click();
-    await kunde.locator('button', { hasText: 'Set up' }).click();
+    await kunde.locator('button', { hasText: 'Edit' }).click();
     await h.wait(200);
     const heads = await p.locator('#setup-box .setup-bot > summary').allTextContents();
     check('a stored setup: its bots closed', await p.locator('#setup-box .setup-bot').evaluateAll((c) => c.length === 2 && c.every((x) => !x.open)) && !(await cards.nth(0).locator('input[type="url"]').isVisible()));

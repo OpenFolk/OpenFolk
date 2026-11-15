@@ -3,10 +3,11 @@ import { t } from './i18n.js';
 import { SEEN_KEY, el, mdCached, node, state, storage, closest } from './core.js';
 import { codeBlocks } from './code-blocks.js';
 import { paneFor, paneOf, panes, visibleChats } from './panes.js';
-import { bot, botIdOf, clockTime, colorOf, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, person, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
+import { bot, botIdOf, clockTime, colorOf, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, person, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList } from './list.js';
 import { openChat } from './chat.js';
-import { attachmentBar, displayTime, getLive, isQueued, liveWrap, renderApprovals, renderLiveText, renderQueue, renderTools, speaker, textHeight, titleFrom, toolRow } from './queue.js';
+import { allChats } from './connection.js';
+import { attachmentBar, composerButtons, displayTime, getLive, isQueued, liveWrap, renderApprovals, renderLiveText, renderQueue, renderTools, speaker, textHeight, titleFrom, toolRow } from './queue.js';
 import { renderVoicePending, voicePlayer } from './voice.js';
 import { menuButton } from './menus.js';
 import { isReading, readAloud, speakButton } from './read-aloud.js';
@@ -519,27 +520,119 @@ function quoteText(e) {
     return (plain(e.text) || (e.attachments || []).map((a) => a.name).join(', ') || t('message.noText')).slice(0, 300);
 }
 
+/** Who a quote is from, for a forward with the word "Forwarded" in front. */
+function quoteHead(q) {
+    return q.forwarded ? t('forward.from', { name: senderName(q.from) }) : senderName(q.from);
+}
+
 /** Set the quote above the input field of a pane (or remove it with null); it goes out with the next message. */
 export function setReply(p, q) {
     p.replyTo = q;
     p.el.replyBar.hidden = !q;
+    p.el.replyBar.classList.toggle('forwarded', Boolean(q && q.forwarded));
+    p.el.replyBar.classList.remove('open');
+    // Above the input too, a tap shows the whole forwarded text before it goes out
+    /** @type {HTMLElement} */ (p.el.replyBar.querySelector('.quote')).onclick = q && q.forwarded ? () => p.el.replyBar.classList.toggle('open') : null;
+    // a forward goes without words of its own: the send button shows instead of the microphone
+    composerButtons(p);
     if (!q) return;
-    p.el.rbWho.textContent = senderName(q.from);
+    p.el.rbWho.textContent = quoteHead(q);
     p.el.rbText.textContent = q.text;
     p.el.text.focus();
 }
 
 /** @param {Pane} p */
 function quoteNode(p, q) {
-    const k = node('div', 'quote');
-    k.append(node('strong', '', senderName(q.from)), node('span', '', q.text));
-    // jumps to the quoted message if it is in the loaded history
+    const k = node('div', 'quote' + (q.forwarded ? ' forwarded' : ''));
+    k.append(node('strong', '', quoteHead(q)), node('span', '', q.text));
+    if (q.forwarded && q.origin) {
+        // The line naming the origin leads to that chat at the message, while the chat is still there
+        const there = Boolean(q.originChat && allChats().includes(q.originChat));
+        const origin = node(there ? 'button' : 'small', there ? 'quote-origin' : '', t('forward.origin', { chat: q.origin }));
+        if (there) {
+            /** @type {HTMLButtonElement} */ (origin).type = 'button';
+            origin.title = t('forward.openOrigin');
+            origin.addEventListener('click', (ev) => { ev.stopPropagation(); openChat(q.originChat, q.id); });
+        }
+        k.append(origin);
+    }
     k.addEventListener('click', (ev) => {
         ev.stopPropagation();
+        // A forward opens to its full text and closes again; the text stays selectable while open
+        if (q.forwarded) {
+            if (window.getSelection().toString()) return;
+            k.classList.toggle('open');
+            k.setAttribute('aria-expanded', String(k.classList.contains('open')));
+            return;
+        }
+        // jumps to the quoted message if it is in the loaded history
         p.jumpTo = q.id;
         jumpToEntry(p);
     });
     return k;
+}
+
+// ---------------------------------------------------------- Forwarding
+// "Forward" in a message's menu: a page with the chats to pick from; the chosen one opens with the message above its
+// input field, where the user adds words of their own (or none) and sends it.
+
+/** As FORWARD_TEXT_MAX in shared/protocol.ts: the backend keeps no more of a forwarded text. */
+const FORWARD_TEXT_MAX = 20000;
+
+/** The message waiting for its target while the page is open. */
+let forwarding = null;
+
+/** A chat's name as the list shows it: a conversation with its bot in front. */
+function chatName(id) {
+    if (isGroup(id)) return (group(id) || {}).name || id;
+    if (isPerson(id)) return (person(id) || {}).name || id;
+    const b = bot(id);
+    if (!b) return id;
+    return isConversation(id) ? `${b.name} · ${conversationTitle(id)}` : b.name;
+}
+
+function openForward(chatId, e, from) {
+    const text = (e.text || (e.attachments || []).map((a) => a.name).join(', ') || t('message.noText')).slice(0, FORWARD_TEXT_MAX);
+    forwarding = { id: e.id, from, text, forwarded: true, origin: chatName(chatId), originChat: chatId };
+    el.forwardSub.textContent = plain(text).slice(0, 120);
+    el.forwardSearch.value = '';
+    renderForwardList();
+    el.forward.hidden = false;
+    // on the phone the keyboard would cover half of the list; there the list comes first
+    if (window.innerWidth > 760) el.forwardSearch.focus();
+}
+
+/** The chats to forward to, newest first, filtered by the search field; the chat the message is in is left out. */
+export function renderForwardList() {
+    if (!forwarding) return;
+    const word = el.forwardSearch.value.trim().toLowerCase();
+    const ids = allChats()
+        .filter((id) => id !== forwarding.originChat && (!word || chatName(id).toLowerCase().includes(word)))
+        .map((id, i) => ({ id, i, ts: state.lastTs[id] || '' }))
+        .sort((x, y) => y.ts.localeCompare(x.ts) || x.i - y.i);
+    el.forwardList.replaceChildren(...ids.map(({ id }) => {
+        const k = node('button', 'forward-target');
+        k.type = 'button';
+        const av = node('div', 'avatar' + (isGroup(id) ? ' group' : isPerson(id) ? ' person' : ''));
+        fillAvatar(av, group(id) || bot(id) || person(id), isConversation(id) ? botIdOf(id) : id);
+        k.append(av, node('span', '', chatName(id)));
+        k.addEventListener('click', (ev) => { ev.stopPropagation(); forwardTo(id); });
+        return k;
+    }));
+    if (!ids.length) el.forwardList.append(node('p', 'hint', t('forward.none')));
+}
+
+/** Opens the chosen chat with the forwarded message above its input field. */
+function forwardTo(id) {
+    const q = forwarding;
+    forwarding = null;
+    el.forward.hidden = true;
+    if (!q) return;
+    openChat(id);
+    const p = paneFor(id);
+    if (!p) return;
+    // Another person sees neither the names of the user's chats nor can open them
+    setReply(p, isPerson(id) ? { id: q.id, from: q.from, text: q.text, forwarded: true } : q);
 }
 
 /** @param {Pane} p */
@@ -563,6 +656,7 @@ function openMessageMenu(p, bubble, x, y) {
     }, !pinned));
     if (e.text) item(isReading(e.id) ? 'stop' : 'speaker', isReading(e.id) ? t('message.stopReading') : t('message.readAloud'), () => readAloud(e, chatId));
     if (e.text) item('copy', t('message.copy'), () => { if (navigator.clipboard) navigator.clipboard.writeText(e.text).catch(() => undefined); });
+    item('forward', t('message.forward'), () => openForward(chatId, e, from));
     m.hidden = false;
     fx.openSince = Date.now();
     // at the finger or mouse pointer, but inside the window

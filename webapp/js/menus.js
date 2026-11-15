@@ -1,8 +1,8 @@
 /* OpenFolk web app: menus, git changes and dialogs. */
 import { locale, t, tn } from './i18n.js';
-import { MIN_BACKEND_PROTOCOL, PROTOCOL_VERSION, el, node, state } from './core.js';
-import { activePane, layoutPanes, paneFor } from './panes.js';
-import { bot, clockTime, conversation, conversationTitle, group, isConversation, isGroup, isPerson, modelOf, person, responsibleMachine, send, shortFolder, upper } from './e2e.js';
+import { MIN_BACKEND_PROTOCOL, PROTOCOL_VERSION, el, node, state, toast } from './core.js';
+import { activePane, capacity, layoutPanes, onSettingsGone, paneFor, settingsDialogDocked } from './panes.js';
+import { bot, clockTime, conversation, conversationTitle, group, isConversation, isGroup, isPerson, modelOf, modelsOfChat, person, responsibleMachine, send, shortFolder, upper } from './e2e.js';
 import { archivedOf, isFavorite, isMuted, toggleFavorite, toggleMuted, categoryOf, setCategory, sortedCategories } from './connection.js';
 import { listTap, openChatSearch, renderChatList, rowMenu } from './list.js';
 import { closeChat, openChat, paneActivated, renderChatHeader, renderHeaders } from './chat.js';
@@ -10,6 +10,7 @@ import { refreshMachinesPage, renderMachines, wake } from './machines.js';
 import { closeVscodeSession, openVscode } from './vscode.js';
 import { moveBot, openEditor, openGroupEditor, openInfo } from './editors.js';
 import { alertDialog, confirmDialog, dangerDialog } from './dialogs.js';
+import { closePalette } from './palette.js';
 
 // ================================================================ Menus
 
@@ -47,6 +48,7 @@ export const ICONS = {
     speaker: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/>',
     stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
     copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
+    forward: '<path d="M15 5l5 5-5 5"/><path d="M20 10H10a6 6 0 0 0-6 6v4"/>',
     monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     folder: '<path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
     git: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 3-11 5.5"/>',
@@ -83,6 +85,8 @@ export function chatMenuButtons(id, onPage = false) {
     const archive = b && !isConversation(id) && archivedOf(b).length ? [['archive', 'archive', t('menu.archiveCount', { n: archivedOf(b).length })]] : [];
     const restart = ['restart', 'restart', t('menu.newSession')];
     const editBot = ['edit', 'pencil', t('menu.editBot')];
+    // The bot's machine makes the copy (its folder is there); a bot of an admin's setup is not the account's to copy
+    const duplicate = b && !b.managed ? [['duplicate', 'copy', t('menu.duplicateBot'), '', asleep]] : [];
     // The folder of the list the chat is in; conversations follow their bot, the group editor has a field of its own
     const cat = isPerson(id) ? '' : categoryOf(id);
     const catName = cat ? (state.categories.find((c) => c.id === cat) || {}).name : '';
@@ -96,9 +100,9 @@ export function chatMenuButtons(id, onPage = false) {
                 ['main_chat', 'back', t('menu.mainChat', { name: b.name })], vscode, editBot, restart,
                 ['to_archive', 'archive', t('menu.toArchive')], ['conversation_delete', 'delete', t('menu.deletePermanently'), 'danger']]
             : onPage
-                ? [conversationNew, mainMove, search, ...archive, vscode, editBot, fav, mute, folder, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']]
+                ? [conversationNew, mainMove, search, ...archive, vscode, editBot, ...duplicate, fav, mute, folder, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']]
                 : [conversationNew, mainMove, git, search, ...archive,
-                    vscode, ['info', 'info', t('menu.info')], editBot, fav, mute, folder, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']];
+                    vscode, ['info', 'info', t('menu.info')], editBot, ...duplicate, fav, mute, folder, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']];
     return entries.map(([action, icon, text, cls, disabled]) => {
         const k = menuButton(icon, text, cls);
         k.dataset.action = action;
@@ -146,23 +150,21 @@ export function fillChatMenu(menu, id) {
 }
 
 // Model switch at the top of the chat menu: takes effect right away, the context stays (in the main chat for the bot,
-// in a conversation only for it). Names and what is behind 'default' come from the CLI (state.models);
+// in a conversation only for it). Names and what is behind 'default' come from the CLI of the bot's machine (modelsOfChat);
 // always the model that really runs is shown, never "Default".
 const MODEL_SHORT = ['fable', 'opus', 'sonnet', 'haiku'];
 // Other engines: in the switch by their name as soon as the machine offers them (login present)
 const ENGINES = { codex: 'Codex', cursor: 'Cursor', copilot: 'Copilot', antigravity: 'Antigravity', opencode: 'OpenCode' };
 
 /** Short name that really runs ('default' → 'opus' as long as the CLI takes Opus as default). */
-function actualModel(model) {
-    const list = state.models;
+function actualModel(model, list = state.models) {
     const target = (list.find((m) => m.value === model) || {}).resolvedModel || model;
     const alias = list.find((m) => MODEL_SHORT.includes(m.value) && m.resolvedModel === target);
     return alias ? alias.value : model;
 }
 
 /** Display name like modelDisplayName() in shared/protocol.ts, e.g. "Opus 5.5". */
-export function modelDisplay(model) {
-    const list = state.models;
+export function modelDisplay(model, list = state.models) {
     const entry = list.find((m) => m.value === model);
     const target = entry ? entry.resolvedModel : model;
     const alias = list.find((m) => m.value !== 'default' && !ENGINES[m.value] && m.resolvedModel === target);
@@ -173,15 +175,20 @@ export function modelDisplay(model) {
 }
 
 function modelSwitch(chatId, picked) {
-    const current = actualModel(modelOf(chatId));
+    const models = modelsOfChat(chatId);
+    const current = actualModel(modelOf(chatId), models);
     const row = node('div', 'model-switch');
     row.setAttribute('role', 'radiogroup');
     row.setAttribute('aria-label', t('model.label'));
-    const values = state.models.length ? state.models.map((m) => m.value).filter((v) => MODEL_SHORT.includes(v) || ENGINES[v]) : MODEL_SHORT;
+    const values = models.length ? models.map((m) => m.value).filter((v) => MODEL_SHORT.includes(v) || ENGINES[v]) : MODEL_SHORT;
     if (!values.includes(current)) values.push(current);
     for (const value of values) {
-        // The default of an engine is named after the engine in the switch, not after the model behind it
-        const k = node('button', 'chip' + (value === current ? ' on' : ''), ENGINES[value] || modelDisplay(value));
+        // The default of an engine is named after the engine in the switch, not after the model behind it. A model
+        // family goes without its version: the alias always runs the newest one the CLI offers (the version is in the
+        // tooltip). Only a pinned id from the editor keeps its version, it is that one model.
+        const family = MODEL_SHORT.includes(value);
+        const k = node('button', 'chip' + (value === current ? ' on' : ''), ENGINES[value] || (family ? value.charAt(0).toUpperCase() + value.slice(1) : modelDisplay(value, models)));
+        if (family && models.length) k.title = modelDisplay(value, models);
         k.type = 'button';
         k.setAttribute('role', 'radio');
         k.setAttribute('aria-checked', String(value === current));
@@ -197,7 +204,7 @@ function modelSwitch(chatId, picked) {
 
 function chooseModel(chatId, model) {
     const b = bot(chatId);
-    if (!b || model === actualModel(modelOf(chatId))) return;
+    if (!b || model === actualModel(modelOf(chatId), modelsOfChat(chatId))) return;
     // show right away; the bot list from the backend confirms it
     const c = conversation(chatId);
     if (c) c.model = model;
@@ -264,6 +271,7 @@ export async function chatMenuAction(id, action, menu, show = (...k) => { menu.r
     if (action === 'mute') toggleMuted(id);
     if (action === 'info' && b) openInfo(id);
     if (action === 'edit' && b) openEditor(b);
+    if (action === 'duplicate' && b) duplicateBot(b);
     if (action === 'restart' && b) {
         if (!(await confirmDialog(t('menu.newSessionConfirm', { name: isConversation(id) ? conversationTitle(id) : b.name })))) return false;
         send({ type: 'restart', botId: b.id, chatId: id });
@@ -331,7 +339,7 @@ export function renderInfoChat(force = false) {
     const conv = isConversation(id) ? conversation(id) : null;
     const archived = conv ? [] : archivedOf(b);
     const key = JSON.stringify([id, locale(), conv && conv.title, modelOf(id), b.machine, responsibleMachine(b), state.online, state.machineStatus && Object.keys(state.machineStatus.hosts || {}),
-        state.models.map((m) => m.value), state.context[id], isFavorite(id), isMuted(id), categoryOf(id), archived]);
+        modelsOfChat(id).map((m) => m.value), state.context[id], isFavorite(id), isMuted(id), categoryOf(id), archived]);
     if (!force && key === infoShown) return;
     infoShown = key;
     const parts = chatSwitches(id, () => renderInfoChat());
@@ -346,7 +354,7 @@ export function renderInfoChat(force = false) {
 }
 
 /** The info covers the chat on the phone and as an overlay: whatever leads to the chat leaves it; docked it stays. */
-function leaveInfo() {
+export function leaveInfo() {
     if (!el.app.classList.contains('info-docked')) closeDialog(el.info);
 }
 
@@ -418,6 +426,24 @@ export async function deleteCategory(id) {
     for (const o of [...state.bots, ...state.groups]) if (o.category === id) delete o.category;
     renderChatList();
     send({ type: 'category_delete', categoryId: id });
+}
+
+/** A copy of the bot under a new name: its machine makes it and answers "bot_duplicated" (receiveDuplicated). */
+function duplicateBot(b) {
+    askText({
+        title: t('menu.duplicateBot'), hint: t('menu.duplicateHint'), value: t('menu.duplicateName', { name: b.name }),
+        submit: t('menu.duplicateSubmit'), maxLength: 60,
+        done: (name) => send({ type: 'bot_duplicate', botId: b.id, name }, responsibleMachine(b) || undefined),
+    });
+}
+
+/** The copy is there: its page opens, so it can be adjusted right away; paused routines are named. */
+export function receiveDuplicated(f) {
+    const copy = bot(f.id);
+    if (!copy) return;
+    openInfo(copy.id);
+    const routines = state.routines.filter((r) => r.botId === copy.id).length;
+    toast(routines ? tn('menu.duplicatedRoutines', routines, { name: copy.name }) : t('menu.duplicated', { name: copy.name }), 5000);
 }
 
 /** What the open text dialog does with the text once it is submitted. */
@@ -1013,10 +1039,14 @@ export function toggleHeaderSwitch(p, kind) {
 /** Closes a dialog right away, changes or not; true, for callers that go on afterwards. */
 /** What the settings dialog holds right now and where it came from. @type {{ content: HTMLElement, parent: HTMLElement, next: Node | null } | null} */
 let settingsDialogHome = null;
+/** Where the settings dialog lives as an overlay; next to the settings pane it stands in the panes. */
+const settingsDialogParent = /** @type {HTMLElement} */ (el.settingsDialog.parentElement);
+onSettingsGone(() => closeSettingsDialog());
 
 /**
  * Adding something in the settings: `content` (a form or a result box of a block) moves into the small dialog and
- * shows there; closing hides it and puts it back. `ownActions`: the content brings its own buttons, no "Close" row.
+ * shows there; closing hides it and puts it back. With the settings as a pane and room for two, the dialog is the
+ * pane next to them, otherwise over them. `ownActions`: the content brings its own buttons, no "Close" row.
  * @param {string} title
  * @param {HTMLElement} content
  */
@@ -1027,7 +1057,13 @@ export function openSettingsDialog(title, content, ownActions = false) {
     el.settingsDialogBody.replaceChildren(content);
     content.hidden = false;
     el.settingsDialogActions.hidden = ownActions;
+    // Next to the settings only where two columns fit
+    const docked = !el.settings.hidden && el.settings.parentElement === el.panes && capacity() >= 2;
+    if (docked && el.settings.nextElementSibling !== el.settingsDialog) el.settings.after(el.settingsDialog);
+    if (!docked && el.settingsDialog.parentElement !== settingsDialogParent) settingsDialogParent.appendChild(el.settingsDialog);
+    el.settingsDialog.classList.toggle('docked', docked);
     el.settingsDialog.hidden = false;
+    if (docked) layoutPanes();
 }
 
 /** Closes the settings dialog, with `content` only if that is what it holds. @param {HTMLElement} [content] */
@@ -1038,10 +1074,16 @@ export function closeSettingsDialog(content) {
     home.content.hidden = true;
     home.parent.insertBefore(home.content, home.next);
     el.settingsDialog.hidden = true;
+    if (settingsDialogDocked()) {
+        settingsDialogParent.appendChild(el.settingsDialog);
+        el.settingsDialog.classList.remove('docked');
+        layoutPanes();
+    }
 }
 
 export function closeDialog(o) {
     if (o === el.settingsDialog) { closeSettingsDialog(); return true; }
+    if (o === el.palette) { closePalette(); return true; }
     o.hidden = true;
     if (o === el.info) { state.infoBot = null; state.infoChat = null; infoShown = ''; layoutPanes(); }
     if (o === el.settings) layoutPanes();

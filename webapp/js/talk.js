@@ -98,7 +98,7 @@ async function listen() {
     talk.quietSince = 0;
     talk.error = '';
     setPhase('listening');
-    await startRecording(p);
+    await startRecording(p, true);
     if (talk.phase !== 'listening' || talk.pane !== p) {
         // ended or moved on while the browser asked for the microphone
         if (rec.pane === p && talk.phase !== 'listening') stopRecording(false);

@@ -7,22 +7,23 @@ import { jumpToEntry, listTap, renderChatList, renderSearchResult, renderUsage, 
 import { BRIEFLY_GONE_MS, closeChat, loadingBar, openChat, renderChatHeader, renderHeaders, updateSendAllowed } from './chat.js';
 import { BACKEND_GONE_MS, refreshMachinesPage, renderMachines, scheduleWakePoll } from './machines.js';
 import { historyUnchanged, markSeen, receiveCommands, noteIncoming, receiveSeen, renderEntry, renderHistory, renderPinned, scroll, setRead } from './chat-features.js';
-import { approvalsToBottom, attachmentBar, dropStaleLive, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderJobs, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
-import { imageRequested, playback, removeVoicePending, startPlayback } from './voice.js';
+import { approvalsToBottom, attachmentBar, dropStaleLive, expireApprovalCard, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderJobs, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
+import { dictationDone, dictationRefused, imageRequested, playback, removeVoicePending, startPlayback } from './voice.js';
 import { bundled, connectionVia, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
-import { answerFolderAsk, closeDialog, gitError, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
+import { answerFolderAsk, closeDialog, gitError, receiveDuplicated, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
 import { receiveVscodeHistory, receiveVscodeSessions, vs, vscodeError, vscodeReconnected, vscodeShown } from './vscode.js';
 import {
     continueMove, fillInfo, folderRequestUnknown, knowledgeError, moveRequestFailed, openInfo, pickerFailed, receiveCloned, receiveFolderChecked, receiveFolderCreated, receiveFolderListed, receiveFolderProposed, receiveMoved, refreshInfo,
     receiveSuggestion, renderRoutines, suggestButton,
 } from './editors.js';
 import { checkPush, renderPushSettings } from './push.js';
+import { presenceToNewMachines, presenceUnknown } from './activity.js';
 import {
     autologonReported, machineJoinError, settingsSaveFailed, settingsSaved, receiveMachineTokens, receiveSettings, renderDevices, renderMachineJoin, renderAbout, renderPairLink, renderSettings, renderTotp,
     renderTotpSetup, totpError,
 } from './settings.js';
 import { accountError, continueNewAccount, dropCurrentAccount, newAccountFailed, receiveAccountCreated, receiveInvite, rememberAccount, renderAccounts, renderChooser } from './accounts.js';
-import { receiveSetupLink, receiveSetups } from './setups.js';
+import { receiveSetupLink, receiveSetups, setRelayMachines } from './setups.js';
 import { connectOthers } from './others.js';
 import { signInTerminalAnswer } from './welcome.js';
 import { announceMove, relayClaimed, relayClaimFailed } from './relay-claim.js';
@@ -267,7 +268,8 @@ function receive(f) {
                 state.retryDelay = 1000;
                 el.login.hidden = true;
                 stopQrLogin();
-                send({ type: 'presence', visible: !document.hidden });
+                // The machines awake follow ('agents') and get the presence then
+                presenceUnknown();
                 send({ type: 'wake_status' });
                 scheduleWakePoll();
                 startApproval();
@@ -313,6 +315,7 @@ function receive(f) {
             renderTotpSetup(f);
             break;
         case 'accounts':
+            setRelayMachines(f.machines);
             renderAccounts(f.list, f.current);
             break;
         case 'account_created':
@@ -332,6 +335,7 @@ function receive(f) {
             const before = state.online;
             state.online = f.online;
             state.onlineKnown = true;
+            presenceToNewMachines();
             startApproval();
             for (const r of before) if (!f.online.includes(r)) state.goneSince[r] = Date.now();
             for (const r of f.online) delete state.goneSince[r];
@@ -347,6 +351,8 @@ function receive(f) {
             continueMove();
             // The first steps (empty list) show which machines are connected
             if (!allChats().length) renderChatList();
+            // A backend that never sends its bots must not leave the list loading for good
+            if (f.online.length && !state.botsKnown) setTimeout(() => { if (!state.botsKnown) { state.botsKnown = true; renderChatList(); } }, 5000);
             for (const [id, a] of Object.entries(state.approvals)) if (a.machine && !f.online.includes(a.machine)) delete state.approvals[id];
             mergeStates();
             for (const r of Object.keys(state.shuttingDown)) {
@@ -433,6 +439,7 @@ function receive(f) {
             scheduleWakePoll();
             break;
         case 'bots':
+            state.botsKnown = true;
             state.bots = f.bots;
             state.groups = f.groups;
             state.categories = f.categories || [];
@@ -598,7 +605,7 @@ function receive(f) {
             renderChatList();
             break;
         case 'claude_sign_in':
-            signInTerminalAnswer(f.machine || '?');
+            signInTerminalAnswer(f.machine || '?', '', f.via);
             break;
         case 'relay_claimed':
             relayClaimed(f.machine || '?', f.url);
@@ -714,14 +721,20 @@ function receive(f) {
             break;
         case 'approval':
             state.approvals[f.approval.id] = Object.assign({ machine: f.machine }, f.approval);
+            // Seen on screen: the backend need not remind a phone of it later
+            if (!document.hidden && visibleChats().includes(f.approval.chatId)) markSeen(f.approval.chatId);
             renderChatList();
             renderApprovals(paneFor(f.approval.chatId));
             break;
         case 'approval_done': {
             delete state.approvals[f.id];
             const card = document.querySelector(`[data-approval="${f.id}"]`);
-            if (card) card.remove();
-            showEvent(`${f.result}`, false, f.chatId);
+            // Expired: the card stays where the user would look for it, without its buttons, saying nothing happened
+            if (card && f.expired) expireApprovalCard(card, f.result);
+            else {
+                if (card) card.remove();
+                showEvent(`${f.result}`, false, f.chatId);
+            }
             renderChatList();
             break;
         }
@@ -746,6 +759,10 @@ function receive(f) {
             }
             // Warming up is only a speed-up; an older backend does not know it
             if (f.request === 'voice_warmup') break;
+            if (f.request === 'transcribe') {
+                dictationRefused(message);
+                break;
+            }
             // The command list is a help while typing: without one (older backend, folder missing) there is simply none
             if (f.request === 'commands') break;
             if (f.request === 'claude_sign_in') {
@@ -827,6 +844,9 @@ function receive(f) {
         case 'bot_moved':
             receiveMoved(f);
             break;
+        case 'bot_duplicated':
+            receiveDuplicated(f);
+            break;
         case 'folder_listed':
             receiveFolderListed(f);
             break;
@@ -843,8 +863,12 @@ function receive(f) {
         case 'folder_deleted':
             toast(t('danger.botFolderDeleted', { folder: f.folder }), 4000);
             break;
+        case 'transcribed':
+            dictationDone(f.id, f.ok, f.text || '', f.message || '');
+            break;
         case 'models':
             state.models = f.models || [];
+            if (f.machine) state.modelsPerMachine[f.machine] = state.models;
             renderHeaders();
             renderChatList();
             break;

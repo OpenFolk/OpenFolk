@@ -112,10 +112,15 @@ export const noEngine = (): boolean => machineSettings().disabledEngines.length 
 
 /**
  * A new data folder starts with every engine off, so the user switches on only their own. The default stays "all on":
- * machines from before the choice have no machine-settings.json and must not lose their engines.
+ * machines from before the choice have no machine-settings.json and must not lose their engines. Claude Code already
+ * signed in on this computer is a choice made: then Claude alone is on and the first steps skip the question.
+ * Returns whether that happened.
  */
-export function startWithoutEngines(): void {
-    if (!fs.existsSync(dataPath(FILE))) saveMachineSettings({ disabledEngines: [...ENGINES] });
+export async function startWithoutEngines(claudeSignedIn: () => Promise<boolean> = async () => false): Promise<boolean> {
+    if (fs.existsSync(dataPath(FILE))) return false;
+    const claude = await claudeSignedIn().catch(() => false);
+    saveMachineSettings({ disabledEngines: ENGINES.filter((e) => !claude || e !== 'claude') });
+    return claude;
 }
 
 /** The token for pushing to gitPushHost ('' = none). */

@@ -42,6 +42,9 @@ bridge.mayRoute = (from, to) => {
     return reaches(a, b) || setupBy[to] === from || setupBy[from] === to;
 };
 bridge.boundMachines = () => new Map([['laptop', 'kunde']]);
+// As Accounts.runsOn: an account set up runs on none of the relay's own machines, the others on all
+const machinesOf: Record<string, string[] | undefined> = {};
+bridge.runsOn = (id, machine) => id === 'main' || (machinesOf[id] ? machinesOf[id]!.includes(machine) : !setupBy[id]);
 
 const desk = fakeSocket<AgentInbound>();
 await bridge.connectAgent(desk.ws as never, '203.0.113.9', 'desk', true);

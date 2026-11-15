@@ -79,6 +79,30 @@ m.messageFromUser('dev', '', [], { transcript: 'Plain voice message', attachment
 last = String(delivered.at(-1)?.content);
 check('plain voice message: without the note', last.includes('Plain voice message') && !last.includes(t('prompt.spoken')), last);
 
+// Forwarded from another chat: the whole text with its line breaks, the origin named, and it may go without own words
+const long = 'Step 1: build\nStep 2: ' + 'x'.repeat(400);
+const forward = { id: 'e9', from: 'ops', text: long, forwarded: true, origin: 'Ops · Deploy' };
+let count = delivered.length;
+m.messageFromUser('dev', '', [], undefined, forward);
+last = String(delivered.at(-1)?.content);
+check('forward without own words: delivered', delivered.length === count + 1, delivered.length);
+check('forward: whole text with line breaks, origin named', last.includes(long) && last.includes('Ops · Deploy'), last.slice(0, 200));
+m.messageFromUser('dev', 'Please take this over', [], undefined, forward);
+last = String(delivered.at(-1)?.content);
+check('forward with own words: the words after the forwarded text', last.endsWith('Please take this over') && last.indexOf(long) < last.indexOf('Please take'), last.slice(-80));
+check('forward without its chat id: no hint to read_history', !last.includes('read_history'), last.slice(0, 200));
+m.messageFromUser('dev', 'Look at this', [], undefined, { ...forward, originChat: 'ops' });
+last = String(delivered.at(-1)?.content);
+check('forward with its chat id: names chat and entry for read_history', last.includes('read_history') && last.includes('"ops"') && last.includes('"e9"'), last.slice(0, 600));
+const { resolveChat } = await import('./history-tools.ts');
+check('read_history takes that chat id', resolveChat('ops', 'dev') === 'ops');
+count = delivered.length;
+m.messageFromUser('dev', '', [], undefined, quote);
+check('a reply without text is still not sent', delivered.length === count, delivered.length);
+const { storedQuote } = await import('./agent.ts');
+check('reply quote cut to 300, forward kept whole', storedQuote({ ...quote, text: long })!.text.length === 300 && storedQuote(forward)!.text === long);
+check('stored quote: unknown fields dropped, a reply carries no origin', JSON.stringify(storedQuote({ ...quote, origin: 'x', extra: 1 } as never)) === JSON.stringify(quote));
+
 const routine = { id: 'r1', botId: 'dev', name: 'Weekly', cron: '0 9 * * 1', enabled: true, updatedAt: '' };
 m.runRoutine({ ...routine, prompt: '/release patch' });
 check('routine with a command: without the routine header', delivered.at(-1)?.content === '/release patch', delivered.at(-1));

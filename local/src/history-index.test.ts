@@ -61,6 +61,18 @@ const around = entriesAround('cloud', 'c2', 1, 1).map((e) => e.id).join(',');
 check('entries around a hit, without events', around === 'c1,c2,m1', around);
 check('unknown entry: nothing', entriesAround('cloud', 'nope').length === 0);
 
+// ---- files and time for the web app's palette
+const file = (name: string) => ({ name, type: 'application/pdf', size: 1, path: `C:/x/${name}` });
+appendEntry('docs', { id: 'f1', role: 'user', from: 'me', text: '', ts: at(10), attachments: [file('Rechnung-Oktober.pdf'), file('Notizen.txt')] });
+appendEntry('docs', { id: 'f2', role: 'assistant', botId: 'docs', text: 'Hier die Rechnung', ts: at(11), attachments: [file('rechnung-november.pdf')] });
+appendEntry('docs', { id: 'f3', role: 'user', from: 'me', text: 'Rechnung bitte vorlesen', ts: at(12), voice: true, attachments: [file('rechnung.webm')] });
+const files = searchHistory('rechnung', 50, undefined, { files: true });
+check('files: names match, newest first, not a voice recording', ids(files) === 'f2,f1', ids(files));
+check('files: the excerpt is the matching names', files[1]?.excerpt === 'Rechnung-Oktober.pdf', files[1]?.excerpt);
+check('an entry with only files is no text hit', ids(searchHistory('rechnung', 50, 'docs')) === 'f3,f2', ids(searchHistory('rechnung', 50, 'docs')));
+check('nor around a hit', entriesAround('docs', 'f2', 1, 1).map((e) => e.id).join(',') === 'f2,f3');
+check('since: only newer messages', ids(searchHistory('rechnung', 50, undefined, { since: at(12) })) === 'f3');
+
 // ---- a long chat
 const lines: string[] = [];
 for (let i = 0; i < 5000; i++) lines.push(JSON.stringify({ id: `l${i}`, role: i % 2 ? 'assistant' : 'user', botId: 'long', from: 'me', ts: at(1 + (i % 28)), text: `Eintrag ${i} über Build, Tests und das Wetter ${i % 97 === 0 ? 'mit Sonderfall Zebra' : ''}` }));

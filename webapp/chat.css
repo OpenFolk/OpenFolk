@@ -568,6 +568,8 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .loading-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 4; overflow: hidden; background: color-mix(in srgb, var(--accent) 20%, transparent); }
 .loading-bar::before { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; background: var(--accent); animation: loading 1.1s ease-in-out infinite; }
 @keyframes loading { 0% { left: -40%; } 100% { left: 100%; } }
+/* The chat list until the machines and their bots are there */
+.chat-list li.list-loading { position: relative; display: block; cursor: default; padding: 22px 16px; border-bottom: 0; color: var(--muted); font-size: 13.5px; }
 .to-bottom {
     position: absolute; right: 14px; bottom: 12px; width: 42px; height: 42px; border-radius: 50%;
     border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer;
@@ -613,6 +615,12 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .speech-bar[hidden] { display: none; }
 .speech-bar-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .speech-bar-play, .speech-bar-play:hover { color: var(--accent); }
+/* Reading answers aloud by itself, on or off (setAutoRead): a speaker, struck through when off */
+.auto-read { color: var(--accent); }
+.auto-read .slash { display: none; }
+.auto-read.off { color: var(--muted); }
+.auto-read.off .slash { display: block; }
+.auto-read.off .wave { display: none; }
 .speech-bar-play .icon-play { fill: currentColor; }
 .speech-bar .icon-play, .speech-bar.paused .icon-pause { display: none; }
 .speech-bar.paused .icon-play { display: block; }
@@ -733,6 +741,8 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
     display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, .12);
 }
 .approval.sent { opacity: .5; pointer-events: none; }
+.approval.expired { border-color: var(--line); box-shadow: none; }
+.approval-expired { margin: 0; color: var(--muted); font-size: 13.5px; }
 .approval-head { display: flex; align-items: center; gap: 8px; }
 .approval-what { margin: 0; font-weight: 600; }
 .approval pre { margin: 0; max-height: 220px; overflow: auto; background: var(--bar-bg); padding: 8px 10px; border-radius: 8px; font: 12.5px/1.4 var(--mono); }
@@ -754,6 +764,20 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .quote strong { color: var(--accent); font-size: 12.5px; }
 .quote span { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bubble .quote { margin-bottom: 4px; cursor: pointer; }
+/* A forward shows a few lines of what it carries (a tap opens its chat, or all of it); the bar above the input two */
+.quote.forwarded span, .reply-bar.forwarded .quote span { white-space: pre-wrap; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; }
+.reply-bar.forwarded .quote span { -webkit-line-clamp: 2; line-clamp: 2; }
+.reply-bar.forwarded .quote { cursor: pointer; }
+.reply-bar.forwarded.open .quote span { display: block; max-height: 40dvh; overflow-y: auto; -webkit-line-clamp: unset; line-clamp: unset; }
+.quote.forwarded.open span { display: block; -webkit-line-clamp: unset; line-clamp: unset; }
+.quote.forwarded small { color: var(--muted); font-size: 11.5px; }
+.quote.forwarded.open span { color: var(--text); user-select: text; }
+.quote .quote-origin { align-self: flex-start; border: 0; background: none; padding: 2px 0 0; font: inherit; font-size: 11.5px; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.forward-list { flex: 1; min-height: 0; overflow-y: auto; }
+.forward-list .avatar { width: 34px; height: 34px; font-size: 13px; }
+.forward-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#forward-search { width: 100%; }
+#forward-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .members, .attachments { display: flex; gap: 6px; padding: 6px 10px 0; background: var(--bar-bg); border-top: 1px solid var(--line); overflow-x: auto; }
 .attachments + .composer, .members + .attachments { border-top: 0; }
 .mention { max-height: 40dvh; overflow-y: auto; background: var(--bar-bg); border-top: 1px solid var(--line); padding: 4px 0; }
@@ -819,12 +843,35 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .composer .send:hover { background: var(--accent); filter: brightness(1.08); color: var(--accent-text); }
 .composer .send:disabled { opacity: .45; cursor: default; }
 
+/* iOS 27 blurs the top of the home screen app, header included, unless a fixed element with a background lies at the
+   very top (#65, index.html); the status bar takes its color, so it follows what is below it. Above everything,
+   because iOS looks at what is on top there. Not in a browser tab or the apps, which have no such blur. */
+#top-edge { display: none; }
+@supports (-webkit-touch-callout: none) {
+    @media (display-mode: standalone) {
+        #top-edge { display: block; position: fixed; top: 0; left: 0; right: 0; height: 8px; z-index: 101; background: var(--bar-bg); }
+        body:has(> .start:not([hidden])) #top-edge { background: var(--bg); }
+    }
+    @media (display-mode: standalone) and (max-width: 760px) {
+        /* a dialog that is a page of its own on the phone */
+        body:has(.overlay.page:not([hidden])) #top-edge { background: var(--surface); }
+    }
+}
+
 /* Voice recording */
 .recording { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: pulse 1s infinite; flex: 0 0 auto; }
 .rec-dot.paused { animation: none; background: var(--muted); }
 .rec-time { font-variant-numeric: tabular-nums; min-width: 38px; }
 .rec-level { flex: 1; height: 28px; display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; }
+/* Dictation (a setting): next to the text field, which stays usable; X and the checkmark side by side at the end */
+.recording.dictate { flex: 0 1 auto; gap: 6px; }
+.recording.dictate .rec-level { flex: 0 0 64px; }
+.recording.dictate [data-el=rec-discard] { order: 1; }
+.recording.dictate [data-el=rec-done] { order: 2; }
+@media (max-width: 420px) { .recording.dictate .rec-level { display: none; } }
+/* The text of a dictation is on its way from the machine */
+.composer [data-el=btn-mic].busy { animation: pulse 1s infinite; }
 .rec-level i { flex: 1; min-width: 2px; max-width: 4px; background: var(--accent); border-radius: 2px; height: 8%; transition: height .1s; }
 .bubble.voice { min-width: 220px; }
 .bubble.pending { opacity: .7; font-style: italic; }
@@ -852,7 +899,9 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .pair-url { display: flex; gap: 6px; width: 100%; }
 /* Setup of a person (setups.js): one card per bot, the contacts as a column of ticks */
 .setup-box h4 { margin: 8px 0 0; }
-.setup-contacts { display: flex; flex-direction: column; gap: 4px; }
+.setup-contacts, .machine-picker, .machine-picker-list { display: flex; flex-direction: column; gap: 4px; }
+.machine-picker-list { padding-left: 22px; }
+.machine-picker-list[hidden] { display: none; }
 .setup-bot { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
 .setup-bot > summary { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .setup-bot-sub { color: var(--muted); font-size: 13px; }
@@ -871,6 +920,10 @@ a.primary, a.btn { text-decoration: none; }
 .settings-hint { font-size: 12.5px; color: var(--muted); padding-left: 26px; }
 /* Moving a bot: the editor as a small dialog with folder and repository only */
 #editor.moving #editor-form > :not(.on-move) { display: none; }
+/* A new bot: role, name, folder and repository, the role first; the model's suggestion buttons stay with editing */
+#editor.new #editor-form > :not(.on-new), #editor.new #editor-name-suggest, #editor.new #editor-role-suggest { display: none; }
+#editor.new .page-back, #editor.new #editor-title, #editor.new #editor-new-hint { order: -2; }
+#editor.new .field-role { order: -1; }
 /* Notifications, devices and accounts: blocks of the settings, laid out like the dialog around them */
 .settings-block { display: flex; flex-direction: column; gap: 12px; }
 .settings-block[hidden] { display: none; }
@@ -887,12 +940,32 @@ a.primary, a.btn { text-decoration: none; }
 .settings-machine label { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; }
 .settings-machine label.check { flex-direction: row; align-items: center; }
 .settings-number input { max-width: 8em; }
+/* The allowed folders of a machine, shown only, and the default folder for new bots with the picker beside it */
+.settings-roots { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 13.5px; }
+.settings-roots code { overflow-wrap: anywhere; }
+.settings-folder { display: flex; gap: 8px; align-items: flex-end; }
+.settings-folder label { flex: 1; min-width: 0; }
+.settings-folder .btn { margin-bottom: 6px; }
 .settings-key { margin: 8px 0; }
 /* AI services: the form for one key below the list */
 /* The forms of "Add" live in their block and show in the settings dialog */
 .settings-form { display: flex; flex-direction: column; gap: 10px; }
 .settings-form[hidden] { display: none; }
 #settings-dialog { z-index: 30; }
+.settings-dialog-close { display: none; }
+/* Next to the settings pane (wide screens): a pane of its own like the settings, the X instead of "back" */
+#settings-dialog.docked {
+    position: static; z-index: auto; padding: 0; background: var(--surface); border-left: 1px solid var(--line);
+    align-items: stretch; justify-content: flex-start; min-width: 0; min-height: 0;
+}
+#settings-dialog.docked > .dialog {
+    position: relative; height: 100%; max-width: none; max-height: none; border-radius: 0; box-shadow: none; animation: none;
+    padding: 14px 16px; overflow-x: hidden; overflow-wrap: anywhere;
+}
+#settings-dialog.docked > .dialog > * { max-width: 640px; min-width: 0; }
+#settings-dialog.docked .page-back { display: none; }
+#settings-dialog.docked .settings-dialog-close { display: inline-flex; position: absolute; top: 8px; right: 8px; }
+#settings-dialog.docked #settings-dialog-title { padding-right: 40px; }
 #settings-dialog-body { display: flex; flex-direction: column; gap: 12px; }
 #settings-dialog-body > .pair-box { margin-top: 0; }
 /* An engine that runs on the machine: its state and sign-in, below its switch */
@@ -1073,7 +1146,10 @@ a.primary, a.btn { text-decoration: none; }
 .relay-claim label { display: flex; flex-direction: column; gap: 3px; }
 .relay-claim label span { color: var(--muted); font-size: 13px; }
 .welcome-extra p { margin: 0; }
+.welcome-extra p a { color: var(--accent); }
 .welcome-key { margin: 0; }
+.welcome-try { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.welcome-try .btn { align-self: flex-start; }
 .welcome-engines { display: flex; flex-direction: column; gap: 6px; }
 .welcome-engines label.check { display: flex; align-items: center; gap: 8px; }
 .welcome-engines label.check span { color: var(--text); }
@@ -1109,6 +1185,33 @@ a.primary, a.btn { text-decoration: none; }
 .routines li.off { opacity: .6; }
 .routines .r-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .routines .r-text span { font-size: 12.5px; color: var(--muted); }
+/* A routine: the row opens on a tap; the switch pauses it, so it stays clear even on a paused row */
+.routines li.routine { flex-direction: column; align-items: stretch; gap: 0; }
+.routines li.routine.off { opacity: 1; }
+.routines li.routine.off .r-text { opacity: .6; }
+.r-head { display: flex; align-items: center; gap: 10px; }
+.routines button.r-text { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.r-body { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.r-body .hint { margin: 0; }
+.r-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.routines .r-prompt { margin: 0; font-size: 13.5px; color: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.r-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+.r-runs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; font-size: 13px; }
+.routines .r-runs li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; border: 0; border-radius: 0; padding: 5px 0; border-top: 1px solid var(--line); }
+.routines .r-runs li:first-child { border-top: 0; }
+.r-run .r-when { min-width: 9em; }
+.r-run .r-took { color: var(--muted); min-width: 3.5em; }
+.r-run.st-ok .r-status { color: var(--ok); }
+.r-run.st-error .r-status { color: var(--danger); font-weight: 600; }
+.r-run.st-running .r-status { color: var(--muted); }
+.r-run .link { margin-left: auto; }
+.r-run .r-error { flex-basis: 100%; color: var(--danger); font-size: 12.5px; overflow-wrap: anywhere; }
+/* On/off switch from a checkbox */
+input.switch { appearance: none; flex: 0 0 auto; width: 38px; height: 22px; margin: 0; border-radius: 11px; background: var(--line); position: relative; cursor: pointer; transition: background .15s; }
+input.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); transition: left .15s; }
+input.switch:checked { background: var(--accent); }
+input.switch:checked::after { left: 18px; }
+input.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .empty-small { color: var(--muted); font-size: 13px; border: 0 !important; padding: 0 !important; }
 .skills { font-size: 13px; }
 .knowledge-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
@@ -1236,3 +1339,44 @@ details summary { cursor: pointer; }
     gap: 14px; padding: 24px; background: var(--bg); color: var(--text); text-align: center;
 }
 .boot-failed p { margin: 0; max-width: 360px; }
+
+/* ---------------------------------------------------------------- Command palette and shortcuts (palette.js) */
+/* Ctrl+B on a wide screen: the chats take the sidebar's room (panes.js) */
+@media (min-width: 761px) {
+    .app.sidebar-hidden { --sidebar-width: 0px !important; }
+    .app.sidebar-hidden > .sidebar, .app.sidebar-hidden > .tab-bar { display: none; }
+    /* Near the top like other palettes, so the list grows downwards while results arrive */
+    .overlay.palette { align-items: flex-start; padding-top: 12dvh; }
+    .palette > .dialog { max-width: 640px; max-height: 70dvh; padding: 10px; gap: 6px; }
+}
+/* Above the other dialogs: Ctrl+K and Ctrl+/ open over whatever is open */
+.overlay.palette, #shortcuts { z-index: 30; }
+.palette > .dialog { overflow: hidden; }
+.palette input[type=search] { flex: 0 0 auto; font-size: 16px; padding: 10px 12px; }
+.palette-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.palette-section { padding: 10px 10px 4px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.palette-note { padding: 6px 10px 8px; font-size: 13px; color: var(--muted); }
+.palette-option { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.palette-option[aria-selected="true"] { background: var(--hover); box-shadow: inset 3px 0 0 var(--accent); }
+.palette-option > svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.palette-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.palette-label { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-meta { flex: 0 0 auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.palette-hint { font-size: 12px; text-align: center; }
+.dialog.shortcuts { max-width: 560px; }
+.shortcuts-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.shortcuts-list { display: grid; grid-template-columns: max-content 1fr; gap: 8px 18px; margin: 0; align-items: baseline; }
+.shortcuts-list dt { white-space: nowrap; color: var(--muted); font-size: 13px; }
+.shortcuts-list dd { margin: 0; }
+kbd { font: 12px var(--mono); padding: 2px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--bar-bg); color: var(--text); }
+/* The phone's search: what it looks for, below the field (larger screens have the palette) */
+.search-filters { display: none; gap: 6px; padding-top: 8px; overflow-x: auto; }
+.search-filters .chip { border-left-width: 1px; }
+.search-filters .chip[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+@media (max-width: 760px) {
+    .search-filters { display: flex; }
+    .search-box { max-height: 110px; }
+    .palette .page-back { margin-bottom: 0; }
+    .palette-hint { display: none; }
+}

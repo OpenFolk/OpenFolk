@@ -11,7 +11,9 @@ import { loadPushSettings } from './push.js';
 import { loadAccounts } from './accounts.js';
 import { relayClaimForm } from './relay-claim.js';
 import { closeSettingsDialog, openSettingsDialog } from './menus.js';
+import { pickFolderOn } from './editors.js';
 import { autoReadOn } from './read-aloud.js';
+import { dictationOn } from './voice.js';
 import { RELEASES, VERSION } from './release.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
 
@@ -58,6 +60,7 @@ export function openSettings() {
     renderBubbleChoice();
     el.settingsTheme.value = storage.get(THEME_KEY) || 'auto';
     el.settingsAutoRead.checked = autoReadOn();
+    el.settingsDictation.checked = dictationOn();
     el.settingsLanguage.value = readSetting(LANGUAGE_KEY);
     // Query the state fresh: the backend caches it for up to a minute, a password stored just now would be missing
     for (const h of state.online) if (machineCan(h, 'autologon')) send({ type: 'machine_autologon' }, h);
@@ -271,19 +274,24 @@ export function renderMachineJoin(invite) {
         return;
     }
     openSettingsDialog(t('machines.add'), el.machineJoin);
-    const command = /** @type {HTMLInputElement} */ (node('input'));
-    command.type = 'text';
-    command.readOnly = true;
-    command.value = invite.command;
-    command.addEventListener('focus', () => command.select());
-    const copy = node('button', 'btn small', t('pair.copy'));
-    copy.type = 'button';
-    copy.addEventListener('click', () => {
-        if (navigator.clipboard) navigator.clipboard.writeText(invite.command).then(() => { copy.textContent = t('pair.copied'); }, () => undefined);
-    });
-    const row = node('div', 'pair-url');
-    row.append(command, copy);
-    el.machineJoin.append(node('p', '', t('machines.joinIntro')), row,
+    // The desktop app's setup takes the link, a checkout the command; each field copies exactly what it shows
+    const copyRow = (value, label) => {
+        const field = /** @type {HTMLInputElement} */ (node('input'));
+        field.type = 'text';
+        field.readOnly = true;
+        field.value = value;
+        field.addEventListener('focus', () => field.select());
+        const copy = node('button', 'btn small', t(label));
+        copy.type = 'button';
+        copy.addEventListener('click', () => {
+            if (navigator.clipboard) navigator.clipboard.writeText(value).then(() => { copy.textContent = t('pair.copied'); }, () => undefined);
+        });
+        const row = node('div', 'pair-url');
+        row.append(field, copy);
+        return row;
+    };
+    el.machineJoin.append(node('p', '', t('machines.joinIntro')), copyRow(invite.url, 'pair.copy'),
+        node('p', '', t('machines.joinCommandIntro')), copyRow(invite.command, 'machines.copyCommand'),
         node('p', 'hint', t(invite.e2e ? 'machines.joinHint' : 'machines.joinHintNoKey', { until: clockTime(invite.expiresAt) })));
 }
 
@@ -519,12 +527,24 @@ function machineForm(host, ms) {
 
     providersForm(host, ms, details);
 
-    // Older backends do not know the folder for bots
+    // Older backends do not know the folder for bots. The allowed folders are only shown: they change at the machine
+    // itself (the desktop app's tray, ALLOWED_ROOTS), the default folder for new bots is one inside them (#62).
     if ('botFolder' in s) {
         details.appendChild(node('h4', '', t('settings.botFolder')));
+        if (ms.roots?.length) {
+            const roots = node('div', 'settings-roots');
+            roots.append(node('span', '', t('settings.allowedFolders')), ...ms.roots.map((r) => node('code', '', r)));
+            details.append(roots, node('p', 'hint', t('settings.allowedFoldersHow')));
+        }
         const folderField = textField('settings.botFolderField', s.botFolder, (v) => set({ botFolder: v }));
         /** @type {HTMLInputElement} */ (folderField.querySelector('input')).placeholder = ms.roots?.[0] || '';
-        details.appendChild(folderField);
+        const choose = node('button', 'btn small', t('settings.botFolderChoose'));
+        choose.type = 'button';
+        choose.disabled = !state.online.includes(host);
+        choose.addEventListener('click', () => pickFolderOn(host, s.botFolder || '', (folder) => { if (folder !== s.botFolder) set({ botFolder: folder }); }));
+        const row = node('div', 'settings-folder');
+        row.append(folderField, choose);
+        details.appendChild(row);
     }
 
     details.appendChild(node('h4', '', t('settings.shutdown')));

@@ -253,6 +253,19 @@ const TEXTS = {
         minimize: 'Minimize',
         zoom: 'Zoom',
         help: 'Help',
+        go: 'Go',
+        palette: 'Command palette …',
+        newBot: 'New bot',
+        newGroup: 'New group',
+        searchChat: 'Search in the chat',
+        previousChat: 'Previous chat',
+        nextChat: 'Next chat',
+        back: 'Back',
+        forward: 'Forward',
+        composer: 'Input field',
+        toggleList: 'Show or hide the chat list',
+        settings: 'Settings …',
+        shortcuts: 'Keyboard shortcuts',
         about: 'About OpenFolk',
         aboutProfile: 'Profile folder',
         notSetUp: 'not set up',
@@ -400,6 +413,19 @@ const TEXTS = {
         minimize: 'Im Dock ablegen',
         zoom: 'Zoomen',
         help: 'Hilfe',
+        go: 'Gehe zu',
+        palette: 'Befehlspalette …',
+        newBot: 'Neuer Bot',
+        newGroup: 'Neue Gruppe',
+        searchChat: 'Im Chat suchen',
+        previousChat: 'Voriger Chat',
+        nextChat: 'Nächster Chat',
+        back: 'Zurück',
+        forward: 'Vor',
+        composer: 'Eingabefeld',
+        toggleList: 'Chatliste ein- oder ausblenden',
+        settings: 'Einstellungen …',
+        shortcuts: 'Tastenkürzel',
         about: 'Über OpenFolk',
         aboutProfile: 'Profilordner',
         notSetUp: 'nicht eingerichtet',
@@ -677,7 +703,6 @@ async function disconnectRelay() {
     config.paired = '';
     saveConfig();
     createMenu();
-    if (tray) tray.setContextMenu(trayMenu());
     loadWebApp();
 }
 
@@ -879,7 +904,6 @@ const taskItem = () => (taskOffered() ? [{ label: t('runWithoutSignIn'), type: '
 async function switchTask(on) {
     const refresh = () => {
         createMenu();
-        if (tray) tray.setContextMenu(trayMenu());
     };
     if (on && backend?.child) await backend.stop();
     const error = await task.setTask(on, root(), app.getPath('userData'));
@@ -944,7 +968,40 @@ const viewMenu = (label) => ({
     ],
 });
 
-/** The Mac's menu bar: app menu with start at login, Edit (copy and paste need it there), View, Window. */
+/**
+ * A command of the web app's keyboard shortcuts (webapp/js/palette.js): the page runs it as if the keys were pressed.
+ * The keys themselves reach the page (registerAccelerator: false), so a shortcut does not run twice; the menu shows them.
+ */
+function pageCommand(command) {
+    show();
+    if (win) win.webContents.executeJavaScript(`document.dispatchEvent(new CustomEvent('openfolk:command', { detail: ${JSON.stringify(command)} }))`).catch(() => undefined);
+}
+
+const pageItem = (label, command, accelerator) => ({ label, accelerator, registerAccelerator: false, click: () => pageCommand(command) });
+
+/** The web app's shortcuts as a menu; the zoom keys (Ctrl and + / - / 0) stay the View menu's. On the Mac the settings are in the app menu. */
+const goMenu = () => ({
+    label: t('go'),
+    submenu: [
+        pageItem(t('palette'), 'palette', 'CmdOrCtrl+K'),
+        { type: 'separator' },
+        pageItem(t('newBot'), 'newBot', 'CmdOrCtrl+N'),
+        pageItem(t('newGroup'), 'newGroup', 'CmdOrCtrl+Shift+N'),
+        { type: 'separator' },
+        pageItem(t('previousChat'), 'previous', 'Alt+Up'),
+        pageItem(t('nextChat'), 'next', 'Alt+Down'),
+        pageItem(t('back'), 'back', 'CmdOrCtrl+['),
+        pageItem(t('forward'), 'forward', 'CmdOrCtrl+]'),
+        pageItem(t('searchChat'), 'search', 'CmdOrCtrl+F'),
+        pageItem(t('composer'), 'composer', 'CmdOrCtrl+I'),
+        pageItem(t('toggleList'), 'sidebar', 'CmdOrCtrl+B'),
+        { type: 'separator' },
+        ...(MAC ? [] : [pageItem(t('settings'), 'settings', 'CmdOrCtrl+,')]),
+        pageItem(t('shortcuts'), 'shortcuts', 'CmdOrCtrl+/'),
+    ],
+});
+
+/** The Mac's menu bar: app menu with start at login, Edit (copy and paste need it there), View, Go, Window. */
 function createMacMenu() {
     Menu.setApplicationMenu(Menu.buildFromTemplate([
         {
@@ -952,6 +1009,8 @@ function createMacMenu() {
             submenu: [
                 { label: t('about'), click: about },
                 ...updateMenuItems(),
+                { type: 'separator' },
+                pageItem(t('settings'), 'settings', 'Cmd+,'),
                 { type: 'separator' },
                 { label: t('changeAddress'), click: changeAddress },
                 ...foldersItem(),
@@ -979,6 +1038,7 @@ function createMacMenu() {
             ],
         },
         viewMenu(t('viewMac')),
+        goMenu(),
         {
             label: t('window'),
             role: 'window',
@@ -993,7 +1053,9 @@ function createMacMenu() {
     ]));
 }
 
+/** The application menu and the tray's: both follow the mode and the relay address, so they are rebuilt together (#60). */
 function createMenu() {
+    if (tray) tray.setContextMenu(trayMenu());
     if (MAC) return createMacMenu();
     Menu.setApplicationMenu(Menu.buildFromTemplate([
         {
@@ -1008,6 +1070,7 @@ function createMenu() {
             ],
         },
         viewMenu(t('view')),
+        goMenu(),
         {
             label: t('help'),
             submenu: [
@@ -1073,7 +1136,6 @@ if (!app.requestSingleInstanceLock()) {
             },
             onChange: () => {
                 createMenu();
-                if (tray) tray.setContextMenu(trayMenu());
             },
         });
         createMenu();

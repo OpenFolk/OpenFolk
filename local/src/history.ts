@@ -61,10 +61,10 @@ function readAll(chatId: string): HistoryEntry[] {
 
 /**
  * The web app's search over all chats or one (history-index.ts): every word must occur, case-insensitive; newest
- * first, with an excerpt around the hit.
+ * first, with an excerpt around the hit. `since` keeps to newer entries, `files` matches attached files' names.
  */
-export function searchHistory(query: string, max = 50, onlyChat?: string): SearchHit[] {
-    return searchEntries(query, { max, chats: onlyChat ? [onlyChat] : undefined, order: 'time' });
+export function searchHistory(query: string, max = 50, onlyChat?: string, o: { since?: string; files?: boolean } = {}): SearchHit[] {
+    return searchEntries(query, { max, chats: onlyChat ? [onlyChat] : undefined, order: 'time', since: o.since, files: o.files });
 }
 
 export function readHistory(chatId: string, limit = 200): HistoryEntry[] {

@@ -137,11 +137,14 @@ inAccount('kunde', () => writeJson('z.json', { c: 3 }));
 router.hello(['main'], []);
 check('unbound again: main served, the bound account rests', router.served().join() === 'main' && kundeManager?.closed === true && machineBinding() === null);
 check('… its data stays', fs.existsSync(path.join(dir, 'accounts', 'kunde')));
-// An account that runs on machines of its own now: this machine lets go, without deleting
+// An account that no longer runs on this machine: it lets go, without deleting
 router.hello(['main', 'anna'], []);
 inAccount('anna', () => writeJson('z.json', { d: 4 }));
 router.released('anna');
 check('released: no longer served, its data stays', router.served().join() === 'main' && fs.existsSync(path.join(dir, 'accounts', 'anna')));
+router.added('anna');
+check('added again (ticked once more): served again, with the data it had', router.served().join() === 'anna,main' && fs.existsSync(path.join(dir, 'accounts', 'anna')));
+router.released('anna');
 router.released('main');
 check("the owner's account is never released", router.served().join() === 'main');
 setMachineBinding(null);

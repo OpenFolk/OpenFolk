@@ -37,8 +37,16 @@ for (const account of accountIds()) {
 }
 
 secureDataDir();
-// A new installation runs no provider until the user picks theirs (first steps, settings); existing ones keep them all
-if (newDataDir) startWithoutEngines();
+// A new installation runs no provider until the user picks theirs (first steps, settings); existing ones keep them all.
+// A Claude Code login already on this computer counts as picked; a CLI that does not answer in time counts as none.
+if (newDataDir) {
+    const { claudeModels } = await import('./session.ts');
+    const claudeReady = () => Promise.race([
+        claudeModels().then((c) => c.status === 'ready'),
+        new Promise<boolean>((resolve) => setTimeout(resolve, 20_000, false).unref()),
+    ]);
+    if (await startWithoutEngines(claudeReady)) console.log('setup: Claude Code is signed in on this computer, Claude switched on');
+}
 // The git token of the machine settings, before the first session starts
 applyGitPush();
 // local/tools/install-task.ps1 stops exactly this process, not any node.exe it cannot see the command line of

@@ -30,6 +30,7 @@ jobs:
       matrix:
         include:
           - os: windows
+            artifact: openfolk-windows
             runner: windows-latest
             target: --win
             exe: desktop/dist/win-unpacked/OpenFolk.exe
@@ -38,16 +39,31 @@ jobs:
               desktop/dist/*.blockmap
               desktop/dist/latest.yml
           - os: macos
-            # Apple Silicon; the arm64 DMG is what openfolk.app offers for macOS
+            # Apple Silicon; openfolk.app offers this DMG for macOS
+            artifact: openfolk-macos
             runner: macos-latest
             target: --mac --arm64
             exe: desktop/dist/mac-arm64/OpenFolk.app/Contents/MacOS/OpenFolk
+            # latest-mac.yml goes to the release only from the job "mac-feed", merged with the Intel build's
             files: |
               desktop/dist/*.dmg
               desktop/dist/*.zip
               desktop/dist/*.blockmap
-              desktop/dist/latest-mac.yml
+            feed: desktop/dist/latest-mac.yml
+          - os: macos
+            # Intel Macs, on a runner of their own: npm installs the Claude Code binary of the runner's architecture.
+            # GitHub keeps Intel runners until August 2027; openfolk.app offers this DMG as "mac-intel"
+            artifact: openfolk-macos-intel
+            runner: macos-15-intel
+            target: --mac --x64
+            exe: desktop/dist/mac/OpenFolk.app/Contents/MacOS/OpenFolk
+            files: |
+              desktop/dist/*.dmg
+              desktop/dist/*.zip
+              desktop/dist/*.blockmap
+            feed: desktop/dist/latest-mac.yml
           - os: linux
+            artifact: openfolk-linux
             runner: ubuntu-latest
             target: --linux
             exe: desktop/dist/linux-unpacked/openfolk
@@ -151,8 +167,16 @@ jobs:
         run: node scripts/desktop-smoke.mjs --exe "${{ matrix.exe }}"
       - uses: actions/upload-artifact@v4
         with:
-          name: openfolk-${{ matrix.os }}
+          name: ${{ matrix.artifact }}
           path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 14
+      # Each Mac build writes a latest-mac.yml of its own architecture; the job "mac-feed" merges the two
+      - uses: actions/upload-artifact@v4
+        if: matrix.feed
+        with:
+          name: ${{ matrix.artifact }}-feed
+          path: ${{ matrix.feed }}
           if-no-files-found: error
           retention-days: 14
       - name: Attach to the release
@@ -168,8 +192,50 @@ jobs:
           while IFS= read -r pattern; do [ -n "$pattern" ] && files+=($pattern); done <<< "$FILES"
           gh release upload "${{ github.event.release.tag_name }}" "${files[@]}" --clobber
 
+  mac-feed:
+    # One latest-mac.yml for both Macs: electron-updater on an Apple Silicon Mac takes the files with "arm64" in their
+    # name, on an Intel Mac the others. Runs on every build, so a broken feed shows before a release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: openfolk-macos-feed
+          path: arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: openfolk-macos-intel-feed
+          path: x64
+      - name: Merge
+        # The arm64 feed stays as it is (version, path and sha512 at the top level name the arm64 zip, as before);
+        # the Intel feed adds the entries of its "files" list to the end of that list
+        run: |
+          set -euo pipefail
+          awk '/^files:/{f=1; next} f && /^[^ ]/{f=0} f' x64/latest-mac.yml > x64-files
+          grep -q 'url: .*\.zip' x64-files
+          awk -v extra=x64-files '
+            /^files:/ { print; f=1; next }
+            f && /^[^ ]/ { while ((getline line < extra) > 0) print line; f=0 }
+            { print }
+          ' arm64/latest-mac.yml > latest-mac.yml
+          cat latest-mac.yml
+          [ "$(grep -c '^  - url: ' latest-mac.yml)" -eq "$(( $(grep -c '^  - url: ' arm64/latest-mac.yml) + $(grep -c '^  - url: ' x64/latest-mac.yml) ))" ]
+          grep -q 'url: .*arm64.*\.zip' latest-mac.yml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openfolk-macos-feed-merged
+          path: latest-mac.yml
+          retention-days: 14
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" latest-mac.yml --repo "$GITHUB_REPOSITORY" --clobber
+
   checksums:
-    # One SHA256SUMS over every desktop package of the release, once all three systems have uploaded
+    # One SHA256SUMS over every desktop package of the release, once all systems have uploaded
     if: github.event_name == 'release'
     needs: build
     runs-on: ubuntu-latest

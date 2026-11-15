@@ -178,6 +178,15 @@ path); an account running on someone else's login without noticing is the failur
 they serve `main` only. For the same reason the keys in a machine's settings are the owner's: other accounts always run on a
 subscription login of their own.
 
+The sign-in to Claude with a subscription always completes in Anthropic's own flow, and OpenFolk never handles its
+codes or tokens: Anthropic does not let third-party apps offer the claude.ai login or collect, store or pass on its
+credentials (code.claude.com/docs/en/legal-and-compliance). So the first steps run `claude auth login` on the
+machine (`local/src/engine-login.ts`), which opens the browser there and waits on localhost for the redirect, and
+never the device-code style of Codex and Copilot: the CLI's fallback link ends in a code to paste, and relaying that
+from the phone, or a token from `claude setup-token`, is exactly what is not allowed. A machine nobody sits at signs
+in with the API key or in its own terminal. The browser has to appear where someone sees it, so without a desktop the
+backend opens a terminal through the desktop app instead (see "Handing a session to the machine").
+
 Subscription or key is a choice per engine in the machine settings, never something an engine picks up from the environment:
 the adapters remove the provider variables a CLI would read (`OPENAI_API_KEY`, `CURSOR_API_KEY`, `GH_TOKEN`,
 `GEMINI_API_KEY`, …) and set the stored key only in key mode, so a variable left in a shell never bills an API or
@@ -221,11 +230,14 @@ with a push of its own kind that ignores mute; it does not wait for the person, 
 **Machines bound to an account** turn "machines belong to nobody" around for one case: an employee's or customer's
 own computer, joined with a setup link (`/setup-invite`, `/setup` in `relay/src/relay.ts`, `MachineTokens` in
 `owner.ts`). Its token is bound to the account, and the bridge (`serves` in `relay/src/bridge.ts`) lets it serve that
-account only, while the account, once it has a setup link (`setupBy`), is served by no other machine. That is a
-boundary in both directions, because the machine is someone else's: nothing of other accounts may reach it (frames,
-sync, account ids, machine names, the contacts of other people), whatever it sends for another account is dropped, it
-pairs devices of its account only and invites no machines; and the account's chats must not land on the admin's
-machines, where the sync of a shared account would put them. The account is the machine's owner (`ownerAccount` in
+account only. That is a boundary in both directions, because the machine is someone else's: nothing of other
+accounts may reach it (frames, sync, account ids, machine names, the contacts of other people), whatever it sends for
+another account is dropped, it pairs devices of its account only and invites no machines; and the account's chats
+must not land on the admin's machines unless the admin wants them there, as the sync of an account puts its chats on
+every machine that serves it. Which of the relay's own machines serve an account is the admin's choice (`machines`,
+`Accounts.runsOn` in `relay/src/accounts.ts`; missing means all, also those to come); the first setup link sets it to
+none, and an account set up before the choice existed counts as none. The relay applies a change with `account_added`
+and `account_released`, which leave the account's data on the machine, so unticking is undone by ticking again. The account is the machine's owner (`ownerAccount` in
 `local/src/store.ts`, kept in `binding.json` so it holds before the relay answers): it runs on the machine's own
 Claude sign-in and changes its settings. A bound backend that does not know accounts is turned away, as it would take
 the account for `main`.

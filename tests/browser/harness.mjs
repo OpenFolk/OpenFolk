@@ -97,7 +97,7 @@ export function bot(id, name = id, extra = {}) {
  *   dark, before (script before loading, in the browser), now (the page's clock starts at this time, for tests of
  *   "today", "yesterday" and the like, which otherwise depend on the hour the test runs), recordDialogs (see there),
  *   onSend(frame, push, state) for own answers,
- *   ownHistory (history requests are answered by onSend), agentsLater (the test sends the machine list), path,
+ *   ownHistory (history requests are answered by onSend), agentsLater (the test sends the machine list), botsLater (and the bots), path,
  *   language ('en' by default; null = do not pin, the app decides), locale (browser locale, default en-US),
  *   device (stored device key, default 'test'; null = none), secure (https, e.g. for crypto.subtle),
  *   auth(frame) (the relay's answer to the sign-in; default { type: 'auth', ok: true }),
@@ -143,7 +143,7 @@ export async function start(browser, o = {}) {
             if (answer.ok) {
                 if (!o.agentsLater) await reply({ type: 'agents', online: state.online });
                 const bots = o.botsFor?.(f) ?? state.bots;
-                await reply({ type: 'bots', machine: 'desk', bots, groups: bots === state.bots ? state.groups : [], categories: bots === state.bots ? state.categories : [], states: state.states, activity: state.activity, activeChats: state.activeChats, approvals: [] });
+                if (!o.botsLater) await reply({ type: 'bots', machine: 'desk', bots, groups: bots === state.bots ? state.groups : [], categories: bots === state.bots ? state.categories : [], states: state.states, activity: state.activity, activeChats: state.activeChats, approvals: [] });
                 await reply({ type: 'pinned', all: o.pinned ?? {} });
             }
         }

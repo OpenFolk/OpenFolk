@@ -1,13 +1,14 @@
 // Sign-in with a device code: the link and the code from the CLIs' real output, the outcome, one sign-in at a time.
+// Claude's sign-in in the browser: started, the outcome, a second tap starting over.
 //   node local/src/engine-login.test.ts
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-type LoginReport = import('./engine-login.ts').LoginReport;
+type LoginReport = import('./engine-login.ts').LoginReport | import('./engine-login.ts').ClaudeLoginReport;
 
 // The sign-in runs in the current account; the real local/data may hold several, so a data folder of its own
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-engine-login-'));
-const { parseDeviceCode, startDeviceLogin } = await import('./engine-login.ts');
+const { parseDeviceCode, startClaudeLogin, startDeviceLogin } = await import('./engine-login.ts');
 
 let failed = 0;
 const check = (name: string, ok: boolean, info?: unknown) => {
@@ -55,6 +56,38 @@ await new Promise<void>((resolve) => {
     }, cmd);
 });
 check('second request while running: same code, one process', starts === 1 && second.length === 1 && second[0].state === 'code' && (second[0] as { code: string }).code === '1A2B-3C4D', { starts, second });
+
+// Claude: `claude auth login` opens the browser itself and ends once the redirect came back; output of 2.1.306
+const CLAUDE = "Opening browser to sign in…\nIf the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true\nPaste code here if prompted > ";
+const claudeFake = path.join(dir, 'fake-claude.mjs');
+fs.writeFileSync(claudeFake, `process.stdout.write(${JSON.stringify(CLAUDE)}); setTimeout(() => process.exit(Number(process.argv[2])), Number(process.argv[3]));`);
+const claude = (exit: number, ms = 300) => () => [process.execPath, [claudeFake, String(exit), String(ms)]] as [string, string[]];
+const claudeRun = (exit: number) => new Promise<LoginReport[]>((resolve) => {
+    const reports: LoginReport[] = [];
+    startClaudeLogin((r) => {
+        reports.push(r);
+        if (r.state !== 'browser') resolve(reports);
+    }, claude(exit));
+});
+const signedIn = await claudeRun(0);
+check('claude: browser, then done, and nothing of the link passed on', JSON.stringify(signedIn) === '[{"state":"browser"},{"state":"done"}]', signedIn);
+const notSignedIn = await claudeRun(1);
+check('claude failed: no prompt as the reason', notSignedIn[1]?.state === 'failed' && !(notSignedIn[1] as { message: string }).message.includes('Paste code'), notSignedIn);
+
+// A second tap starts over (a browser tab closed too early); the replaced process ends without a word
+const replaced: LoginReport[] = [];
+startClaudeLogin((r) => replaced.push(r), claude(1, 60_000));
+await new Promise((r) => setTimeout(r, 200));
+const again = await new Promise<LoginReport[]>((resolve) => {
+    const reports: LoginReport[] = [];
+    startClaudeLogin((r) => {
+        reports.push(r);
+        if (r.state !== 'browser') resolve(reports);
+    }, claude(0));
+});
+await new Promise((r) => setTimeout(r, 200));
+check('claude, second tap: the new one signs in, the first says only "browser"', JSON.stringify(again) === '[{"state":"browser"},{"state":"done"}]'
+    && JSON.stringify(replaced) === '[{"state":"browser"}]', { again, replaced });
 
 const missing: LoginReport[] = [];
 startDeviceLogin('codex', (r) => missing.push(r), () => { throw new Error('The Codex CLI is not installed'); });

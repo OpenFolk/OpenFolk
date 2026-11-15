@@ -26,6 +26,15 @@ check('invalid chat ids and values dropped', Object.keys(g).length === 0);
 applySeen({ bert: { until: T3, updatedAt: T3, foreign: 'x' } as never });
 check('only known fields stored', JSON.stringify(loadSeen().bert) === JSON.stringify({ updatedAt: T3, until: T3 }));
 
+// A phone's delayed request is moot once a device opened the chat after it came (a few seconds of clock skew allowed)
+const { seenSince } = await import('./seen.ts');
+applySeen({ dora: { until: '2026-10-10T10:00:05.000Z', updatedAt: '2026-10-10T10:00:05.000Z' } });
+check('chat opened after the request: seen since', seenSince('dora', T3));
+check('chat opened long before the request: not seen since', !seenSince('dora', '2026-10-10T10:05:00.000Z'));
+check('a device clock a few seconds behind still counts', seenSince('dora', '2026-10-10T10:00:12.000Z'));
+check('chat never opened: not seen since', !seenSince('emil', T1));
+check('marked unread by hand: not seen since', !seenSince('skool', T1));
+
 // Sync between machines via the snapshot
 check('snapshot contains the read state', snapshot(false).seen?.skool?.updatedAt === T3);
 const result = merge({ bots: [], groups: [], routines: [], deleted: {}, push: [], seen: { anna: { until: T3, updatedAt: T3 } } });

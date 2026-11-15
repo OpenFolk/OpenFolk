@@ -37,6 +37,19 @@ export default async function ({ start, check }) {
 
     check('machine row without autologin', !(await row('desk')).includes('utologin'), await row('desk'));
 
+    // the line under a machine leads with its backend's version, left out for a backend that sends none
+    const details = (host) => p.evaluate((host) => {
+        const z = [...document.querySelectorAll('.machine-row')].find((e) => e.querySelector('strong').textContent.toLowerCase() === host);
+        const next = z && z.nextElementSibling;
+        return next && next.classList.contains('machine-details') ? next.textContent : '';
+    }, host);
+    await h.push({ type: 'backend_status', machine: 'desk', version: '9.8.7', since: new Date().toISOString(), changed: [] });
+    await h.push({ type: 'backend_status', machine: 'workstation', since: new Date().toISOString(), changed: [] });
+    await h.push({ type: 'agents', online: ['desk', 'workstation'], gone: {} });
+    await h.wait(100);
+    check('version first in the details', (await details('desk')).startsWith('9.8.7 · '), await details('desk'));
+    check('no version, no version', !/\d+\.\d+\.\d+/.test(await details('workstation')), await details('workstation'));
+
     // machine settings: with shutting down switched off no "shut down"; the delay comes from the machine's settings
     const buttons = (host) => p.evaluate((host) => {
         const z = [...document.querySelectorAll('.machine-row')].find((e) => e.querySelector('strong').textContent.toLowerCase() === host);

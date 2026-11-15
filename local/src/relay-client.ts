@@ -63,7 +63,7 @@ export interface AccountRouter {
     people(list: Person[]): void;
     added(account: string): void;
     deleted(account: string): void;
-    /** The account runs on machines bound to it now: stop serving it, keep its data. */
+    /** The account no longer runs on this machine: stop serving it, keep its data. */
     released(account: string): void;
     /** Person route: data from account `from` on another machine for account `to` here (decrypted, checked). */
     person(from: string, to: string, data: PeerData, id?: string): void;

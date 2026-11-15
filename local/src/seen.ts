@@ -14,6 +14,15 @@ export function loadSeen(): SeenState {
     return readJson<SeenState>('seen.json', {});
 }
 
+/** Seen-until times are the devices' clocks; a few seconds behind the backend's still count. */
+const CLOCK_SLACK_MS = 10_000;
+
+/** Whether a device opened the chat (seen until) at or after `since` (ISO): a phone's delayed request is then moot. */
+export function seenSince(chatId: string, since: string): boolean {
+    const e = loadSeen()[chatId];
+    return !!e?.until && !e.unread && Date.parse(e.until) >= Date.parse(since) - CLOCK_SLACK_MS;
+}
+
 /** Takes over newer states (from a device or machine); returns only the chats that actually changed. */
 export function applySeen(other: unknown): SeenState {
     const changed: SeenState = {};

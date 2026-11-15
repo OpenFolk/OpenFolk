@@ -1,29 +1,30 @@
 /* OpenFolk web app: wire up events, devices and keys, light/dark, language, start. */
 import { applyI18n, t } from './i18n.js';
-import { $, AVATAR_EDGE, deviceAccounts, deviceRelays, loadedAccount, relayEntry, relayScope, SIDEBAR_WIDTH_KEY, TEMPLATES, THEME_KEY, el, node, state, storage, templateValues, closest, control, toast } from './core.js';
+import { $, AVATAR_EDGE, deviceAccounts, deviceRelays, loadedAccount, relayEntry, relayScope, SIDEBAR_WIDTH_KEY, THEME_KEY, el, node, state, storage, closest, control, toast } from './core.js';
 import { adoptKey, adoptPairingLink, askForKey, bot, e2eStart, fillAvatar, forgetKey, group, isGroup, isPerson, responsibleMachine, send } from './e2e.js';
 import { allChats, checkConnection, checkTotp, connect, credentials, renderAccount, setAgentStatus, showLogin } from './connection.js';
 import { bundled, platformKind, onNotificationOpen, parsePairingLink, relayAddress, requestPushPermission, setRelayAddress } from './platform.js';
 import { CHAT_DRAG, SIDEBAR_PX, activePane, closeSettings, createPane, layoutPanes, paneOf, panes, setActivePane, setSidebarWidth, visibleChats } from './panes.js';
-import { closeChatSearch, listTap, onChatSearchInput, onSearchInput, openRowMenu, renderChatList, renderUsage, setupListLongPress, setupListSwipe, setupSearchBox, stepChatSearch } from './list.js';
+import { chooseSearchFilter, closeChatSearch, listTap, onChatSearchInput, onSearchInput, openRowMenu, renderChatList, renderUsage, setupListLongPress, setupListSwipe, setupSearchBox, stepChatSearch } from './list.js';
 import { addEmptyPane, closeChat, dropChat, openChat, paneActivated, renderChatHeader, setupSwipeBack, swipeBack } from './chat.js';
 import { renderMachines, wake } from './machines.js';
-import { checkMention, closeMention, markSeen, mentionKey, renderHistory, renderPinned, scroll, setReply, setupMessageMenu, tapPinned, unpinShown } from './chat-features.js';
+import { checkMention, closeMention, markSeen, mentionKey, renderForwardList, renderHistory, renderPinned, scroll, setReply, setupMessageMenu, tapPinned, unpinShown } from './chat-features.js';
 import { renderQueue, sendMessage, setupQueueSwipe, textHeight } from './queue.js';
-import { AUTO_READ_KEY, primeReadAloud, readWaitingAnswer, setupSpeechBar } from './read-aloud.js';
-import { addFiles, pauseRecording, shrinkImage, startRecording, stopRecording } from './voice.js';
+import { autoReadOn, setAutoRead, primeReadAloud, readWaitingAnswer, setupSpeechBar } from './read-aloud.js';
+import { addFiles, dictationOn, finishDictation, pauseRecording, rec, setDictation, shrinkImage, startRecording, stopRecording } from './voice.js';
 import { endTalk, startTalk, talkVisibility, tapTalk, toggleTalkMic } from './talk.js';
 import {
-    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, newCategory, openGitPage, openMachinesPage,
+    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, closeSettingsDialog, infoAction, menuButton, newCategory, openGitPage, openMachinesPage,
     renderGitTotal, renderPageTitle, submitText, toggleHeaderSwitch,
 } from './menus.js';
 import { adoptVscodeSession, openVscode, renderVscodeAdoptButton, renderVscodeSub, showInVscode, showVscodeList, vs } from './vscode.js';
 import {
-    canMessageChanged, chooseFolder, createPickerFolder, editorValues, folderChanged, folderTyped, knowledgeSection, machineChanged, openEditor, openFolderPicker, openGroupEditor,
+    canMessageChanged, chooseFolder, createPickerFolder, folderChanged, folderTyped, knowledgeSection, machineChanged, newGroup, openEditor, openFolderPicker, openGroupEditor,
     openAvatarPicker, openInfo, openKnowledgeEditor, openRoutineEditor, renderEditorAvatar, renderKnowledge, renderRoutines,
-    repoChanged, repoTyped, requestSuggestion, routineCron, routineFields, submitEditor, renderVoiceChoice, chooseVoiceName, listenToVoice,
+    repoChanged, repoTyped, requestSuggestion, roleChanged, routineCron, routineFields, submitEditor, renderVoiceChoice, chooseVoiceName, listenToVoice,
 } from './editors.js';
-import { checkPush, renderPushSettings, subscribePush } from './push.js';
+import { checkPush, renderPushSettings, setPushAlways, subscribePush } from './push.js';
+import { noteInput, reportPresence } from './activity.js';
 import { askMachineJoin, chooseAllAccounts, chooseBubble, chooseLanguage, chooseShared, closeAiForm, openAiForm, openReleaseNotes, openSettings, renderAiServices, renderSettings, saveAiKey, showE2eStatus } from './settings.js';
 import {
     backToChooser, cancelAddAccount, closeChooserMenus, createAccount, joinAny, newAccount, openAccountMenu, openAccounts, redeemLink, saveOwnAccount, scanAny, showAccountField, showLoginForm,
@@ -34,6 +35,7 @@ import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, startQrLogi
 import { VERSION } from './release.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
 import { showSetupLanding } from './setups.js';
+import { onShortcutKey, runCommand, setupPalette } from './palette.js';
 
 // The first pane exists from the start; on phones and laptops it stays the only one
 createPane();
@@ -132,6 +134,8 @@ el.login.addEventListener('click', closeChooserMenus);
 el.accountsJoin.addEventListener('click', joinAny);
 el.accountsScan.addEventListener('click', () => void scanAny());
 el.accountsOwnSave.addEventListener('click', saveOwnAccount);
+el.accountsOwnClose.addEventListener('click', () => closeSettingsDialog(el.accountsOwn));
+el.accountsOwnName.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') saveOwnAccount(); });
 el.accountsCreate.addEventListener('click', createAccount);
 el.accountsLinkGo.addEventListener('click', redeemLink);
 el.accountsLink.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); redeemLink(); } });
@@ -241,12 +245,29 @@ el.newMenu.addEventListener('click', (ev) => {
         if (b && responsibleMachine(b)) send({ type: 'conversation_new', botId: b.id }, responsibleMachine(b));
     }
     if (kind === 'bot') openEditor(null);
-    if (kind === 'group') {
-        if (state.bots.length < 2) { void alertDialog(t('group.needTwoBots')); return; }
-        openGroupEditor(null);
-    }
+    if (kind === 'group') newGroup();
 });
 el.search.addEventListener('input', onSearchInput);
+// The phone's search: what it looks for
+el.searchFilters.addEventListener('click', (ev) => {
+    const chip = closest(ev, '[data-filter]');
+    if (chip) chooseSearchFilter(chip.dataset.filter);
+});
+// The command palette and the keyboard shortcuts (palette.js); the desktop app's menu sends the same commands
+setupPalette();
+document.addEventListener('keydown', onShortcutKey);
+document.addEventListener('openfolk:command', (ev) => {
+    const command = /** @type {CustomEvent} */ (ev).detail;
+    if (state.signedIn && typeof command === 'string') runCommand(command);
+});
+el.forwardSearch.addEventListener('input', renderForwardList);
+// Enter in the forward search takes the first chat found
+el.forwardSearch.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    const first = /** @type {HTMLButtonElement | null} */ (el.forwardList.querySelector('button'));
+    if (first) first.click();
+});
 // × in a search field (sidebar or chat search of a pane): clear the text, the field stays open and focused
 document.addEventListener('pointerdown', (ev) => { if (closest(ev, '.field-clear')) ev.preventDefault(); });
 document.addEventListener('click', (ev) => {
@@ -341,7 +362,9 @@ const PANE_CLICKS = {
     'rec-discard': () => { stopRecording(false); },
     'rec-pause': () => pauseRecording(),
     // unlocking the sound needs this tap; the answer may come minutes later
+    'rec-autoread': () => setAutoRead(!autoReadOn()),
     'rec-send': () => { primeReadAloud(); stopRecording(true); },
+    'rec-done': () => { void finishDictation(); },
     'btn-talk': (p) => startTalk(p),
     'btn-stop': (p) => { if (p.chatId) send({ type: 'interrupt', chatId: p.chatId }); },
     'btn-attach': (p) => p.el.fileInput.click(),
@@ -379,13 +402,18 @@ el.panes.addEventListener('click', (ev) => {
 // blur does not bubble
 el.panes.addEventListener('focusout', (ev) => {
     const p = paneOf(ev);
-    if (p && ev.target === p.el.text) closeMention(p);
+    if (!p || ev.target !== p.el.text) return;
+    closeMention(p);
+    // Dictated text goes where the cursor was, also after a tap on the checkmark took the focus
+    p.caret = { start: p.el.text.selectionStart, end: p.el.text.selectionEnd, value: p.el.text.value };
 });
 el.panes.addEventListener('keydown', (ev) => {
     const p = paneOf(ev);
     if (!p) return;
     if (ev.target === p.el.text) {
         if (mentionKey(p, ev)) return;
+        // Escape in the field ends a dictation without text, as in Claude Code
+        if (ev.key === 'Escape' && rec.pane === p && rec.recorder && dictationOn()) { ev.preventDefault(); ev.stopPropagation(); void stopRecording(false); return; }
         if (ev.key === 'Enter' && !ev.shiftKey && window.innerWidth > 760) { ev.preventDefault(); sendMessage(p); }
     }
     if (ev.target === p.el.csText) {
@@ -500,7 +528,7 @@ el.sidebarResize.addEventListener('keydown', (ev) => {
 
 // Dialogs: "Cancel"/"×", Escape and a click on the backdrop close them. The backdrop only counts if the pointer
 // was also pressed there – otherwise selecting text that ends outside would close it.
-for (const o of [el.editor, el.folderPicker, el.avatarPicker, el.gEditor, el.info, el.rEditor, el.kEditor, el.keyDialog, el.vscode, el.archive, el.textDialog, el.settingsDialog, el.settings]) {
+for (const o of [el.editor, el.folderPicker, el.avatarPicker, el.gEditor, el.info, el.rEditor, el.kEditor, el.keyDialog, el.vscode, el.archive, el.forward, el.textDialog, el.settingsDialog, el.settings, el.palette, el.shortcuts]) {
     let pressedOnBackdrop = false;
     o.addEventListener('pointerdown', (ev) => { pressedOnBackdrop = ev.target === o; });
     o.addEventListener('click', (ev) => {
@@ -516,7 +544,7 @@ document.addEventListener('keydown', (ev) => {
     if (large && !large.hidden) { large.hidden = true; return; }
     // the docked info panel is a column, not a dialog: Escape closes it only from inside
     const docked = el.app.classList.contains('info-docked') && !el.info.contains(document.activeElement);
-    for (const o of [el.textDialog, el.keyDialog, el.settingsDialog, el.settings, el.rEditor, el.kEditor, el.folderPicker, el.avatarPicker, el.editor, el.gEditor, el.info, el.vscode, el.archive]) {
+    for (const o of [el.palette, el.shortcuts, el.textDialog, el.keyDialog, el.settingsDialog, el.settings, el.rEditor, el.kEditor, el.folderPicker, el.avatarPicker, el.editor, el.gEditor, el.info, el.vscode, el.archive, el.forward]) {
         if (o.hidden || (o === el.info && docked)) continue;
         closeDialog(o);
         return;
@@ -567,22 +595,7 @@ el.vsShow.addEventListener('click', async () => { if (await showInVscode(vs.chat
 el.vsTerminal.addEventListener('click', async () => { if (await showInVscode(vs.chatId, 'terminal')) closeDialog(el.vscode); });
 
 // Bot editor
-function fillTemplateOptions() {
-    const chosen = el.editorTemplate.value;
-    el.editorTemplate.innerHTML = '';
-    for (const tpl of TEMPLATES) {
-        const o = document.createElement('option');
-        o.value = tpl.id;
-        o.textContent = tpl.id === 'ask' ? t('editor.askTemplate') : tpl.id ? `${t(tpl.name)} – ${t(tpl.role)}` : t('editor.noTemplate');
-        el.editorTemplate.appendChild(o);
-    }
-    el.editorTemplate.value = chosen;
-}
-el.editorTemplate.addEventListener('change', () => {
-    const tpl = TEMPLATES.find((x) => x.id === el.editorTemplate.value);
-    // keep a folder that is already filled in: templates do not bring one
-    if (tpl) { const folder = el.editorFolder.value; editorValues(templateValues(tpl)); el.editorFolder.value = folder; renderEditorAvatar(); }
-});
+el.editorRole.addEventListener('input', roleChanged);
 el.editorCanMessage.addEventListener('change', canMessageChanged);
 el.editorModel.addEventListener('change', () => { el.editorModelCustom.hidden = el.editorModel.value !== 'custom'; if (!el.editorModelCustom.hidden) el.editorModelCustom.focus(); });
 el.editorName.addEventListener('input', renderEditorAvatar);
@@ -687,7 +700,10 @@ el.kDelete.addEventListener('click', async () => {
 
 // Settings, with the blocks for notifications, devices and accounts
 el.machineAdd.addEventListener('click', askMachineJoin);
-el.settingsAutoRead.addEventListener('change', () => storage.set(AUTO_READ_KEY, el.settingsAutoRead.checked ? 'on' : 'off'));
+el.settingsAutoRead.addEventListener('change', () => setAutoRead(el.settingsAutoRead.checked));
+el.settingsDictation.addEventListener('change', () => setDictation(el.settingsDictation.checked));
+el.speechBarAuto.addEventListener('click', () => setAutoRead(!autoReadOn()));
+el.pushAlways.addEventListener('change', () => setPushAlways(el.pushAlways.checked));
 el.settingsTheme.addEventListener('change', () => {
     if (el.settingsTheme.value === 'auto') storage.remove(THEME_KEY);
     else storage.set(THEME_KEY, el.settingsTheme.value);
@@ -792,7 +808,6 @@ function rerenderLanguage() {
     applyI18n();
     applyTheme(storage.get(THEME_KEY) || 'auto');
     buildNewMenu();
-    fillTemplateOptions();
     renderPageTitle();
     if (state.onlineKnown) setAgentStatus(state.online.length > 0);
     else el.agentStatus.querySelector('span').textContent = t(state.ws ? 'status.connecting' : 'status.disconnected');
@@ -828,7 +843,7 @@ document.addEventListener('visibilitychange', () => {
     if (document.hidden) hiddenSince = Date.now();
     else if (hiddenSince && Date.now() - hiddenSince >= HIDDEN_CHECK_MS) checkConnection();
     if (!document.hidden) hiddenSince = 0;
-    send({ type: 'presence', visible: !document.hidden });
+    reportPresence();
     if (!document.hidden) readWaitingAnswer();
     talkVisibility(document.hidden);
     if (!document.hidden && state.signedIn) send({ type: 'wake_status' });
@@ -840,6 +855,9 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
+// Whether a desktop is in use (activity.js); passive and cheap, most events only record a time
+for (const type of ['pointermove', 'pointerdown', 'keydown', 'wheel']) window.addEventListener(type, noteInput, { capture: true, passive: true });
+
 applyI18n();
 // the app is up: boot.js no longer reloads the page
 window.openfolkStarted = true;
@@ -849,7 +867,8 @@ if (platformKind === 'desktop') setSidebarWidth(Number(storage.get(SIDEBAR_WIDTH
 // not paneActivated(): that would drop ?chat= from the address before the panes are restored
 layoutPanes();
 buildNewMenu();
-fillTemplateOptions();
 el.agentStatus.querySelector('span').textContent = t('status.connecting');
+// Until the machines and their bots are there: the list says it is loading
+renderChatList();
 // A setup link is for the desktop app: its page hands the link over instead of signing in
 if (!showSetupLanding()) e2eStart().finally(connect);

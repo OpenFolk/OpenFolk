@@ -72,7 +72,7 @@ export function handoverTargets(): HandoverTarget[] {
 }
 
 /** Claude Code as the backend runs it (the SDK's own binary), so it works without `claude` installed; else from PATH. */
-function claudeBinary(): string {
+export function claudeBinary(): string {
     try {
         const dir = path.dirname(createRequire(import.meta.url).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/package.json`));
         const bin = path.join(dir, process.platform === 'win32' ? 'claude.exe' : 'claude');
