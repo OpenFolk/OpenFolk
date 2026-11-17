@@ -21,7 +21,7 @@ const MIME: Record<string, string> = {
     '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.webm': 'video/webm',
+    '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm',
 };
 
 export function mimeOf(file: string): string {

@@ -34,10 +34,18 @@
         <!-- Signed out, or a key expired: the accounts this device knows; the form below only on request (accounts.js) -->
         <div class="login-choose" id="login-choose" hidden>
             <ul class="login-accounts" id="login-accounts"></ul>
-            <button type="button" class="btn" id="login-choose-new" data-i18n="login.chooseNew" hidden></button>
             <button type="button" class="link" id="login-choose-other" data-i18n="login.chooseOther"></button>
         </div>
         <button type="button" class="link" id="login-choose-back" data-i18n="login.chooseBack" hidden></button>
+        <!-- The link someone sent: an invitation into an account, a pairing link, a setup link (qr-login.js, signInWithLink) -->
+        <div class="login-invite" id="login-invite">
+            <label>
+                <span data-i18n="login.invite"></span>
+                <input type="text" id="login-invite-link" data-i18n-placeholder="login.invitePlaceholder" autocomplete="off" autocapitalize="off" spellcheck="false">
+            </label>
+            <button type="button" class="btn" id="login-invite-go" data-i18n="login.inviteGo"></button>
+            <p class="login-or" data-i18n="login.orPassword"></p>
+        </div>
         <input type="text" name="username" autocomplete="username" value="openfolk" hidden>
         <label>
             <span data-i18n="login.relay"></span>
@@ -503,11 +511,8 @@
                 <!-- The own account behind "Edit" in its row, in the settings dialog; main has no password here (the relay's setup) -->
                 <div id="accounts-own" hidden>
                     <label><span data-i18n="accounts.name"></span><input id="accounts-own-name" maxlength="60" autocomplete="off"></label>
+                    <label><span data-i18n="accounts.picture"></span><span id="accounts-own-avatar"></span></label>
                     <label id="accounts-password-field"><span data-i18n="accounts.newPassword"></span><input type="password" id="accounts-password" autocomplete="new-password" data-i18n-placeholder="accounts.passwordPlaceholder"></label>
-                    <div class="actions left">
-                        <button type="button" class="btn primary" id="accounts-own-save" data-i18n="common.save"></button>
-                        <button type="button" class="btn" id="accounts-own-close" data-i18n="common.close"></button>
-                    </div>
                 </div>
                 <p class="error" id="accounts-error" hidden></p>
             </div>

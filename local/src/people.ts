@@ -7,7 +7,7 @@
 // account reaches only the admins. The list lives in memory; the relay sends it on every connect.
 
 import { readJson, writeJson } from './store.ts';
-import { reaches, type Person, type PersonChat } from '../../shared/protocol.ts';
+import { isAccountAvatar, reaches, type Person, type PersonChat } from '../../shared/protocol.ts';
 
 const FILE = 'person-chats.json';
 
@@ -81,7 +81,7 @@ export function setPeople(list: Person[]): void {
         .map((p) => {
             const reach = p.reach === 'admins' || p.reach === 'listed' ? p.reach : 'all';
             const contacts = reach === 'listed' && Array.isArray(p.contacts) ? p.contacts.filter((c) => typeof c === 'string') : undefined;
-            return { id: p.id, name: p.name, admin: p.admin === true, reach, ...(contacts ? { contacts } : {}) };
+            return { id: p.id, name: p.name, admin: p.admin === true, reach, ...(contacts ? { contacts } : {}), ...(isAccountAvatar(p.avatar) ? { avatar: p.avatar } : {}) };
         });
 }
 

@@ -61,7 +61,7 @@ export default async function ({ start, check }) {
     const h = await start({ secure: true, before: fakeCapacitor, bots: [{ id: 'pdf', name: 'PDF-Reader', role: 'Test', avatar: '', folder: 'C:/www/pdf', model: 'default', approval: 'risky', tone: '', machine: '' }] });
     const p = h.page;
     check('app: login with editable server URL', await p.isVisible('#login') && await p.isEditable('#login-relay'));
-    check('app: relay, password and name from the start, no code field while no relay asks for one', await p.evaluate(() => [...document.querySelectorAll('#login-form label input')].filter((i) => i.offsetParent).map((i) => i.id).join(',')) === 'login-relay,login-token,login-name');
+    check('app: invitation link, relay, password and name from the start, no code field while no relay asks for one', await p.evaluate(() => [...document.querySelectorAll('#login-form label input')].filter((i) => i.offsetParent).map((i) => i.id).join(',')) === 'login-invite-link,login-relay,login-token,login-name');
     check('app: no connection without relay address', !(await p.evaluate(() => window.__wsUrls)));
 
     await p.fill('#login-relay', 'ftp://example.com');

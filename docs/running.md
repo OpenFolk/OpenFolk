@@ -10,10 +10,9 @@ setup fits"; every variable is described with comments in `../.env.sample` (back
 to a checkout of the source and runs in the `openfolk` folder after `npm install`; in a shell without a checkout it
 fails. The desktop app has no checkout and does each of those steps in its interface: claiming a relay in the first
 steps or under Settings → "Devices and security" → "Move to a relay on a server", pairing a device under "Pair another
-device", joining a further computer with the link from "Add machine" on the app's setup page ("Connect this computer to
-my server"), restart and "Run without signing in" in the tray menu. Its `.env` lives in the app's profile folder
+device", joining a further computer with the link from "Add machine" in the field "Invitation link" of the app's setup page, restart and "Run without signing in" in the tray menu. Its `.env` lives in the app's profile folder
 (Windows `%APPDATA%\OpenFolk`, macOS `~/Library/Application Support/OpenFolk`, Linux `~/.config/OpenFolk`), never in a
-checkout. Do not pick "Display only: connect to an existing relay server" on the setup page to use a relay of your own
+checkout. Do not pick "Sign in with the relay server and a password" on the setup page to use a relay of your own
 with the bots on this computer: that way the app starts no backend here and the bots go offline.
 
 ## Relay and backends
@@ -240,7 +239,7 @@ repository into it, so no machine needs a terminal for it.
 
 **One more machine:** in the app, Settings, Machines, "Add machine". A backend that is awake mints a one-time invitation
 at the relay (15 minutes) and builds the link with the end-to-end key behind '#', which no server sees, and the command around it, each with a
-button to copy it. On the new machine, the desktop app takes the link (a pasted command too) on its setup page ("Connect this computer to my server") or shows a QR code
+button to copy it. On the new machine, the desktop app takes the link (a pasted command too) in the field "Invitation link" of its setup page or shows a QR code
 there that a signed-in phone scans (Settings, Devices, "Scan QR code"), which fetches the invitation and sends it back
 sealed; from a checkout,
 after `npm install`: `npm run join -- "<link>"` (`local/tools/join.mjs`). Either redeems it for an agent token of

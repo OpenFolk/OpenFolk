@@ -8,7 +8,7 @@ import { loadingBar, openBeside, openChat, swipeBack } from './chat.js';
 import { isUnread, toggleUnread } from './chat-features.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
-import { ICONS, archiveConversation, chatMenuAction, deleteCategory, fillChatMenu, gitOpenOf, menuButton, modelDisplay, openGitPage, renameCategory } from './menus.js';
+import { ICONS, archiveConversation, chatMenuAction, deleteCategory, fillChatMenu, gitOpenOf, menuButton, modelDisplay, openGitPage, renameCategory, withoutVersion } from './menus.js';
 import { setBadge } from './platform.js';
 import { openEditor, openInfo, openRoutineEditor } from './editors.js';
 import { RECENT_DAYS, renderPaletteResult } from './palette.js';
@@ -250,7 +250,9 @@ function favoriteStrip(ids) {
         else if (!isMuted(id) && chats.some(isUnread)) ring.appendChild(node('i', 'dot new'));
         tile.append(ring, node('span', 'fav-name', who.name));
         tile.title = who.name;
-        openOnClick(tile, id);
+        // A tap goes where something waits: an open question, else the newest finished and unread chat, which may be
+        // one of the bot's conversations; otherwise its main chat
+        openOnClick(tile, id, () => attentionChat(chats));
         row.appendChild(tile);
     }
     strip.appendChild(row);
@@ -366,9 +368,18 @@ function markOpen(li, id) {
 const canDrag = window.matchMedia('(pointer: fine)');
 
 /** A click opens the chat in the active pane; Ctrl/Cmd-click or the middle button opens it beside (wide screens). */
-function openOnClick(li, id) {
-    li.addEventListener('click', (ev) => (ev.ctrlKey || ev.metaKey ? openBeside(id) : openChat(id)));
-    li.addEventListener('auxclick', (ev) => { if (ev.button === 1) { ev.preventDefault(); openBeside(id); } });
+/** The chat of a favorite that wants attention: open approvals first, then the newest unread; else the first (main). */
+function attentionChat(chats) {
+    const asking = chats.find((c) => openApprovals(c).length);
+    if (asking) return asking;
+    const unread = chats.filter((c) => isUnread(c) && chatStatus(c).state === 'idle');
+    return unread.length ? byTime(unread)[0] : chats[0];
+}
+
+/** `target`: which chat a tap opens, decided at the tap (default: the row's own). */
+function openOnClick(li, id, target = () => id) {
+    li.addEventListener('click', (ev) => (ev.ctrlKey || ev.metaKey ? openBeside(target()) : openChat(target())));
+    li.addEventListener('auxclick', (ev) => { if (ev.button === 1) { ev.preventDefault(); openBeside(target()); } });
     if (!canDrag.matches) return;
     li.draggable = true;
     li.addEventListener('dragstart', (ev) => {
@@ -1018,7 +1029,7 @@ export function renderUsage() {
         bar(prefix + t('usage.fiveHours'), u.fiveHour);
         bar(prefix + t('usage.week'), u.sevenDay);
         // models the plan limits on their own (Fable): a weekly bar each, named as the server names them
-        for (const m of u.models || []) bar(`${m.name} ${t('usage.week')}`, m);
+        for (const m of u.models || []) bar(`${withoutVersion(m.name)} ${t('usage.week')}`, m);
         if (u.status === 'rejected') {
             const until = u.resetsAt ? new Date(u.resetsAt * 1000).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) : t('usage.later');
             el.usage.appendChild(node('div', 'limit', t(name === 'Codex' ? 'usage.codexLimit' : 'usage.planLimit', { time: until })));

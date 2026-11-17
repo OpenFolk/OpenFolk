@@ -31,14 +31,14 @@ export default async function ({ start, check }) {
     check('switching to Codex goes to the machine', f && f.chatId === 'skool' && f.model === 'codex', f);
     check('Codex active, the page stays open', (await active()).join() === 'Codex' && await p.isVisible('#info'), await active());
     await leave();
-    check('header shows the Codex model behind it', (await badge()) === 'GPT-6.1 Sol (Codex)', await badge());
+    check('header shows the Codex model behind it', (await badge()) === 'GPT Sol (Codex)', await badge());
 
     await p.click('[data-el=btn-back]');
     await h.wait(300);
     await h.openChat('Cloud Carlo');
-    check('own Codex model in the header', (await badge()) === 'GPT-6 Luna (Codex)', await badge());
+    check('own Codex model in the header', (await badge()) === 'GPT Luna (Codex)', await badge());
     await page();
-    check('own Codex model as the active chip', (await active()).join() === 'GPT-6 Luna (Codex)', await active());
+    check('own Codex model as the active chip', (await active()).join() === 'GPT Luna (Codex)', await active());
     await leave();
 
     // account and limits of both plans

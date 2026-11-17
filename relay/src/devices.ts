@@ -10,6 +10,7 @@ import { MAIN } from './accounts.ts';
 import type { DeviceInfo } from '../../shared/protocol.ts';
 
 export const DEVICES_FILE = 'devices.json';
+const INVITATIONS_FILE = 'invitations.json';
 
 export interface Device extends DeviceInfo {
     hash: string;
@@ -28,6 +29,13 @@ export const DEVICE_IDLE_MS = 90 * 24 * 60 * 60_000;
 /** A pairing link can be redeemed this long after it was created. */
 export const PAIRING_TTL_MS = 15 * 60_000;
 const MAX_PAIRINGS = 20;
+/**
+ * The invitation of a person into their account is a pairing link that lasts: they may have to install an app first,
+ * and the admin is not sitting next to them.
+ */
+export const INVITATION_TTL_MS = 7 * 24 * 60 * 60_000;
+
+interface Pairing { expires: number; account: string }
 
 export class Devices {
     private file: string;
@@ -36,7 +44,13 @@ export class Devices {
      * One-time pairing tokens (hash -> expiry), minted by a backend for a new device. Only in memory: a relay
      * restart invalidates open links, which is fine for something valid for 15 minutes.
      */
-    private pairings = new Map<string, { expires: number; account: string }>();
+    private pairings = new Map<string, Pairing>();
+    /**
+     * Invitations into an account (hash -> expiry), one per account. Valid for days, so they are kept in a file and
+     * survive a restart; a new one replaces the account's last.
+     */
+    private invitations = new Map<string, Pairing>();
+    private invitationsFile: string;
 
     constructor(dir: string) {
         fs.mkdirSync(dir, { recursive: true });
@@ -47,6 +61,19 @@ export class Devices {
             this.list = [];
         }
         if (this.dropIdle()) this.save();
+        this.invitationsFile = path.join(dir, INVITATIONS_FILE);
+        try {
+            const stored: unknown = JSON.parse(fs.readFileSync(this.invitationsFile, 'utf8'));
+            for (const i of Array.isArray(stored) ? stored : []) {
+                if (typeof i?.hash === 'string' && typeof i.expires === 'number' && typeof i.account === 'string') this.invitations.set(i.hash, { expires: i.expires, account: i.account });
+            }
+        } catch { /* none yet */ }
+    }
+
+    private saveInvitations(): void {
+        const tmp = this.invitationsFile + '.tmp';
+        fs.writeFileSync(tmp, JSON.stringify([...this.invitations].map(([hash, i]) => ({ hash, ...i })), null, 2), { mode: 0o600 });
+        fs.renameSync(tmp, this.invitationsFile);
     }
 
     /** Drops devices unused for DEVICE_IDLE_MS; true if any. */
@@ -116,10 +143,12 @@ export class Devices {
 
     /** Logs out every device of an account (account deleted); returns their ids. */
     removeAccount(account: string): string[] {
+        // Also for an account nobody signed in to yet: its open links must not create one after it is gone
+        for (const [key, p] of this.pairings) if (p.account === account) this.pairings.delete(key);
+        if (this.dropInvitations(account)) this.saveInvitations();
         const gone = this.list.filter((d) => accountOf(d) === account).map((d) => d.id);
         if (!gone.length) return gone;
         this.list = this.list.filter((d) => accountOf(d) !== account);
-        for (const [key, p] of this.pairings) if (p.account === account) this.pairings.delete(key);
         this.save();
         return gone;
     }
@@ -138,16 +167,46 @@ export class Devices {
     }
 
     /**
-     * Redeems a pairing token (once) and creates the device in the account the token was minted for; null for an
-     * unknown, used or expired token.
+     * Mints the invitation into an account: a pairing token valid for INVITATION_TTL_MS. The account's earlier
+     * invitation stops working, which is also how an admin takes one back.
+     */
+    createInvitation(account: string, now = Date.now()): { token: string; expiresAt: string } {
+        this.dropInvitations(account);
+        const token = randomBytes(24).toString('base64url');
+        const expires = now + INVITATION_TTL_MS;
+        this.invitations.set(hashOf(token), { expires, account });
+        this.saveInvitations();
+        return { token, expiresAt: new Date(expires).toISOString() };
+    }
+
+    /** True if the account had one. */
+    private dropInvitations(account: string): boolean {
+        let dropped = false;
+        for (const [key, i] of this.invitations) {
+            if (i.account !== account) continue;
+            this.invitations.delete(key);
+            dropped = true;
+        }
+        return dropped;
+    }
+
+    /**
+     * Redeems a pairing token or an invitation (once) and creates the device in the account the token was minted
+     * for; null for an unknown, used or expired token.
      */
     redeemPairing(token: string, name: string, ip: string, now = Date.now()): { device: DeviceInfo; token: string; account: string } | null {
         this.prunePairings(now);
         const key = hashOf(token);
         const p = this.pairings.get(key);
-        if (!p) return null;
-        this.pairings.delete(key);
-        return this.create(name, ip, p.account);
+        if (p) {
+            this.pairings.delete(key);
+            return this.create(name, ip, p.account);
+        }
+        const invited = this.invitations.get(key);
+        if (!invited) return null;
+        this.invitations.delete(key);
+        this.saveInvitations();
+        return invited.expires > now ? this.create(name, ip, invited.account) : null;
     }
 
     private prunePairings(now: number): void {

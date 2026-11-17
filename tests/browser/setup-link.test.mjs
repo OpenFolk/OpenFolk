@@ -1,5 +1,6 @@
-// Setting a person up with a setup link: the admin's dialog (bots with repository, token and level, contacts, hand-over,
-// the link), and the page a setup link opens in a browser, which hands it to the desktop app instead of signing in.
+// Setting a person up with a setup link: the admin's dialog (bots with repository, token and level, contacts, hand-over),
+// the invitation from the account's row, which is the setup link once a setup is stored, and the page a setup link
+// opens in a browser, which hands it to the desktop app instead of signing in.
 
 const KEY = Buffer.alloc(32, 7).toString('base64url');
 const MAIN = { id: 'main', name: 'Alex', admin: true };
@@ -17,6 +18,40 @@ export default async function ({ start, check }) {
     check('… with the way to the app, and no sign-in', await lp.isVisible('text=Download OpenFolk') && await lp.isHidden('#login') && !landing.sent.some((f) => f.type === 'auth'));
     check('… and the link left the address bar', await lp.evaluate(() => !location.hash));
     await landing.close();
+
+    // ---- a setup link pasted where an invitation goes ("Add"): its page in a browser, not a sign-in with the link cut
+    /** "Add" as someone who is no admin: the question for the link. */
+    const pasteLink = async (h, link) => {
+        await h.page.evaluate(() => openSettings());
+        await h.wait(100);
+        await h.page.click('#accounts-join');
+        await h.page.fill('#text-dialog input', link);
+        await h.page.keyboard.press('Enter');
+    };
+    const paste = await start({});
+    await pasteLink(paste, `http://test.local/#setup=tok-2&e2e=${KEY}`);
+    await paste.page.waitForLoadState('load');
+    await paste.wait(700);
+    const pastedHref = await paste.page.getAttribute('a[href^="openfolk://"]', 'href', { timeout: 2000 }).catch(() => '');
+    check('setup link pasted under "Add" in a browser: the page of the link', (pastedHref ? new URL(pastedHref).searchParams.get('link') : '') === `http://test.local/#setup=tok-2&e2e=${KEY}` && await paste.page.isHidden('#login'), pastedHref);
+    await paste.close();
+
+    // The desktop app takes it over: the page navigates to openfolk://setup, which main.js answers with its question
+    const desk = await start({
+        before: () => {
+            Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 OpenFolk/0.6.0 Electron/44' });
+            window.navigation.addEventListener('navigate', (e) => {
+                if (!e.destination.url.startsWith('openfolk:')) return;
+                window.__handed = e.destination.url;
+                e.preventDefault();
+            });
+        },
+    });
+    await pasteLink(desk, `http://test.local/#setup=tok-3&e2e=${KEY}`);
+    await desk.wait(300);
+    const handed = await desk.page.evaluate(() => window.__handed || '');
+    check('… in the desktop app: handed to the app with the whole link, no sign-in form', (handed ? new URL(handed).searchParams.get('link') : '') === `http://test.local/#setup=tok-3&e2e=${KEY}` && await desk.page.isHidden('#login'), handed);
+    await desk.close();
 
     // ---- the admin's dialog
     const accounts = [{ ...MAIN, created: '', reach: 'all' }, ANNA, KUNDE];
@@ -69,15 +104,28 @@ export default async function ({ start, check }) {
         saved?.setup.account === 'kunde' && saved.setup.handover === 'main' && saved.setup.bots.map((b) => `${b.key}:${b.approval}:${b.token}`).join() === 'support:read:read-tok,dev:risky:write-tok', saved?.setup);
     check('a stored token shows as stored, not as text', (await cards.nth(0).locator('input[type="password"]').getAttribute('placeholder'))?.includes('stored'));
 
-    await p.locator('#setup-box button', { hasText: 'Make setup link' }).click();
+    check('the dialog has no link of its own, only saving', (await p.locator('#setup-box button', { hasText: 'link' }).count()) === 0);
+
+    // The invitation from the account's row is the setup link once a setup is stored
+    await p.keyboard.press('Escape');
+    await h.wait(100);
+    const before = h.sent.length;
+    await kunde.locator('button', { hasText: 'Create invitation link' }).click();
     await h.wait(300);
-    check('the link to send, with until when', (await p.locator('#setup-box .pair-url input').inputValue()).includes('#setup=st-1') && (await p.textContent('#setup-box')).includes('17'));
-    await p.locator('#setup-box button', { hasText: 'Revoke link' }).click();
+    const asked = h.sent.slice(before);
+    check('"Create invitation link" asks for the setup link, no pairing', asked.some((f) => f.type === 'setup_link' && f.account === 'kunde' && !f.revoke) && !asked.some((f) => f.type === 'account_invite'), asked.map((f) => f.type));
+    check('… shown as the invitation, with until when', (await p.textContent('#settings-dialog-title')) === 'Invitation for Kunde'
+        && (await p.locator('#invite-box .pair-url input').inputValue()).includes('#setup=st-1') && (await p.textContent('#invite-box')).includes('17'));
+    await p.locator('#invite-box button', { hasText: 'Revoke link' }).click();
     await h.wait(300);
-    check('revoked: the link is gone', h.sent.some((f) => f.type === 'setup_link' && f.revoke === true) && (await p.locator('#setup-box .pair-url').count()) === 0);
+    check('revoked: the link is gone, the dialog closed', h.sent.some((f) => f.type === 'setup_link' && f.revoke === true) && await p.isHidden('#settings-dialog'));
+    const anna = p.locator('#accounts-list li').filter({ hasText: 'Anna' });
+    const beforeAnna = h.sent.length;
+    await anna.locator('button', { hasText: 'Create invitation link' }).click();
+    await h.wait(200);
+    check('an account without a setup keeps the pairing invitation', h.sent.slice(beforeAnna).some((f) => f.type === 'account_invite' && f.id === 'anna'));
 
     // Opened again: the stored bots closed, each named in its head with repository and level
-    await p.locator('#setup-box button', { hasText: 'Close' }).click();
     await kunde.locator('button', { hasText: 'Edit' }).click();
     await h.wait(200);
     const heads = await p.locator('#setup-box .setup-bot > summary').allTextContents();

@@ -5,12 +5,14 @@ brings along and shows under its own address `openfolk://app` (like the mobile a
 relay). One project builds all three: the Windows installer, the Linux AppImage and .deb, the Mac's .dmg. On Windows
 and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; everything else is the same.
 
-- **First start:** the app asks how to use OpenFolk and letters the three ways A to C, as alternatives rather than steps: start on this
-  computer, also connect this computer to a relay server, and display only. They stand one below the other, each as
-  wide as the page, with a folded explanation of bot, backend and relay server on top. Only A, the way for newcomers,
-  has the filled button. Picking A where a backend already runs would start a second one with separate bots and
-  chats, so A says to use C then.
-  - **A. Start on this computer** ("new to OpenFolk, without a relay server"): the app runs the backend (`../local/`) itself, with the relay embedded on 127.0.0.1, and
+- **First start:** the setup page (`setup.html`) is built like the web app's sign-in, the same card with a few fields
+  more. From the top: the field "Invitation link", which takes any link someone sent; a QR code for a relay's address;
+  folded away, "Sign in with the relay server and a password"; and, only here, "Start on this computer" for someone
+  without an invitation. Only "Continue" of the invitation has the filled button. Which link it was the main process
+  decides (`join-server` in `main.js`): a setup link joins this computer bound to an account, a machine's invitation
+  joins it to the relay, an invitation into an account (a pairing link) shows that relay's page signed in, as the
+  password way does.
+  - **Start on this computer** ("no invitation?"): the app runs the backend (`../local/`) itself, with the relay embedded on 127.0.0.1, and
     signs its window in with a pairing link. Nothing to host; the only step left is signing in to Claude Code
     (the first steps in the app show how; none when Claude Code is signed in on this computer already, and "Try it
     without signing in" starts on OpenCode's free models instead). Data, keys and the backend's log (`local.log`) live in `data` in the
@@ -18,25 +20,27 @@ and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; ev
     backend once no bot is working, after asking if that takes a while. "Sign this window in again" (tray menu,
     on the Mac "Window") helps after logging the device out. This is the single-computer setup: your phone, or
     the browser on another device, needs a relay on a server (`../docs/running.md`, linked from the setup page).
-  - **C. Display only, an existing relay server:** the app points its web app at that relay and needs no backend of
-    its own. To test against a local relay, `OPENFOLK_URL=http://localhost:8787` presets it for one start. The setup
+  - **The relay server and a password** (display only): the app points its web app at that relay and needs no backend
+    of its own; an invitation into an account in the field above ends the same way. To test against a local relay, `OPENFOLK_URL=http://localhost:8787` presets it for one start. The setup
     page warns here that this app then starts no backend on this computer, and asks once more ("Yes, no bots run on
-    this computer") unless the app already uses this way.
+    this computer") unless the app already uses this way; so does the invitation field while bots run here.
   - **Several relays:** like the mobile apps, the desktop app can be signed in to further relays, for example one per
     customer (settings → Accounts → "Add" with a pairing link from there; switch at the top of the sidebar, the
     chat list shows the bots of all of them).
-  - **B. Also connect this computer to my relay server:** the link from "Add machine" (settings of the app on a device that is
-    signed in) joins this computer to that relay: `../local/tools/join.mjs` writes the relay, a token of this
+  - **Joining this computer to a relay:** the link from "Add machine" (settings of the app on a device that is
+    signed in), pasted into the invitation field, joins this computer to that relay: `../local/tools/join.mjs` writes the relay, a token of this
     computer's own and the end-to-end key into the profile's `.env`, and the app runs the backend as "on this
     computer", only with the relay on the server. The window comes from there and signs itself in with a pairing link.
     Instead of the link, the page shows a QR code for the relay's address (`qr-join.js`): a signed-in phone scans it,
     the user confirms there, a backend mints the invitation and the phone sends it back sealed for the app's key, as in
     the QR sign-in of a device (`webapp/js/qr-login.js`, `kind=machine` in the code). The relay only passes the box on.
-  - **A setup link** (`https://relay/#setup=…`, from an admin's "Edit" in the accounts) joins the same way, but bound
+    An admin who scans the code from the row of an account ("Scan QR code") sends that account's setup link instead.
+  - **A setup link** (`https://relay/#setup=…`, the invitation of an account an admin set up) joins the same way, but bound
     to one account: the relay's page for it opens `openfolk://setup?link=…`, which the app registers with the system
     (`setAsDefaultProtocolClient`, `protocols` in `package.json` for the macOS bundle; Windows and Linux hand it over
     through `second-instance`, macOS through `open-url`). The app asks once, naming the relay, and refuses with the
-    reason when the profile has bots of its own or is joined to a relay already. Pasted into B it works as well.
+    reason when the profile has bots of its own or is joined to a relay already. Pasted into the invitation field, or
+    into the web app's "Add" or sign-in, it works as well.
 - **Disconnecting:** "Disconnect from …" (File menu, tray, macOS app menu) is offered while the backend talks to a
   relay it joined. It stops the backend, takes `RELAY_URL`, `AGENT_TOKEN`, `E2E_KEY` and `MACHINE_NAME` out of the
   profile's `.env` and starts "on this computer" again; the data folder stays as it is.

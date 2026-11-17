@@ -9,6 +9,7 @@ import { BACKEND_GONE_MS, refreshMachinesPage, renderMachines, scheduleWakePoll 
 import { historyUnchanged, markSeen, receiveCommands, noteIncoming, receiveSeen, renderEntry, renderHistory, renderPinned, scroll, setRead } from './chat-features.js';
 import { approvalsToBottom, attachmentBar, dropStaleLive, expireApprovalCard, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderJobs, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
 import { dictationDone, dictationRefused, imageRequested, playback, removeVoicePending, startPlayback } from './voice.js';
+import { mediaArrived } from './media.js';
 import { bundled, connectionVia, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
 import { answerFolderAsk, closeDialog, gitError, receiveDuplicated, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
 import { receiveVscodeHistory, receiveVscodeSessions, vs, vscodeError, vscodeReconnected, vscodeShown } from './vscode.js';
@@ -22,7 +23,7 @@ import {
     autologonReported, machineJoinError, settingsSaveFailed, settingsSaved, receiveMachineTokens, receiveSettings, renderDevices, renderMachineJoin, renderAbout, renderPairLink, renderSettings, renderTotp,
     renderTotpSetup, totpError,
 } from './settings.js';
-import { accountError, continueNewAccount, dropCurrentAccount, newAccountFailed, receiveAccountCreated, receiveInvite, rememberAccount, renderAccounts, renderChooser } from './accounts.js';
+import { accountError, dropCurrentAccount, newAccountFailed, receiveAccountCreated, receiveInvite, rememberAccount, renderAccountList, renderAccounts, renderChooser } from './accounts.js';
 import { receiveSetupLink, receiveSetups, setRelayMachines } from './setups.js';
 import { connectOthers } from './others.js';
 import { signInTerminalAnswer } from './welcome.js';
@@ -273,7 +274,6 @@ function receive(f) {
                 send({ type: 'wake_status' });
                 scheduleWakePoll();
                 startApproval();
-                continueNewAccount();
             } else {
                 const paired = !!state.pairToken;
                 state.rejected = true;
@@ -304,6 +304,7 @@ function receive(f) {
             break;
         case 'setups':
             receiveSetups(f.list);
+            renderAccountList();
             break;
         case 'setup_link':
             receiveSetupLink(f);
@@ -901,6 +902,7 @@ function receive(f) {
             talkAnswerSdp(f);
             break;
         case 'file':
+            if (mediaArrived(f)) break;
             if (playback.has(f.path)) startPlayback(f);
             else if (imageRequested.delete(f.path)) imageOriginal(f);
             else saveFile(f).catch((e) => showEvent(t('file.saveFailed', { error: e.message }), true));

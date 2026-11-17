@@ -1,7 +1,8 @@
 // Hands a chat's session over to its machine: an IDE window or a terminal opens it there, and the next message in the
 // chat continues the same session with everything that was added at the machine. What runs is a command line from a
 // template (HANDOVER_IDE, HANDOVER_TERMINAL) with the folder and the session id filled in. Whether a target is offered
-// is a machine setting; the command itself stays in the .env, so a paired device cannot change what runs.
+// and which of the known IDEs opens are machine settings; the command lines themselves are in this file or the .env,
+// so a paired device picks among them and never changes what runs.
 //
 // A backend that runs without a desktop (a Windows task or service in session 0, a Linux service) cannot open a
 // window: whatever it starts stays invisible. It leaves the command as a job in ~/.openfolk/handover instead, and the
@@ -15,33 +16,60 @@ import os from 'node:os';
 import path from 'node:path';
 import { t } from './i18n.ts';
 import { machineSettings } from './machine-settings.ts';
-import type { HandoverTarget } from '../../shared/protocol.ts';
+import { HANDOVER_IDE_NAMES, type HandoverIde, type HandoverTarget } from '../../shared/protocol.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const JOB_TIMEOUT_MS = 45_000;
 /** A command still running after this long has opened its window and keeps running on its own. */
 const SETTLE_MS = 10_000;
 
-const VSCODE_URI = 'vscode://anthropic.claude-code/open?session={session}';
+/**
+ * The IDEs of the machine setting: the command on the PATH that opens a folder, and the URI scheme Claude Code's
+ * extension registers there. The forks of VS Code register their own scheme and keep the extension's path.
+ */
+const IDES: Record<HandoverIde, { command: string; scheme: string }> = {
+    vscode: { command: 'code', scheme: 'vscode' },
+    cursor: { command: 'cursor', scheme: 'cursor' },
+    windsurf: { command: 'windsurf', scheme: 'windsurf' },
+    'vscode-insiders': { command: 'code-insiders', scheme: 'vscode-insiders' },
+    vscodium: { command: 'codium', scheme: 'vscodium' },
+};
 
 /**
- * Defaults per system. `code <folder>` first: it opens the folder's window or brings it to the front, and the URI of
- * Claude Code for VS Code then reaches that window (VS Code routes it to the last active one).
+ * Default per system. `<command> <folder>` first: it opens the folder's window or brings it to the front, and the URI of
+ * Claude Code's extension then reaches that window (VS Code routes it to the last active one).
  */
-const DEFAULTS: Record<HandoverTarget, Partial<Record<NodeJS.Platform, string>>> = {
-    ide: {
-        win32: `code "{folder}" && start "" "${VSCODE_URI}"`,
-        darwin: `code "{folder}" && open "${VSCODE_URI}"`,
-        linux: `code "{folder}" && xdg-open "${VSCODE_URI}"`,
-    },
-    terminal: {
-        win32: 'start "Claude Code" /D "{folder}" "{claude}" --resume {session}',
-        darwin: `osascript -e 'tell application "Terminal" to do script "cd \\"{folder}\\" && \\"{claude}\\" --resume {session}"' -e 'tell application "Terminal" to activate'`,
-        linux: 'x-terminal-emulator -e "{claude}" --resume {session}',
-    },
+function ideTemplate(ide: HandoverIde): string | undefined {
+    const { command, scheme } = IDES[ide];
+    const uri = `${scheme}://anthropic.claude-code/open?session={session}`;
+    const open: Partial<Record<NodeJS.Platform, string>> = { win32: `start "" "${uri}"`, darwin: `open "${uri}"`, linux: `xdg-open "${uri}"` };
+    const o = open[process.platform];
+    return o ? `${command} "{folder}" && ${o}` : undefined;
+}
+
+const TERMINAL: Partial<Record<NodeJS.Platform, string>> = {
+    win32: 'start "Claude Code" /D "{folder}" "{claude}" --resume {session}',
+    darwin: `osascript -e 'tell application "Terminal" to do script "cd \\"{folder}\\" && \\"{claude}\\" --resume {session}"' -e 'tell application "Terminal" to activate'`,
+    linux: 'x-terminal-emulator -e "{claude}" --resume {session}',
 };
 
 const ENV: Record<HandoverTarget, string> = { ide: 'HANDOVER_IDE', terminal: 'HANDOVER_TERMINAL' };
+
+/** An own command in the .env for a target ("off" was the old way to turn it off; now a setting, never a command). */
+function ownTemplate(target: HandoverTarget): string {
+    const own = process.env[ENV[target]]?.trim();
+    return own && own.toLowerCase() !== 'off' ? own : '';
+}
+
+/** Whether the .env sets its own IDE command, which wins over the IDE chosen in the settings. */
+export function ideFromEnv(): boolean {
+    return ownTemplate('ide') !== '';
+}
+
+/** Name of the IDE "Open in the IDE" opens; null with an own command from the .env or where there is no IDE at all. */
+export function handoverIdeName(): string | null {
+    return handoverTemplate('ide') && !ideFromEnv() ? HANDOVER_IDE_NAMES[machineSettings().handoverIdeApp] : null;
+}
 
 /**
  * A terminal with Claude Code and nothing to resume, for the sign-in of the first steps. Its own defaults: an own
@@ -56,9 +84,7 @@ const SIGN_IN: Partial<Record<NodeJS.Platform, string>> = {
 /** The command template for a target, whatever the settings say; null when this setup has no desktop at all. */
 export function availableTemplate(target: HandoverTarget): string | null {
     if (process.env.OPENFOLK_CONTAINER === '1') return null;
-    // "off" was the old way to turn a target off; now a setting, and never a command to run
-    const own = process.env[ENV[target]]?.trim();
-    return (own && own.toLowerCase() !== 'off' ? own : '') || DEFAULTS[target][process.platform] || null;
+    return ownTemplate(target) || (target === 'ide' ? ideTemplate(machineSettings().handoverIdeApp) : TERMINAL[process.platform]) || null;
 }
 
 /** The command template for a target; null when the machine settings turned it off or there is none. */
@@ -183,7 +209,8 @@ export async function handOver(target: HandoverTarget, folder: string, sessionId
     const cwd = path.resolve(folder);
     if (await hasDesktop()) await runHandover(command, cwd);
     else await handOverByJob(command, cwd);
-    return t(target === 'ide' ? 'handover.openedIde' : 'handover.openedTerminal');
+    const ide = target === 'ide' ? handoverIdeName() : null;
+    return ide ? t('handover.openedIn', { ide }) : t(target === 'ide' ? 'handover.openedIde' : 'handover.openedTerminal');
 }
 
 /** Opens a terminal with Claude Code on this machine, where the user signs in; the backend notices the sign-in itself. */

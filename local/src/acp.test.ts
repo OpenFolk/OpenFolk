@@ -9,7 +9,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-acp-'));
 const { ACP_AGENTS, AcpRun, acpModels, acpTool, acpInput, ANTIGRAVITY, antigravityVersion, COPILOT, cursorVersion, OPENCODE, questionAnswers, choose } = await import('./acp.ts');
 const { handle, toolAccess } = await import('./mcp-http.ts');
 const { needsApproval } = await import('./policy.ts');
-const { engineOf, engineModelId, codexModelId, modelDisplayName } = await import('../../shared/protocol.ts');
+const { engineOf, engineModelId, codexModelId, modelDisplayName, withoutVersion } = await import('../../shared/protocol.ts');
 type AcpAgent = import('./acp.ts').AcpAgent;
 type EngineTarget = import('./codex.ts').EngineTarget;
 type ToolCall = import('../../shared/protocol.ts').ToolCall;
@@ -22,6 +22,14 @@ check('cursor is Cursor', engineOf('cursor') === 'cursor' && engineModelId('curs
 check('cursor:<id>', engineOf('cursor:gpt-x') === 'cursor' && engineModelId('cursor:gpt-x') === 'gpt-x' && codexModelId('cursor:gpt-x') === undefined);
 check('codex stays Codex', engineOf('codex:a') === 'codex' && engineModelId('codex:a') === 'a' && codexModelId('codex:a') === 'a');
 check('Claude without prefix', engineOf('opus') === 'claude' && engineOf('cursorish') === 'claude' && engineModelId('opus') === undefined);
+// Model names go without their version everywhere (decision of the user, 2026-11-16)
+const names: [string, string][] = [
+    ['Opus 5.5', 'Opus'], ['Fable 5.1', 'Fable'], ['GPT-6.1 Sol (Codex)', 'GPT Sol (Codex)'], ['GPT-6 Luna (Codex)', 'GPT Luna (Codex)'],
+    ['claude-haiku-4-5-20251001', 'claude-haiku'], ['Opus (1M context)', 'Opus (1M context)'], ['gpt-4o', 'gpt-4o'],
+    ['Default (recommended)', 'Default (recommended)'], ['5.5', '5.5'],
+];
+for (const [name, short] of names) check(`without version: ${name} -> ${short}`, withoutVersion(name) === short, withoutVersion(name));
+check('display name without version', modelDisplayName('default', [{ value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default' }, { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus 5.5' }]) === 'Opus');
 check('display shows the model behind "cursor"', modelDisplayName('cursor', [{ value: 'cursor', resolvedModel: 'cursor:a', displayName: 'Cursor' }, { value: 'cursor:a', resolvedModel: 'cursor:a', displayName: 'A (Cursor)' }]) === 'A (Cursor)');
 
 // Newest version of the Cursor CLI

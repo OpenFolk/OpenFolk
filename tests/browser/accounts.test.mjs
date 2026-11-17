@@ -181,20 +181,40 @@ export default async function ({ start, check }) {
     const rows = () => m.evaluate(() => [...document.querySelectorAll('#accounts-list li')].map((li) => `${li.querySelector('strong').firstChild.textContent}${li.querySelector('.tag') ? ' *' : ''}: ${[...li.querySelectorAll('button')].map((b) => b.textContent).join(',')}`));
     check('admin: the relay, then every account on it; the one not signed in here gets the invitation and "Edit", main (oneself) "Edit"',
         JSON.stringify(await rows()) === JSON.stringify(['test.local: Rename', 'Alex *: Edit', 'Work: Create invitation link,Edit']), await rows());
-    check('… in a row like the devices: text left, the buttons right of it', await m.evaluate(() => {
+    check('… on a phone the buttons go below the text, which keeps its width', await m.evaluate(() => {
         const li = document.querySelectorAll('#accounts-list li')[2];
         const text = li.querySelector('.d-text').getBoundingClientRect();
         const actions = li.querySelector('.account-actions').getBoundingClientRect();
-        return actions.left >= text.right - 1 && Math.abs(actions.top - text.top) < text.height;
+        return actions.top >= text.bottom - 1 && text.width >= 180;
     }));
-    check('main: its form waits behind "Edit"', await m.isHidden('#accounts-own'));
+    check('… a row with one button keeps it beside the text', await m.evaluate(() => {
+        const li = document.querySelectorAll('#accounts-list li')[1];
+        const text = li.querySelector('.d-text').getBoundingClientRect();
+        const actions = li.querySelector('.account-actions').getBoundingClientRect();
+        return actions.left >= text.right - 1 && Math.abs(actions.top - text.top) < text.height;
+    }));    check('main: its form waits behind "Edit"', await m.isHidden('#accounts-own'));
     await m.locator('#accounts-list li').nth(1).locator('button', { hasText: 'Edit' }).click();
     check('main: "Edit" opens its name in the dialog, no password (that is the relay setup)', await m.isVisible('#settings-dialog') && (await m.textContent('#settings-dialog-title')) === 'Edit Alex'
         && await m.locator('#accounts-own-name').inputValue() === 'Alex' && await m.isHidden('#accounts-password'));
-    await m.fill('#accounts-own-name', 'Alex B.');
-    await m.click('#accounts-own-save');
+    // The own picture: chosen in the dialog, made small and sent to the relay at once
+    check('… with its picture field: initials, "Choose picture", no "Remove" yet', await m.isVisible('#accounts-own-avatar .avatar') && await m.isVisible('#accounts-own-avatar button:has-text("Choose picture")')
+        && await m.isHidden('#accounts-own-avatar button:has-text("Remove picture")'));
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==', 'base64');
+    await m.setInputFiles('#accounts-own-avatar input[type=file]', { name: 'me.png', mimeType: 'image/png', buffer: png });
+    await admin.wait(300);
+    const picked = admin.sent.findLast((f) => f.type === 'account_update' && 'avatar' in f);
+    check('… a picture goes to the relay for the own account, as a small JPEG', picked?.id === 'main' && String(picked.avatar).startsWith('data:image/jpeg;base64,') && picked.avatar.length < 150_000, picked && { id: picked.id, start: String(picked.avatar).slice(0, 30) });
+    check('… shown in the dialog with "Remove"', await m.isVisible('#accounts-own-avatar .avatar img') && await m.isVisible('#accounts-own-avatar button:has-text("Remove picture")'));
+    await m.click('#accounts-own-avatar button:has-text("Remove picture")');
     await admin.wait(100);
-    check('… saving renames main at the relay and closes the dialog', admin.sent.some((f) => f.type === 'account_update' && f.id === 'main' && f.name === 'Alex B.' && !('password' in f)) && await m.isHidden('#settings-dialog'));
+    check('… "Remove" sends null', admin.sent.findLast((f) => f.type === 'account_update' && 'avatar' in f)?.avatar === null);
+    check('… no save or close button, it saves as a field is left', await m.locator('#accounts-own button').allTextContents().then((b) => JSON.stringify(b) === JSON.stringify(['Choose picture', 'Remove picture'])));
+    await m.fill('#accounts-own-name', 'Alex B.');
+    await m.press('#accounts-own-name', 'Enter');
+    await admin.wait(100);
+    check('… Enter renames main at the relay, the dialog stays', admin.sent.some((f) => f.type === 'account_update' && f.id === 'main' && f.name === 'Alex B.' && !('password' in f)) && await m.isVisible('#settings-dialog'));
+    await m.keyboard.press('Escape');
+    await admin.wait(100);
     check('the admin\'s form waits behind "Add"', await m.isHidden('#accounts-new-form') && await m.isVisible('#accounts-join'));
     await m.click('#accounts-join');
     check('… and opens with it in the settings dialog: a link to redeem, a new person', await m.isVisible('#settings-dialog') && await m.evaluate(() => document.getElementById('accounts-new-form').parentElement.id === 'settings-dialog-body')
@@ -230,16 +250,21 @@ export default async function ({ start, check }) {
     await m.locator('#accounts-list li').nth(2).locator('button', { hasText: 'Edit' }).click();
     await admin.wait(200);
     const setupButtons = await m.locator('#setup-box button').allTextContents();
-    check('"Edit": name, admin and delete in the dialog, no bots without reach', await m.isVisible('#setup-box') && await m.locator('#setup-box .setup-account input').inputValue() === 'Work'
-        && JSON.stringify(setupButtons) === JSON.stringify(['Save name', 'Make admin', 'Delete', 'Close']) && await m.locator('#setup-box .setup-bot').count() === 0, setupButtons);
+    check('"Edit": name, admin and delete in the dialog, delete at the bottom, no bots without reach', await m.isVisible('#setup-box') && await m.locator('#setup-box .setup-account .setup-name input').inputValue() === 'Work'
+        && JSON.stringify(setupButtons) === JSON.stringify(['Choose picture', 'Remove picture', 'Make admin', 'Delete']) && await m.locator('#setup-box .setup-bot').count() === 0, setupButtons);
+    // An admin gives another account a picture
+    await m.setInputFiles('#setup-box .account-avatar input[type=file]', { name: 'work.png', mimeType: 'image/png', buffer: png });
+    await admin.wait(300);
+    const theirs = admin.sent.findLast((f) => f.type === 'account_update' && 'avatar' in f);
+    check('an admin sets another account\'s picture', theirs?.id === 'work' && String(theirs.avatar).startsWith('data:image/jpeg;base64,'), theirs && theirs.id);
     await m.locator('#setup-box button', { hasText: 'Make admin' }).click();
     await admin.wait(200);
     check('refusal of the relay shown above the dialog', (await m.textContent('#toast')).includes('may not'), await m.textContent('#toast'));
-    await m.fill('#setup-box .setup-account input', 'Werk');
-    await m.locator('#setup-box button', { hasText: 'Save name' }).click();
+    await m.fill('#setup-box .setup-account .setup-name input', 'Werk');
+    await m.press('#setup-box .setup-account .setup-name input', 'Enter');
     await admin.wait(100);
-    check('the name of another account changes from there', admin.sent.some((f) => f.type === 'account_update' && f.id === 'work' && f.name === 'Werk'));
-    await m.locator('#setup-box button', { hasText: 'Close' }).click();
+    check('the name of another account changes from there as the field is left', admin.sent.some((f) => f.type === 'account_update' && f.id === 'work' && f.name === 'Werk'));
+    await m.keyboard.press('Escape');
 
     // A relay from before person chats names no reach and would drop "customer": the choice is not offered
     await m.click('#accounts-join');
@@ -280,7 +305,7 @@ export default async function ({ start, check }) {
     await own.page.locator('#accounts-list li.current-device button', { hasText: 'Edit' }).click();
     check('other account: name and password of its own behind "Edit"', await own.page.isVisible('#accounts-own') && await own.page.isVisible('#accounts-password'));
     await own.page.fill('#accounts-own-name', 'Work 2');
-    await own.page.click('#accounts-own-save');
+    await own.page.press('#accounts-own-name', 'Enter');
     await own.wait(200);
     check('the change goes to the relay', own.sent.some((f) => f.type === 'account_update' && f.id === 'work' && f.name === 'Work 2'));
     await own.close();

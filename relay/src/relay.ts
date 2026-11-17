@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { REACHES, type MessageCode, type PairBox, type Reach, type RelayFrame, type RelayRequest, type ServerFrame } from '../../shared/protocol.ts';
+import { REACHES, isAccountAvatar, type MessageCode, type PairBox, type Reach, type RelayFrame, type RelayRequest, type ServerFrame } from '../../shared/protocol.ts';
 import { Accounts, MAIN, isMachineList } from './accounts.ts';
 import { Bridge, type ClientContext } from './bridge.ts';
 import {
@@ -468,7 +468,7 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 log(`Account ${created.id} created (by account ${own})`);
                 bridge.accountAdded(created.id);
                 bridge.peopleChanged(accounts.people());
-                reply({ type: 'account_created', account: created, pair: devices.createPairing(Date.now(), created.id) });
+                reply({ type: 'account_created', account: created, pair: devices.createInvitation(created.id) });
                 return;
             }
             case 'account_update': {
@@ -483,14 +483,16 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 const contacts = request.contacts;
                 if (contacts !== undefined && (self || !Array.isArray(contacts) || contacts.length > 100 || !contacts.every((c) => typeof c === 'string'))) return refuse();
                 if (request.machines !== undefined && (self || id === MAIN || !isMachineList(request.machines))) return refuse();
+                // The picture like the name: one's own, or another account's for an admin ('main' only its own, above)
+                if (request.avatar !== undefined && request.avatar !== null && !isAccountAvatar(request.avatar)) return refuse();
                 // An account set up runs on someone else's machine: it is no admin
                 if (request.admin === true && accounts.setupBy(id)) return refuse();
                 const before = bridge.servedBy(id);
-                const r = accounts.update(id, { name: request.name, password: request.password, admin: request.admin, reach: request.reach, contacts, machines: request.machines });
+                const r = accounts.update(id, { name: request.name, password: request.password, admin: request.admin, reach: request.reach, contacts, machines: request.machines, avatar: request.avatar });
                 if (r !== 'ok') return refuse(r === 'name_taken' ? 'account_name_taken' : 'not_allowed');
                 log(`Account ${id} changed (by account ${own})${request.machines === undefined ? '' : `, runs on ${request.machines ? request.machines.join(', ') || 'no machine of the relay' : 'every machine'}`}`);
                 if (request.machines !== undefined) bridge.accountMachinesChanged(id, before);
-                if (request.name !== undefined || request.admin !== undefined || request.reach !== undefined || contacts !== undefined) bridge.peopleChanged(accounts.people());
+                if (request.name !== undefined || request.admin !== undefined || request.reach !== undefined || contacts !== undefined || request.avatar !== undefined) bridge.peopleChanged(accounts.people());
                 list();
                 return;
             }
@@ -511,7 +513,7 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 const account = accounts.get(String(request.id ?? ''));
                 if (!admin || !account || account.id === MAIN || account.id === own) return refuse();
                 log(`Invitation to account ${account.id} (by account ${own})`);
-                reply({ type: 'account_invite', account, pair: devices.createPairing(Date.now(), account.id) });
+                reply({ type: 'account_invite', account, pair: devices.createInvitation(account.id) });
                 return;
             }
         }

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DEVICE_IDLE_MS, Devices, PAIRING_TTL_MS, totpCode, totpVerify, totpVerifyOnce } from './devices.ts';
+import { DEVICE_IDLE_MS, Devices, INVITATION_TTL_MS, PAIRING_TTL_MS, totpCode, totpVerify, totpVerifyOnce } from './devices.ts';
 
 let failed = 0;
 const check = (name: string, ok: boolean) => { console.log(`${ok ? 'ok    ' : 'FAIL  '} ${name}`); if (!ok) failed++; };
@@ -44,6 +44,23 @@ check('token works only once', d.redeemPairing(p.token, 'Phone again', '1.2.3.4'
 const late = d.createPairing(now);
 check('expired token is refused', d.redeemPairing(late.token, 'Phone', '1.2.3.4', now + PAIRING_TTL_MS + 1) === null);
 check('tokens are not stored in the devices file', !fs.readFileSync(path.join(dir, 'devices.json'), 'utf8').includes(p.token.slice(0, 12)));
+
+// ---- invitations into an account: pairing tokens that last a week, survive a restart and replace each other
+const inv = d.createInvitation('anna', now);
+check('an invitation is valid for 7 days', inv.expiresAt === new Date(now + INVITATION_TTL_MS).toISOString());
+const again = new Devices(dir);
+const joined = again.redeemPairing(inv.token, 'Mac', '1.2.3.4', now + 6 * 24 * 3600_000);
+check('… and works after a restart of the relay, days later, in its account', joined?.account === 'anna');
+check('… once', again.redeemPairing(inv.token, 'Mac', '1.2.3.4', now + 6 * 24 * 3600_000) === null && new Devices(dir).redeemPairing(inv.token, 'Mac', '1.2.3.4', now) === null);
+const first = d.createInvitation('ben', now);
+const second = d.createInvitation('ben', now);
+check('a new invitation replaces the account\'s last', d.redeemPairing(first.token, 'Mac', '1.2.3.4', now) === null && d.redeemPairing(second.token, 'Mac', '1.2.3.4', now)?.account === 'ben');
+const old = d.createInvitation('ben', now);
+check('expired after 7 days', d.redeemPairing(old.token, 'Mac', '1.2.3.4', now + INVITATION_TTL_MS + 1) === null);
+const gone = d.createInvitation('carl', now);
+d.removeAccount('carl');
+check('a deleted account takes its invitation along', d.redeemPairing(gone.token, 'Mac', '1.2.3.4', now) === null);
+check('only hashes are stored', !fs.readFileSync(path.join(dir, 'invitations.json'), 'utf8').includes(gone.token.slice(0, 12)) && !fs.readFileSync(path.join(dir, 'invitations.json'), 'utf8').includes(inv.token.slice(0, 12)));
 fs.rmSync(dir, { recursive: true, force: true });
 
 // A TOTP code counts once: whoever saw it (shoulder, recording) cannot use it again within its 90 seconds

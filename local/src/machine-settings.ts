@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import { gitPushCredentials } from './git.ts';
 import { dataPath, PRIVATE, readMachineJson, secureDataDir, writeMachineJson } from './store.ts';
 import {
-    AFTER_WAKE, CLAUDE_AUTH_MODES, CLAUDE_FALLBACK, ENGINE_AUTH_MODES, KEY_ENGINES, MACHINE_SETTINGS_DEFAULT, MACHINE_SETTINGS_MAX, OTHER_ENGINES, VOICE_DEVICES, VOICE_MODELS,
+    AFTER_WAKE, CLAUDE_AUTH_MODES, CLAUDE_FALLBACK, ENGINE_AUTH_MODES, HANDOVER_IDES, KEY_ENGINES, MACHINE_SETTINGS_DEFAULT, MACHINE_SETTINGS_MAX, OTHER_ENGINES, VOICE_DEVICES, VOICE_MODELS,
     gitHostOf, type Engine, type KeyEngine, type MachineSettings,
 } from '../../shared/protocol.ts';
 
@@ -56,6 +56,7 @@ export function cleanMachineSettings(s: Partial<Record<keyof MachineSettings, un
         idleMinutes: num('idleMinutes'),
         handoverIde: bool('handoverIde'),
         handoverTerminal: bool('handoverTerminal'),
+        handoverIdeApp: oneOf(HANDOVER_IDES, s.handoverIdeApp) ? s.handoverIdeApp : d.handoverIdeApp,
         voiceModel: oneOf(VOICE_MODELS, s.voiceModel) ? s.voiceModel : d.voiceModel,
         voiceDevice: oneOf(VOICE_DEVICES, s.voiceDevice) ? s.voiceDevice : d.voiceDevice,
         voicePreload: bool('voicePreload'),

@@ -30,6 +30,19 @@ check('a customer reaches only the admins', contactsOf('kunde').map((p) => p.id)
 check('a team member reaches the team, not the customer', contactsOf('anna').map((p) => p.id).join() === 'main');
 check('an admin reaches everyone but itself', contactsOf('main').map((p) => p.id).join() === 'anna,kunde');
 check('an account the relay does not list reaches nobody', contactsOf('ghost').length === 0);
+// The relay's pictures of the accounts reach the browsers with the contacts; anything but an image stays out
+setPeople([
+    { id: 'main', name: 'Marco', admin: true, reach: 'all', avatar: 'data:image/jpeg;base64,/9j/4AAQ' },
+    { id: 'anna', name: 'Anna', admin: false, reach: 'all', avatar: 'javascript:alert(1)' },
+    { id: 'kunde', name: 'Kunde Müller', admin: false, reach: 'admins' },
+]);
+check('a contact keeps its picture', contactsOf('kunde')[0]?.avatar === 'data:image/jpeg;base64,/9j/4AAQ', contactsOf('kunde'));
+check('a picture that is no image is dropped', contactsOf('main').every((p) => !p.avatar), contactsOf('main'));
+setPeople([
+    { id: 'main', name: 'Marco', admin: true, reach: 'all' },
+    { id: 'anna', name: 'Anna', admin: false, reach: 'all' },
+    { id: 'kunde', name: 'Kunde Müller', admin: false, reach: 'admins' },
+]);
 
 // Three accounts on this machine, wired like accounts.ts does
 type Manager = InstanceType<typeof BotManager> & Record<string, unknown>;

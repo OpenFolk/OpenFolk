@@ -140,6 +140,32 @@ export default async function ({ start, check }) {
     const connectorSave = h.sent.findLast((f) => f.type === 'machine_settings_save');
     check('switching connectors on goes to that machine', connectorSave?.machine === 'desk' && connectorSave.settings.claudeAiConnectors === true, connectorSave);
 
+    // the IDE "Open in the IDE" opens: a choice from a backend that knows it, locked when the .env sets its own command
+    const ideSelect = () => p.evaluate(() => {
+        const label = [...document.querySelectorAll('#settings-machines details label')].find((l) => l.querySelector('select') && l.firstChild.textContent === 'IDE');
+        const s = label && label.querySelector('select');
+        return s ? { value: s.value, options: [...s.options].map((o) => o.textContent), disabled: s.disabled, hint: label.nextElementSibling?.classList.contains('hint') ? label.nextElementSibling.textContent : '' } : null;
+    });
+    check('older backend: no IDE choice', (await ideSelect()) === null);
+    const withIde = { claudeAuth: 'subscription', shutdown: false, shutdownDelaySeconds: 60, afterWake: 'ifIdle', afterWakeSeconds: 300, afterWakeWaitMinutes: 60, idleMinutes: 15,
+        handoverIde: true, handoverTerminal: true, handoverIdeApp: 'vscode', voiceModel: '', voiceDevice: 'auto', voicePreload: true, claudeAiConnectors: false };
+    await h.push({ type: 'machine_settings', machine: 'desk', anthropicKey: false, shutdownMethod: 'script', offers: { shutdown: true, ide: true, terminal: false, voice: true, ideFromEnv: false }, settings: withIde });
+    await h.wait(100);
+    let ide = await ideSelect();
+    check('the IDE choice: VS Code and the forks, VS Code chosen', ide && ide.value === 'vscode' && !ide.disabled && ide.options.join('|') === 'VS Code|Cursor|Windsurf|VS Code Insiders|VSCodium' && !ide.hint, ide);
+    await p.evaluate(() => {
+        const s = [...document.querySelectorAll('#settings-machines details label')].find((l) => l.querySelector('select') && l.firstChild.textContent === 'IDE').querySelector('select');
+        s.value = 'cursor';
+        s.dispatchEvent(new Event('change'));
+    });
+    await h.wait(100);
+    const ideSave = h.sent.findLast((f) => f.type === 'machine_settings_save');
+    check('choosing Cursor goes to that machine', ideSave?.machine === 'desk' && ideSave.settings.handoverIdeApp === 'cursor', ideSave);
+    await h.push({ type: 'machine_settings', machine: 'desk', anthropicKey: false, shutdownMethod: 'script', offers: { shutdown: true, ide: true, terminal: false, voice: true, ideFromEnv: true }, settings: { ...withIde, handoverIdeApp: 'cursor' } });
+    await h.wait(100);
+    ide = await ideSelect();
+    check('an own command in the .env: the choice is locked with the reason', ide && ide.value === 'cursor' && ide.disabled && ide.hint.includes('HANDOVER_IDE'), ide);
+
     // voice messages not set up: the button asks exactly this machine
     await h.push({
         type: 'machine_settings', machine: 'desk', anthropicKey: false, gitPushToken: false, shutdownMethod: 'script', voice: { state: 'missing' },
@@ -218,7 +244,7 @@ export default async function ({ start, check }) {
             handoverIde: true, handoverTerminal: true, voiceModel: '', voiceDevice: 'auto', voicePreload: true, gitPushUser: 'bot', gitPushHost: 'git.example.com' } });
     await h.wait(100);
     const loading = await p.textContent('#settings-machines .settings-voice-setup');
-    check('voice setup: the speech model is loading, with its size, no button meanwhile', loading.includes('large-v3-turbo') && loading.includes('1.6 GB')
+    check('voice setup: the speech model is loading, with its size, no button meanwhile', loading.includes('large-turbo') && !loading.includes('v3') && loading.includes('1.6 GB')
         && !(await p.locator('#settings-machines .settings-voice-setup button').count()), loading);
 
     // machines joined by invitation (main account): the relay is asked when the page opens

@@ -1,6 +1,7 @@
 // Turn voice messages into text, locally with faster-whisper (local/tools/transcribe.py).
-// The Python service starts with the first voice message, keeps the model loaded and is stopped after a
-// longer idle time so it frees the graphics memory again.
+// With the machine setting voicePreload (the default) the Python service starts with the backend and keeps the model
+// loaded for good: a cold start costs far longer than the transcription itself. Without it the service starts with the
+// first voice message (or the start of a recording) and is stopped after a longer idle time, freeing the memory.
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -128,9 +129,14 @@ class Transcriber {
 
     /** Loads the model while recording is still in progress; without a following voice message the idle limit applies. */
     warmUp(): void {
-        if (this.idle) clearTimeout(this.idle);
-        this.idle = setTimeout(() => this.stop(), IDLE_MIN * 60_000);
+        this.idleLater();
         this.start().catch(() => { /* the transcription reports the error itself */ });
+    }
+
+    /** Stops the service after IDLE_MIN without work, unless the machine keeps the model loaded (voicePreload). */
+    idleLater(): void {
+        if (this.idle) clearTimeout(this.idle);
+        this.idle = machineSettings().voicePreload ? null : setTimeout(() => this.stop(), IDLE_MIN * 60_000);
     }
 
     /**
@@ -177,7 +183,7 @@ class Transcriber {
             log(`${seconds(x.duration * 1000)} s of audio transcribed in ${seconds(Date.now() - since)} s${model}`);
             return x;
         } finally {
-            this.idle = setTimeout(() => this.stop(), IDLE_MIN * 60_000);
+            this.idleLater();
         }
     }
 

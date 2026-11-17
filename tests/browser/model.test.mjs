@@ -27,11 +27,11 @@ export default async function ({ start, check }) {
     const switches = () => h.sent.filter((x) => x.type === 'model');
 
     await h.openChat('Skool Sven');
-    check('header shows the real model behind default', (await badge()) === 'Opus 5.5', await badge());
+    check('header shows the real model behind default, without its version', (await badge()) === 'Opus', await badge());
     await page();
     check('switch without "Default", families without version', (await chips()).join('|') === 'Opus|Fable|Sonnet|Haiku', await chips());
     check('Opus active because the default is Opus', (await active()).join() === 'Opus');
-    check('the chip names the version behind the alias', (await p.getAttribute('#info-switches .model-switch .chip.on', 'title')) === 'Opus 5.5');
+    check('no version in a tooltip either', !(await p.getAttribute('#info-switches .model-switch .chip.on', 'title')));
     await p.locator('#info-switches .model-switch .chip', { hasText: 'Opus' }).click();
     await h.wait(100);
     check('a tap on the running model sends nothing', switches().length === 0);
@@ -41,14 +41,14 @@ export default async function ({ start, check }) {
     check('switch to the bot\'s machine', f && f.chatId === 'skool' && f.model === 'fable' && f.machine === 'desk', f);
     check('the page stays open with Fable active', (await p.isVisible('#info')) && (await active()).join() === 'Fable', await active());
     await leave();
-    check('header shows Fable 5.1', (await badge()) === 'Fable 5.1', await badge());
+    check('header shows Fable', (await badge()) === 'Fable', await badge());
 
     // the conversation inherits Fable from the bot and then gets a model of its own
     await p.click('[data-el=btn-back]');
     await h.wait(300);
     await p.locator('#chat-list li.sub').first().click();
     await h.wait(300);
-    check('the conversation inherits the bot\'s model', (await badge()) === 'Fable 5.1', await badge());
+    check('the conversation inherits the bot\'s model', (await badge()) === 'Fable', await badge());
     await page();
     await p.locator('#info-switches .model-switch .chip', { hasText: 'Haiku' }).click();
     await h.wait(150);
@@ -57,16 +57,16 @@ export default async function ({ start, check }) {
     check('switch only for the conversation', u && u.chatId === 'skool~aa11' && u.model === 'haiku', u);
     check('the bot keeps its model', await p.evaluate(() => state.bots[0].model === 'fable' && state.bots[0].conversations[0].model === 'haiku'));
     const listed = () => p.evaluate(() => [...document.querySelectorAll('#chat-list li[data-chat]')].map((l) => `${l.dataset.chat}:${l.querySelector('.model-badge')?.textContent ?? '-'}`).join(' '));
-    check('overview: each bot and conversation with the model it runs on, groups without', (await listed()) === 'skool:Fable 5.1 skool~aa11:Haiku 4.5 cloud:Opus 4.8 g:team:-', await listed());
+    check('overview: each bot and conversation with the model it runs on, groups without', (await listed()) === 'skool:Fable skool~aa11:Haiku cloud:Opus g:team:-', await listed());
     check('the line below the name no longer repeats the model', !(await p.textContent('[data-el=chat-sub]')).includes('Haiku'), await p.textContent('[data-el=chat-sub]'));
 
-    // custom model id from the editor: a chip of its own with the CLI's name
+    // custom model id from the editor: a chip of its own with the CLI's name, marked as pinned next to the family's
     await p.click('[data-el=btn-back]');
     await h.wait(300);
     await h.openChat('Cloud Carlo');
-    check('header shows the custom id with its name', (await badge()) === 'Opus 4.8', await badge());
+    check('header shows the custom id with its name, without its version', (await badge()) === 'Opus', await badge());
     await page();
-    check('custom id as the active chip', (await active()).join() === 'Opus 4.8' && (await chips()).length === 5, await chips());
+    check('custom id as the active chip, pinned', (await active()).join() === 'Opus (pinned)' && (await chips()).join('|') === 'Opus|Fable|Sonnet|Haiku|Opus (pinned)', await chips());
     await leave();
 
     await p.click('[data-el=btn-back]');

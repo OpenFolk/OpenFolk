@@ -12,6 +12,7 @@ import { isRead, renderEntry, scroll, setReply } from './chat-features.js';
 /** @typedef {import('./panes.js').Pane} Pane */
 import { canRecord, dictationOn, imageRequested, rec, renderUploads } from './voice.js';
 import { dropExpected } from './read-aloud.js';
+import { INLINE_IMAGE_MAX, cachedUrl, fileUrl, isVideo, loadWhenVisible, showVideo } from './media.js';
 
 // ---------------------------------------------------------- Queue
 // Own messages that arrive while the bot is still working are not in the history, but collapsed above the
@@ -354,20 +355,40 @@ export function attachmentBar(list) {
         const k = node('button', 'attachment');
         k.type = 'button';
         const isImage = (a.type || '').startsWith('image/') || Boolean(a.thumb);
-        k.title = t(isImage ? 'attachment.view' : 'attachment.download', { name: a.name });
-        if (a.thumb) {
+        const video = !isImage && isVideo(a);
+        const reachable = !a.machine || state.online.includes(a.machine);
+        k.title = t(isImage ? 'attachment.view' : video ? 'attachment.play' : 'attachment.download', { name: a.name });
+        // An image without a preview (a bot's send_file) loads from its machine into the bubble, if not too large;
+        // SVG stays a file: as a picture from a blob it would be shown, but it is a document of its own
+        const fetchInline = isImage && !a.thumb && reachable && a.type !== 'image/svg+xml' && (!a.size || a.size <= INLINE_IMAGE_MAX);
+        if (a.thumb || fetchInline) {
             const img = document.createElement('img');
-            img.src = a.thumb;
             img.alt = a.name;
+            if (a.thumb) img.src = a.thumb;
+            else loadWhenVisible(img, a);
             k.classList.add('image');
             k.appendChild(img);
+        } else if (video) {
+            k.classList.add('video');
+            const play = node('span', 'symbol play');
+            play.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>';
+            k.append(play, node('span', 'name', a.name), node('span', 'size', fileSize(a.size)));
         } else {
             k.append(node('span', 'symbol', '📄'), node('span', 'name', a.name), node('span', 'size', fileSize(a.size)));
         }
         k.addEventListener('click', () => {
+            // A video plays in the app: fetched from the machine once, then from memory
+            if (video) {
+                if (!reachable) { showEvent(t('attachment.machineOff', { name: a.name, machine: upper(a.machine) }), true); return; }
+                k.classList.add('loading');
+                fileUrl(a).then((url) => showVideo(url, a.name), (e) => showEvent(e.message, true)).finally(() => k.classList.remove('loading'));
+                return;
+            }
+            // An image fetched for the bubble already: large at once, nothing to fetch
+            const here = isImage ? cachedUrl(a.path) : '';
+            if (here) { showImageLarge(here, a.name, a.path); return; }
             // Show images large instead of downloading (iOS ignores downloads in the home screen app);
             // first the preview, the original follows from the machine
-            const reachable = !a.machine || state.online.includes(a.machine);
             if (isImage && (a.thumb || reachable)) showImageLarge(a.thumb || '', a.name, reachable ? a.path : '');
             if (!reachable) {
                 if (!isImage || !a.thumb) showEvent(t('attachment.machineOff', { name: a.name, machine: upper(a.machine) }), true);

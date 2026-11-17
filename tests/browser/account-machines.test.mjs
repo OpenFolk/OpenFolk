@@ -47,7 +47,7 @@ export default async function ({ start, check }) {
     await p.check('#settings-dialog .machine-picker > label input');
     await h.wait(150);
     check('"all" again: null, every machine also to come', updates().at(-1)?.machines === null, updates().at(-1));
-    await p.locator('#settings-dialog button', { hasText: 'Close' }).first().click();
+    await p.keyboard.press('Escape');
     await h.wait(100);
 
     // ---- the customer on a computer of its own: none of the relay's machines yet, its computer as a line
@@ -58,7 +58,7 @@ export default async function ({ start, check }) {
     await p.check('#settings-dialog .machine-picker-list input[value="cloud"]');
     await h.wait(150);
     check('ticking the cloud server for it', JSON.stringify(updates().at(-1)) === JSON.stringify({ type: 'account_update', id: 'kunde', machines: ['cloud'] }), updates().at(-1));
-    await p.locator('#settings-dialog button', { hasText: 'Close' }).first().click();
+    await p.keyboard.press('Escape');
     await h.wait(100);
 
     // ---- a new account: the choice in the form

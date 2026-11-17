@@ -9,7 +9,7 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-handover-'));
 process.env.USERPROFILE = home;
 process.env.HOME = home;
 process.env.DATA_DIR = path.join(home, 'data');
-const { handoverCommand, handoverTargets, handoverJobs, handOverByJob, runHandover, signInCommand } = await import('./handover.ts');
+const { handoverCommand, handoverIdeName, handoverTargets, handoverJobs, handOverByJob, ideFromEnv, runHandover, signInCommand } = await import('./handover.ts');
 const { saveMachineSettings } = await import('./machine-settings.ts');
 
 let failures = 0;
@@ -27,6 +27,23 @@ check('targets: both by default', handoverTargets().join() === 'ide,terminal', h
 const ide = handoverCommand('ide', folder, ID);
 check('default IDE: opens the folder, then the session in Claude Code for VS Code',
     ide.startsWith(`code "${path.resolve(folder)}"`) && ide.includes(`vscode://anthropic.claude-code/open?session=${ID}`), ide);
+check('default IDE: named VS Code, not from the .env', handoverIdeName() === 'VS Code' && !ideFromEnv());
+// The IDE of the machine settings: a choice among the known ones, each with its own command and URI scheme
+saveMachineSettings({ handoverIdeApp: 'cursor' });
+const cursor = handoverCommand('ide', folder, ID);
+check('IDE from the settings: Cursor opens the folder and the session by its own scheme',
+    cursor.startsWith(`cursor "${path.resolve(folder)}"`) && cursor.includes(`cursor://anthropic.claude-code/open?session=${ID}`) && handoverIdeName() === 'Cursor', cursor);
+saveMachineSettings({ handoverIdeApp: 'vscode-insiders' });
+check('IDE from the settings: Insiders by its own command', handoverCommand('ide', folder, ID).startsWith('code-insiders "') && handoverIdeName() === 'VS Code Insiders');
+saveMachineSettings({ handoverIdeApp: 'nope' as never });
+check('an unknown IDE falls back to VS Code', handoverIdeName() === 'VS Code');
+saveMachineSettings({ handoverIdeApp: 'cursor' });
+process.env.HANDOVER_IDE = 'my-ide "{folder}" {session}';
+check('own IDE command in the .env wins over the choice, and says so', handoverCommand('ide', folder, ID) === `my-ide "${path.resolve(folder)}" ${ID}` && ideFromEnv() && handoverIdeName() === null);
+delete process.env.HANDOVER_IDE;
+saveMachineSettings({ handoverIde: false });
+check('IDE off in the settings: no name either', handoverIdeName() === null);
+saveMachineSettings({ handoverIde: true, handoverIdeApp: 'vscode' });
 const terminal = handoverCommand('terminal', folder, ID);
 check('default terminal: resumes the session with Claude Code', terminal.includes(`--resume ${ID}`) && /claude/i.test(terminal), terminal);
 process.env.HANDOVER_TERMINAL = 'my-term --cwd "{folder}" -- claude -r {session} {session}';

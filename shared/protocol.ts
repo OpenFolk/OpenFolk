@@ -54,6 +54,16 @@ export type DeviceLoginEngine = typeof DEVICE_LOGIN_ENGINES[number];
 /** Where a chat's session can be handed over to on its machine: an IDE window or a terminal. */
 export const HANDOVER_TARGETS = ['ide', 'terminal'] as const;
 export type HandoverTarget = typeof HANDOVER_TARGETS[number];
+/**
+ * IDEs that run Claude Code's extension and take a session by URI (`<scheme>://anthropic.claude-code/open`); the
+ * machine setting `handoverIdeApp` picks one, the command lines for them live in local/src/handover.ts. The list is
+ * fixed on purpose: a paired device chooses among them and never writes a command of its own.
+ */
+export const HANDOVER_IDES = ['vscode', 'cursor', 'windsurf', 'vscode-insiders', 'vscodium'] as const;
+export type HandoverIde = typeof HANDOVER_IDES[number];
+export const HANDOVER_IDE_NAMES: Record<HandoverIde, string> = {
+    vscode: 'VS Code', cursor: 'Cursor', windsurf: 'Windsurf', 'vscode-insiders': 'VS Code Insiders', vscodium: 'VSCodium',
+};
 
 export function engineOf(model: string | undefined): Engine {
     return OTHER_ENGINES.find((e) => model === e || model?.startsWith(`${e}:`)) ?? 'claude';
@@ -423,9 +433,11 @@ export interface MachineSettings {
     /** Offer "Open in the IDE" and "Open in a terminal" for this machine. */
     handoverIde: boolean;
     handoverTerminal: boolean;
+    /** Which IDE "Open in the IDE" opens; an own HANDOVER_IDE in the .env wins over it. Missing from older backends. */
+    handoverIdeApp: HandoverIde;
     voiceModel: VoiceModel;
     voiceDevice: VoiceDevice;
-    /** Load the speech model when the backend starts. */
+    /** Load the speech model when the backend starts and keep it loaded; off: loaded on demand, stopped after 30 idle minutes. */
     voicePreload: boolean;
     /**
      * Pushing without the credential manager (a task without a signed-in user, a container): the user and the git host
@@ -455,7 +467,7 @@ export function gitHostOf(text: string): string {
 
 export const MACHINE_SETTINGS_DEFAULT: MachineSettings = {
     claudeAuth: 'subscription', claudeFallback: 'limit', claudeKeyBudgetUsd: 0, engineAuth: {}, disabledEngines: [], shutdown: true, shutdownDelaySeconds: 60, afterWake: 'ifIdle', afterWakeSeconds: 300,
-    afterWakeWaitMinutes: 60, idleMinutes: 15, handoverIde: true, handoverTerminal: true, voiceModel: '', voiceDevice: 'auto',
+    afterWakeWaitMinutes: 60, idleMinutes: 15, handoverIde: true, handoverTerminal: true, handoverIdeApp: 'vscode', voiceModel: '', voiceDevice: 'auto',
     voicePreload: true, gitPushUser: '', gitPushHost: '', claudeAiConnectors: false, botFolder: '',
 };
 
@@ -771,13 +783,23 @@ export interface ModelInfo {
     displayName: string;
 }
 
-/** Display name of the model that really runs behind a setting ('default' → e.g. "Opus 5.5"). */
+/** Display name of the model that really runs behind a setting ('default' → e.g. "Opus"), without its version. */
 export function modelDisplayName(model: string, list: ModelInfo[]): string {
     const entry = list.find((m) => m.value === model);
     const target = entry?.resolvedModel ?? model;
     // 'default', 'codex' and 'cursor' are only pointers; show the model behind them
     const alias = list.find((m) => m.value !== 'default' && !(OTHER_ENGINES as readonly string[]).includes(m.value) && m.resolvedModel === target);
-    return (alias ?? entry)?.displayName ?? model;
+    return withoutVersion((alias ?? entry)?.displayName ?? model);
+}
+
+/**
+ * A model's name without its version: "Opus 5.5" → "Opus", "GPT-6.1 Sol (Codex)" → "GPT Sol (Codex)",
+ * "claude-haiku-4-5-20251001" → "claude-haiku". The app names models by family only (decision of the user,
+ * 2026-11-16); the CLI's names carry the version. webapp/js/menus.js has the same rule.
+ */
+export function withoutVersion(name: string): string {
+    const short = name.replace(/[\s-]+v?\d+(?:[.-]\d+)*(?![\w.])/gi, '').replace(/\s{2,}/g, ' ').trim();
+    return short || name;
 }
 
 /** Running answer of a bot (for browsers that open in the middle of an answer). */
@@ -1066,7 +1088,8 @@ export type RelayRequest =
     | { type: 'account_create'; name: string; admin?: boolean; reach?: Reach; /** see RelayAccount.machines; missing = all */ machines?: string[] }
     /** `password`: own account only; `admin` and `reach`: not for one's own account. */
     | { type: 'account_update'; id: string; name?: string; password?: string; admin?: boolean; reach?: Reach; /** with reach 'listed' */ contacts?: string[];
-        /** the relay's machines it runs on, null = all of them (RelayAccount.machines) */ machines?: string[] | null }
+        /** the relay's machines it runs on, null = all of them (RelayAccount.machines) */ machines?: string[] | null;
+        /** profile picture (isAccountAvatar), null removes it; one's own, or any account for an admin */ avatar?: string | null }
     /** Removes the account, its devices and, on every machine, its data; not for 'main'. */
     | { type: 'account_delete'; id: string }
     /** A new invitation for another account (the last one expired); answers "account_invite". Not for 'main'. */
@@ -1120,6 +1143,16 @@ export interface RelayAccount {
      * (an account with `setupBy` from before the choice: none). 'main' runs on all.
      */
     machines?: string[];
+    /** Profile picture as a small image data URL (isAccountAvatar); missing = initials. */
+    avatar?: string;
+}
+
+/** Longest profile picture of an account the relay keeps (a 256 px JPEG is about 20,000 characters). */
+export const ACCOUNT_AVATAR_MAX = 150_000;
+
+/** A profile picture an account may carry: a PNG, JPEG or WebP data URL of at most ACCOUNT_AVATAR_MAX characters. */
+export function isAccountAvatar(x: unknown): x is string {
+    return typeof x === 'string' && x.length <= ACCOUNT_AVATAR_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(x);
 }
 
 /**
@@ -1137,6 +1170,8 @@ export interface Person {
     reach: Reach;
     /** With reach 'listed' */
     contacts?: string[];
+    /** Profile picture (RelayAccount.avatar); missing = initials. */
+    avatar?: string;
 }
 
 /** May account `a` chat with account `b`? Symmetric; a 'listed' account on either side has to name the other. */
@@ -1240,6 +1275,8 @@ export type AgentFrame =
         protocol?: number; minClientProtocol?: number;
         /** Handover targets this machine offers the account; missing = backend from before, which knows only 'ide'. */
         handover?: HandoverTarget[];
+        /** Name of the IDE "Open in the IDE" opens (the machine setting); missing when the .env sets its own command or from older backends. */
+        ide?: string;
         /** Version of OpenFolk the backend runs (local/package.json); missing = backend before 0.2.1. */
         version?: string }
     /**
@@ -1344,7 +1381,11 @@ export type AgentFrame =
      */
     | {
         type: 'machine_settings'; settings: MachineSettings; anthropicKey: boolean; gitPushToken: boolean;
-        offers: { shutdown: boolean; ide: boolean; terminal: boolean; voice: boolean }; shutdownMethod: string;
+        offers: {
+            shutdown: boolean; ide: boolean; terminal: boolean; voice: boolean;
+            /** The .env of this machine sets its own IDE command (HANDOVER_IDE): the IDE choice does not apply. Missing from older backends. */
+            ideFromEnv?: boolean;
+        }; shutdownMethod: string;
         /** Missing from backends before the setup button. */
         voice?: VoiceSetup;
         /** Missing from backends before keys for the other engines. */

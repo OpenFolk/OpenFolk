@@ -104,7 +104,9 @@ A device signs in once and then uses a key of its own; the relay keeps only a ha
   relay and on the backend, so nobody mints a flood of pairing tokens.
 
 Pairing tokens live only in the relay's memory. A relay restart invalidates open links, which is acceptable for
-something valid for 15 minutes and avoids another file to migrate.
+something valid for 15 minutes and avoids another file to migrate. The invitation of a person into an account is the
+exception: it lasts 7 days, because the person may have to install an app first, so the relay keeps its hash in
+`invitations.json`, one per account, and a new one replaces the last.
 
 **Moving from the embedded relay to one on a server** (`local/src/relay-switch.ts`) happens inside the running
 backend: claim, a pairing link at the new relay for the asking device, `RELAY_URL` into the `.env`, then
@@ -298,7 +300,10 @@ invisibly, and the command reports success. So the backend first asks whether it
 desktop (on Windows the session of its own process) and otherwise leaves the command in `~/.openfolk/handover`, where
 the desktop app in the user's session runs it. The folder is fixed because the app cannot read the backend's
 settings, and the job carries the finished command line rather than a target, so the app needs no knowledge of IDEs
-and the templates stay in one place. The IDE default relies on VS Code routing a `vscode://` URI to its last active
+and the templates stay in one place. Which IDE opens is a machine setting, but only a choice among the IDEs the
+backend knows (`HANDOVER_IDES`), each with a command line in `handover.ts`: a paired device must never be able to put
+a command of its own on the machine, so free commands stay in the `.env` (`HANDOVER_IDE`), which wins over the
+choice. The IDE default relies on VS Code routing a `vscode://` URI to its last active
 window, which is why it opens the folder with `code` first.
 
 ## Versions move at different speeds

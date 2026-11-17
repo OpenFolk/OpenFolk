@@ -4,13 +4,16 @@
    link opens in a browser only points to the desktop app: a setup needs a computer that runs the bots. */
 import { locale, t } from './i18n.js';
 import { el, node, startParams, toast } from './core.js';
-import { send } from './e2e.js';
+import { fillAvatar, send } from './e2e.js';
+import { shrinkImage } from './voice.js';
 import { closeSettingsDialog, openSettingsDialog } from './menus.js';
-import { confirmDialog } from './dialogs.js';
+import { alertDialog, confirmDialog } from './dialogs.js';
+import { isNative, parsePairingLink, platformKind } from './platform.js';
+import { approvalLink } from './qr-login.js';
 
 /** @typedef {{ key: string, name: string, role: string, tone: string, approval: string, repo: string, gitUser: string, model?: string, token: boolean | string }} SetupBotRow */
 /** @typedef {{ account: string, bots: SetupBotRow[], handover: string, updatedAt?: string }} SetupView */
-/** @typedef {{ id: string, name: string, admin: boolean, reach?: string, contacts?: string[], setupBy?: string, machines?: string[] }} AccountRow */
+/** @typedef {{ id: string, name: string, admin: boolean, reach?: string, contacts?: string[], setupBy?: string, machines?: string[], avatar?: string }} AccountRow */
 /** @typedef {{ name: string, account?: string }} RelayMachine */
 
 /** The machines the relay knows ("accounts" for an admin); empty for a relay from before the choice. @type {RelayMachine[]} */
@@ -18,8 +21,10 @@ let relayMachines = [];
 
 /** What the backend last sent ("setups"). @type {SetupView[]} */
 let setups = [];
-/** The account whose setup is open, the accounts of the relay as the dialog was opened, and the link on display. */
-let open = /** @type {{ account: AccountRow, accounts: AccountRow[], me: string, forget?: () => void, link?: { url: string, expiresAt: string } } | null} */ (null);
+/** The account whose setup is open and the accounts of the relay as the dialog was opened. */
+let open = /** @type {{ account: AccountRow, accounts: AccountRow[], me: string, forget?: () => void } | null} */ (null);
+/** The account whose invitation (its setup link) is being made, with its name for the dialog. */
+let inviting = /** @type {{ id: string, name: string } | null} */ (null);
 /** The bots as edited in the dialog (rendered from this, so adding and removing keep what was typed). @type {SetupBotRow[]} */
 let rows = [];
 /** Keys of the bots whose card is open; the others show only their head. @type {Set<string>} */
@@ -120,6 +125,8 @@ export function receiveSetups(list) {
  * @param {AccountRow[]} list
  */
 export function setupAccountsChanged(list) {
+    // Closed by the back arrow, Escape or the backdrop: forget it, so a new list does not open it again
+    if (open && el.setupBox.hidden) open = null;
     if (!open) return;
     const now = list.find((a) => a.id === open.account.id);
     if (!now) {
@@ -130,6 +137,8 @@ export function setupAccountsChanged(list) {
     const changed = keys.some((k) => now[k] !== open.account[k]) || JSON.stringify(now.contacts || []) !== JSON.stringify(open.account.contacts || [])
         || JSON.stringify(now.machines ?? null) !== JSON.stringify(open.account.machines ?? null);
     open.accounts = list;
+    // The picture field shows a new picture itself; the form is not drawn anew for it
+    open.account.avatar = now.avatar;
     if (!changed) return;
     open.account = { ...now };
     render();
@@ -141,15 +150,99 @@ function closeSetup() {
     closeSettingsDialog(el.setupBox);
 }
 
-/** "setup_link": the link to send, or none after revoking. @param {{ account: string, url?: string, expiresAt?: string }} f */
+/** Whether the account has a stored setup: its invitation is then the setup link. @param {string} id */
+export function hasSetup(id) {
+    return setups.some((s) => s.account === id);
+}
+
+/**
+ * The invitation of an account with a setup: its setup link, which sets the bots up on the person's computer. A
+ * pairing link would not help there, as none of the relay's own machines serves such an account.
+ * @param {{ id: string, name: string }} account
+ */
+export function inviteWithSetup(account) {
+    inviting = { id: account.id, name: account.name };
+    send({ type: 'setup_link', account: account.id });
+}
+
+/** "setup_link": the invitation to send, or none after revoking. @param {{ account: string, url?: string, expiresAt?: string }} f */
 export function receiveSetupLink(f) {
-    if (!open || f.account !== open.account.id) return;
-    open.link = f.url && f.expiresAt ? { url: f.url, expiresAt: f.expiresAt } : undefined;
-    if (!f.url) toast(t('setup.revoked'));
-    render();
+    // Asked for by a scanned code of the person's desktop app: sealed for that computer instead of shown
+    if (approvalLink(f)) return;
+    if (!inviting || f.account !== inviting.id) return;
+    const { id, name } = inviting;
+    const box = el.inviteBox;
+    if (!f.url || !f.expiresAt) {
+        inviting = null;
+        toast(t('setup.revoked'));
+        closeSettingsDialog(box);
+        return;
+    }
+    const link = f.url;
+    const url = /** @type {HTMLInputElement} */ (node('input'));
+    url.type = 'text';
+    url.readOnly = true;
+    url.value = link;
+    url.addEventListener('focus', () => url.select());
+    const copy = button(t('pair.copy'), ' small', () => {
+        if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => { copy.textContent = t('pair.copied'); }, () => undefined);
+    });
+    const row = node('div', 'pair-url');
+    row.append(url, copy);
+    const until = new Date(f.expiresAt).toLocaleDateString(locale(), { day: 'numeric', month: 'long' });
+    const actions = node('div', 'actions left');
+    actions.appendChild(button(t('setup.revoke'), ' small danger', () => send({ type: 'setup_link', account: id, revoke: true })));
+    box.replaceChildren(row, node('p', 'hint', t('setup.linkHint', { name, until })), actions);
+    box.hidden = false;
+    openSettingsDialog(t('accounts.inviteTitle', { name }), box);
 }
 
 /** @param {string} label @param {HTMLElement} field */
+/** Edge of an account's picture: the list and the person chats show it small, so it stays a few KB on the relay. */
+const ACCOUNT_AVATAR_EDGE = 256;
+
+/**
+ * An account's picture with "Choose picture" and, when there is one, "Remove". The change goes to the relay at once,
+ * which allows it for one's own account and, for an admin, for every other one.
+ * @param {{ id: string, name: string, avatar?: string }} account
+ */
+export function accountAvatarField(account) {
+    const box = node('div', 'account-avatar');
+    const circle = node('div', 'avatar large');
+    const file = /** @type {HTMLInputElement} */ (node('input'));
+    file.type = 'file';
+    file.accept = 'image/png,image/jpeg,image/webp';
+    file.hidden = true;
+    const choose = node('button', 'btn small', t('accounts.pictureChoose'));
+    choose.type = 'button';
+    const remove = node('button', 'btn small danger', t('accounts.pictureRemove'));
+    remove.type = 'button';
+    const show = () => {
+        fillAvatar(circle, account, account.id);
+        remove.hidden = !account.avatar;
+    };
+    const change = (avatar) => {
+        send({ type: 'account_update', id: account.id, avatar });
+        account.avatar = avatar || undefined;
+        show();
+    };
+    choose.addEventListener('click', (ev) => { ev.preventDefault(); file.click(); });
+    remove.addEventListener('click', (ev) => { ev.preventDefault(); change(null); });
+    file.addEventListener('change', async () => {
+        const picked = file.files && file.files[0];
+        file.value = '';
+        if (!picked) return;
+        try {
+            change(await shrinkImage(picked, ACCOUNT_AVATAR_EDGE, true));
+        } catch (e) {
+            toast(/** @type {Error} */ (e).message, 5000);
+        }
+    });
+    show();
+    box.append(circle, file, choose, remove);
+    return box;
+}
+
 function labelled(label, field) {
     const l = node('label');
     l.append(node('span', '', label), field);
@@ -182,9 +275,7 @@ function render() {
     box.appendChild(accountPart(account));
     // Bots on the person's own computer only for an account that is no admin, on a relay that knows reaches
     if (account.admin || !account.reach) {
-        const actions = node('div', 'actions left');
-        actions.appendChild(button(t('common.close'), '', closeSetup));
-        box.appendChild(actions);
+        box.appendChild(removePart(account));
         return;
     }
     box.appendChild(node('h4', '', t('setup.ownComputer')));
@@ -292,41 +383,8 @@ function render() {
             send({ type: 'setup_save', setup: { account: account.id, handover: handover.value, bots: rows.map((r) => ({ ...r, name: r.name.trim(), repo: r.repo.trim(), token: String(r.token || '') })) } });
             toast(t('setup.saved'));
         }),
-        button(t('setup.makeLink'), '', () => {
-            if (!stored) {
-                error.textContent = t('setup.saveFirst');
-                error.hidden = false;
-                return;
-            }
-            send({ type: 'setup_link', account: account.id });
-        }),
-        button(t('common.close'), '', closeSetup),
     );
-    box.append(error, actions);
-
-    if (open.link) {
-        const link = open.link;
-        const url = /** @type {HTMLInputElement} */ (node('input'));
-        url.type = 'text';
-        url.readOnly = true;
-        url.value = link.url;
-        url.addEventListener('focus', () => url.select());
-        const copy = button(t('pair.copy'), ' small', () => {
-            if (navigator.clipboard) navigator.clipboard.writeText(link.url).then(() => { copy.textContent = t('pair.copied'); }, () => undefined);
-        });
-        const row = node('div', 'pair-url');
-        row.append(url, copy);
-        const until = new Date(link.expiresAt).toLocaleDateString(locale(), { day: 'numeric', month: 'long' });
-        box.append(node('h4', '', t('setup.link')), row, node('p', 'hint', t('setup.linkHint', { name: account.name, until })));
-        box.appendChild(button(t('setup.revoke'), ' small danger', () => send({ type: 'setup_link', account: account.id, revoke: true })));
-    }
-    if (stored) {
-        box.appendChild(button(t('setup.delete'), ' small danger', async () => {
-            if (!(await confirmDialog(t('setup.deleteConfirm', { name: account.name })))) return;
-            send({ type: 'setup_delete', account: account.id });
-            rows = defaultBots();
-        }));
-    }
+    box.append(error, actions, removePart(account));
 }
 
 /**
@@ -335,13 +393,20 @@ function render() {
  */
 function accountPart(account) {
     const part = node('div', 'setup-account');
-    const name = input(account.name, (v) => { rename.disabled = !v.trim() || v.trim() === account.name; }, { maxLength: 60 });
-    const rename = button(t('setup.rename'), ' small', () => send({ type: 'account_update', id: account.id, name: name.value.trim() }));
-    rename.disabled = true;
-    name.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && !rename.disabled) rename.click(); });
+    // Saved as the field is left, like everything else in this dialog; an empty name goes back to the old one
+    const name = input(account.name, () => undefined, { maxLength: 60 });
+    name.addEventListener('change', () => {
+        const v = name.value.trim();
+        if (!v) name.value = account.name;
+        else if (v !== account.name) {
+            send({ type: 'account_update', id: account.id, name: v });
+            toast(t('accounts.saved'));
+        }
+    });
+    name.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') name.blur(); });
     const row = node('div', 'setup-name');
-    row.append(name, rename);
-    part.append(node('h4', '', t('setup.account')), labelled(t('accounts.name'), row));
+    row.append(name);
+    part.append(node('h4', '', t('setup.account')), labelled(t('accounts.name'), row), labelled(t('accounts.picture'), accountAvatarField(account)));
     // The relay's machines it runs on; 'main' runs on all of them
     const picker = account.id === 'main' ? null : machinePicker(account.machines, (machines) => {
         send({ type: 'account_update', id: account.id, machines });
@@ -359,6 +424,16 @@ function accountPart(account) {
         const customer = account.reach === 'admins';
         actions.appendChild(button(t(customer ? 'accounts.makeTeam' : 'accounts.makeCustomer'), ' small', () => send({ type: 'account_update', id: account.id, reach: customer ? 'all' : 'admins' })));
     }
+    if (actions.childElementCount) part.appendChild(actions);
+    return part;
+}
+
+/**
+ * Removing the account from this device and deleting it, at the very bottom of the dialog.
+ * @param {AccountRow} account
+ */
+function removePart(account) {
+    const actions = node('div', 'actions left setup-remove');
     const forget = open?.forget;
     if (forget) {
         actions.appendChild(button(t('relays.remove'), ' small danger', async () => {
@@ -372,8 +447,7 @@ function accountPart(account) {
         send({ type: 'account_delete', id: account.id });
         closeSetup();
     }));
-    part.appendChild(actions);
-    return part;
+    return actions;
 }
 
 /** What is missing before saving and in which bot; '' when nothing is. @param {SetupView | undefined} stored */
@@ -392,6 +466,28 @@ function repoName(repo) {
 }
 
 // ---------------------------------------------------------------- The page of a setup link in a browser
+
+/**
+ * A setup link where a pairing link or an address was expected ("Add", the address field of the sign-in, the
+ * scanner). It sets a computer up instead of signing a device in: the desktop app takes it over (desktop/main.js asks
+ * and joins), a browser shows the link's page, a phone says where the link belongs. False when the text is none.
+ * @param {string} text
+ */
+export function takeSetupLink(text) {
+    const link = parsePairingLink(text);
+    const token = link?.params.get('setup');
+    if (!link || !token) return false;
+    const key = link.params.get('e2e');
+    const url = `${link.address}/#setup=${token}${key ? `&e2e=${key}` : ''}`;
+    if (platformKind === 'desktop') location.assign(`openfolk://setup?link=${encodeURIComponent(url)}`);
+    else if (isNative) void alertDialog(t('setupLanding.desktopOnly'));
+    else {
+        location.assign(url);
+        // The same page with another '#' does not load anew, and the page reads the link when it starts
+        if (link.address === location.origin) location.reload();
+    }
+    return true;
+}
 
 /**
  * A setup link opened in a browser: OpenFolk sets itself up in the desktop app, so this page only hands the link over

@@ -733,6 +733,10 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .attachment .size { color: var(--muted); font-size: 11.5px; flex: 0 0 auto; }
 .attachment.image { padding: 0; overflow: hidden; border: 0; }
 .attachment.image img { display: block; max-width: 220px; max-height: 220px; border-radius: 10px; }
+.attachment.image.failed { display: none; }
+.attachment.video .play svg { width: 18px; height: 18px; fill: currentColor; stroke: none; }
+.attachment.loading { opacity: .6; cursor: progress; }
+.video-view video { width: min(96vw, 1200px); max-height: 90dvh; background: #000; border-radius: 6px; cursor: auto; }
 
 /* Approval and question cards */
 .approval {
@@ -890,8 +894,14 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 .device-list li.relay-head ~ li:not(.relay-head) { margin-left: 10px; }
 /* Accounts: the actions get a row of their own below the name, beside it a phone has no room */
 .account-actions { display: flex; gap: 6px; flex-shrink: 0; }
+#accounts-list li { flex-wrap: wrap; }
+#accounts-list .d-text { flex: 1 1 180px; }
+#accounts-list .account-actions { margin-left: auto; }
+#accounts-list .tag { white-space: nowrap; }
 .setup-name { display: flex; gap: 8px; }
 .setup-name input { flex: 1; min-width: 0; }
+/* Deleting the account ends the dialog, set apart from what it edits */
+.setup-remove { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
 .pair-box { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 6px; }
 .pair-qr { width: min(240px, 70vw); background: #fff; padding: 8px; border-radius: 10px; }
 /* Not the icon look of the generic svg rule: its stroke width and round caps would run the modules together */
@@ -1100,7 +1110,9 @@ a.primary, a.btn { text-decoration: none; }
 .start-card .login-qr[hidden] { display: none; }
 .start-card .login-or { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
 /* The choice of accounts (signed out, or a key expired): the form's fields wait behind "Sign in to another account" */
-.start-card.choosing > :is(label, button, .login-qr, .start-help) { display: none; }
+.start-card.choosing > :is(label, button, .login-qr, .login-invite, .start-help) { display: none; }
+.start-card .login-invite { display: flex; flex-direction: column; gap: 10px; }
+.start-card .login-invite .login-or { text-align: center; }
 .start-card .login-choose { display: flex; flex-direction: column; gap: 10px; }
 .start-card .login-choose[hidden] { display: none; }
 .login-accounts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -1380,3 +1392,7 @@ kbd { font: 12px var(--mono); padding: 2px 6px; border: 1px solid var(--line); b
     .palette .page-back { margin-bottom: 0; }
     .palette-hint { display: none; }
 }
+/* An account's picture: in the accounts list small beside the name, in its form large with its buttons */
+.device-list .account-row-avatar { width: 32px; height: 32px; font-size: 13px; }
+.account-avatar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.account-avatar .avatar.large { width: 64px; height: 64px; font-size: 24px; }

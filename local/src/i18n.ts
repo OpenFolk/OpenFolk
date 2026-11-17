@@ -154,6 +154,7 @@ const en = {
     'vscode.codexOff': 'Codex is turned off in the settings of this machine.',
     // ---- handover
     'handover.openedIde': 'Opened in the IDE.',
+    'handover.openedIn': 'Opened in {ide}.',
     'handover.openedTerminal': 'Opened in a terminal.',
     'handover.unavailable': 'This machine does not offer that (settings of the machine).',
     'handover.exitCode': 'The command ended with code {code}.',
@@ -537,6 +538,7 @@ const de: Record<Key, string> = {
     'vscode.codexOff': 'Codex ist in den Einstellungen dieses Rechners abgeschaltet.',
     // ---- handover
     'handover.openedIde': 'In der IDE geöffnet.',
+    'handover.openedIn': 'In {ide} geöffnet.',
     'handover.openedTerminal': 'In einem Terminal geöffnet.',
     'handover.unavailable': 'Dieser Rechner bietet das nicht an (Einstellungen des Rechners).',
     'handover.exitCode': 'Der Befehl endete mit Code {code}.',

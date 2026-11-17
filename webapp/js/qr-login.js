@@ -11,6 +11,7 @@ import { adoptPairingLink, send } from './e2e.js';
 import { connect, showLogin } from './connection.js';
 import { bundled, canScanQr, parsePairingLink, relayAddress, scanQrCode, socketUrl } from './platform.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
+import { hasSetup, takeSetupLink } from './setups.js';
 
 const textEnc = new TextEncoder();
 const SEAL_INFO = textEnc.encode('openfolk:pair-qr');
@@ -220,7 +221,9 @@ async function finish(me, box) {
 /**
  * The device from a scanned code: id and key from the QR code; `asked` and `confirmed` say how far it got. `machine`:
  * the desktop app's setup page wants to join its computer (`kind=machine`, desktop/qr-join.js), so the box carries the
- * invitation from "Add machine" instead of a pairing link.
+ * invitation from "Add machine" instead of a pairing link. `account`: approved from the row of another account (an
+ * admin), so the box carries that account's invitation, or for a computer its setup link.
+ * @type {{ id: string, pk: string, asked: boolean, confirmed: boolean, machine: boolean, account?: { id: string, name: string } } | null}
  */
 let approving = null;
 /** What the last approval signed in, for the message once the relay confirms it. */
@@ -259,7 +262,9 @@ export function startApproval() {
 export async function receivePairRequest(f) {
     if (!approving || approving.id !== f.id || approving.confirmed) return;
     const request = approving;
-    const yes = await confirmDialog(t(request.machine ? 'qr.approveMachineConfirm' : 'qr.approveConfirm', { name: f.name, ip: f.ip }));
+    const account = request.account;
+    const text = account ? (request.machine ? 'qr.approveSetupConfirm' : 'qr.approveAccountConfirm') : request.machine ? 'qr.approveMachineConfirm' : 'qr.approveConfirm';
+    const yes = await confirmDialog(t(text, { name: f.name, ip: f.ip, account: account?.name ?? '' }));
     // answered late: another request may have taken its place meanwhile
     if (approving !== request) return;
     if (!yes) {
@@ -271,15 +276,25 @@ export async function receivePairRequest(f) {
         void alertDialog(t('qr.noMachine'));
         return;
     }
+    // For another account: its invitation, or for a computer its setup link; both come back sealed (approvalLink)
+    if (account && request.machine && !hasSetup(account.id)) {
+        approving = null;
+        void alertDialog(t('qr.accountNoSetup', { account: account.name }));
+        return;
+    }
     approving.confirmed = true;
-    if (approving.machine) send({ type: 'machine_join_link' }, state.online[0]);
+    if (account) send(request.machine ? { type: 'setup_link', account: account.id } : { type: 'account_invite', id: account.id });
+    else if (approving.machine) send({ type: 'machine_join_link' }, state.online[0]);
     else send({ type: 'pair_link' });
 }
 
 /** A pairing link or invitation a confirmed approval asked for: sealed and passed on instead of shown. True if it was one. */
 export function approvalLink(f) {
     const a = approving;
-    if (!a || !a.confirmed || a.machine !== (f.type === 'machine_join_link')) return false;
+    // A computer gets a machine's invitation or, approved for another account, that account's setup link
+    if (!a || !a.confirmed || !f.url || a.machine !== (f.type === 'machine_join_link' || f.type === 'setup_link')) return false;
+    if (a.account && f.type === 'setup_link' && f.account !== a.account.id) return false;
+    if (!a.account && f.type === 'setup_link') return false;
     approving = null;
     lastApprovedMachine = a.machine;
     const fragment = new URL(f.url).hash.replace(/^#/, '');
@@ -316,10 +331,54 @@ export async function scanToApprove() {
     startApproval();
 }
 
+/**
+ * The link from the sign-in's field "Invitation link": an invitation into an account or a pairing link signs in, a
+ * setup link goes where it belongs (setups.js). The same way as a scanned code.
+ * @param {string} text
+ */
+export async function signInWithLink(text) {
+    if (takeSetupLink(text)) return;
+    const link = parsePairingLink(text);
+    if (!link || !link.params.get('pair')) {
+        showLogin(t(link && link.params.get('join') ? 'login.inviteMachine' : 'login.inviteInvalid'));
+        el.loginInvite.focus();
+        return;
+    }
+    el.loginInvite.value = '';
+    if (bundled) el.loginRelay.value = text.trim();
+    else if (link.address === location.origin) await adoptPairingLink(link.params);
+    else {
+        // The browser is the relay's page: a link of another relay opens that relay's page
+        location.assign(text.trim());
+        return;
+    }
+    el.loginForm.requestSubmit();
+}
+
+/**
+ * "Scan QR code" in the row of another account (an admin): the code on that person's sign-in signs their device in to
+ * their account, the code on their desktop app's setup page sets that computer up with the account's setup link.
+ * @param {{ id: string, name: string }} account
+ */
+export async function scanForAccount(account) {
+    const text = await scanQrCode(t('qr.scanInviteHint', { name: account.name }));
+    if (!text) return;
+    const link = parsePairingLink(text);
+    if (!link || !takeApproval(link.params) || !approving) {
+        void alertDialog(t('qr.notApproveCode'));
+        return;
+    }
+    approving.account = { id: account.id, name: account.name };
+    startApproval();
+}
+
+/** A confirmed approval waits for this account's invitation (accounts.js seals it instead of showing it). @param {string} id */
+export const approvalFor = (id) => !!approving && approving.confirmed && approving.account?.id === id;
+
 /** The app's scanner on the start page: a pairing link from a signed-in device goes into the address field. */
 export async function scanToSignIn() {
     const text = await scanQrCode(t('qr.scanPairHint'));
-    if (!text) return;
+    if (!text || takeSetupLink(text)) return;
     const link = parsePairingLink(text);
     if (!link || !link.params.get('pair')) {
         showLogin(t('qr.notPairingCode'));

@@ -2,7 +2,7 @@
    list), adding one with any link or an address, switching, one's own account, and managing the accounts of the relay. */
 import { locale, t } from './i18n.js';
 import { ACCOUNTS_KEY, DEVICE_KEY, SIGNED_OUT_KEY, deviceAccounts, deviceRelays, el, loadedAccount, node, relayEntry, state, storage, toast } from './core.js';
-import { adoptPairingLink, clockTime, send, upper } from './e2e.js';
+import { adoptPairingLink, clockTime, fillAvatar, send, upper } from './e2e.js';
 import { ICONS, askText, closeSettingsDialog, menuButton, openSettingsDialog } from './menus.js';
 import { connect, showLogin } from './connection.js';
 import { openSettingsAt, renderPairLink } from './settings.js';
@@ -11,7 +11,8 @@ import { bundled, canScanQr, parsePairingLink, scanQrCode } from './platform.js'
 import { currentRelayName, goToRelay, isCurrentRelay, otherRelays, ownRelayAddress, removeRelay, renameRelay, switchRelay } from './relays.js';
 import { accountsOf, openOtherChat, showAllAccounts } from './others.js';
 import { confirmDialog } from './dialogs.js';
-import { machinePicker, openSetup, setupAccountsChanged } from './setups.js';
+import { accountAvatarField, hasSetup, inviteWithSetup, machinePicker, openSetup, setupAccountsChanged, takeSetupLink } from './setups.js';
+import { approvalFor, approvalLink, scanForAccount } from './qr-login.js';
 
 /** The machines ticked in the form for a new account (`value`: null = all of them). @type {{ box: HTMLElement, value: () => string[] | null } | null} */
 let newMachines = null;
@@ -85,8 +86,6 @@ export function switchAccount(id) {
 
 /** The account the form is for after a tap on one whose key expired; survives the load in between. */
 const LOGIN_FOR_KEY = 'openfolk-login-for';
-/** The name of the account to create once signed in as an admin; survives the load in between. */
-const CREATE_KEY = 'openfolk-create-account';
 const sessionGet = (k) => { try { return sessionStorage.getItem(k) || ''; } catch { return ''; } };
 const sessionSet = (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* private mode */ } };
 const sessionRemove = (k) => { try { sessionStorage.removeItem(k); } catch { /* ignore */ } };
@@ -151,7 +150,6 @@ export function renderChooser() {
         li.append(pick, more, menu);
         return li;
     }));
-    el.loginChooseNew.hidden = !list.some((a) => a.admin && a.device);
 }
 
 export function closeChooserMenus() {
@@ -222,27 +220,9 @@ export function newAccount() {
     askText({
         title: t('login.newTitle'), hint: t('login.newHint'), submit: t('accounts.createButton'), maxLength: 60,
         done: (name) => {
-            if (state.signedIn && state.account && state.account.admin) {
-                createForThisDevice(name);
-                return;
-            }
-            // From the start page: first into an admin account of this device, then on (continueNewAccount)
-            const admin = deviceAccounts().find((a) => a.admin && a.device);
-            if (!admin) return;
-            sessionSet(CREATE_KEY, name);
-            storage.remove(SIGNED_OUT_KEY);
-            storage.set(DEVICE_KEY, admin.device);
-            location.reload();
+            if (state.signedIn && state.account && state.account.admin) createForThisDevice(name);
         },
     });
-}
-
-/** After a sign-in: an account to create that the start page asked for. */
-export function continueNewAccount() {
-    const name = sessionGet(CREATE_KEY);
-    if (!name) return;
-    sessionRemove(CREATE_KEY);
-    if (state.account && state.account.admin) createForThisDevice(name);
 }
 
 /** The invitation of the account being created goes to this device, not on display (receiveInvite). */
@@ -296,11 +276,15 @@ export function cancelAddAccount() {
 // ---------------------------------------------------------------- "Add": any link, or an address
 
 /**
- * What the user was given: an invitation into another account of this relay, a pairing link of another relay, or just
- * an address. The link decides; an address alone asks for account and password.
+ * What the user was given: an invitation into another account of this relay, a pairing link of another relay, a setup
+ * link for this computer, or just an address. The link decides; an address alone asks for account and password.
  * @param {string} text
  */
 async function takeAny(text) {
+    if (takeSetupLink(text)) {
+        closeSettingsDialog();
+        return;
+    }
     const link = parsePairingLink(text);
     if (!link) {
         accountError(t('login.relayInvalid'));
@@ -379,7 +363,7 @@ function accountRows() {
         const d = signedIn.get(id);
         rows.push({
             head: false, relay: here, own: true, id, name: a.name, admin: !!a.admin, created: known.get(id)?.created, reach: known.get(id)?.reach,
-            setupBy: known.get(id)?.setupBy,
+            setupBy: known.get(id)?.setupBy, avatar: known.get(id)?.avatar,
             signedIn: !!d, current: !!d && !!d.device && d.device === device, manageable: admin && id !== current && id !== 'main',
         });
     }
@@ -416,6 +400,10 @@ export function renderAccountList() {
             if (several || !bundled) button(t('relays.rename'), '', () => renameRelay(r.relay.url));
             if (!r.current) button(t('relays.remove'), ' danger', () => void removeRelay(r.relay.url));
         } else {
+            // The picture, or the initials as everywhere else
+            const av = node('div', 'avatar account-row-avatar');
+            fillAvatar(av, { name: r.name, avatar: r.avatar }, r.id);
+            li.appendChild(av);
             const name = node('strong', '', r.name);
             if (r.admin && r.own) name.appendChild(node('span', 'tag', t('accounts.admin')));
             if (!r.admin && r.own && r.reach === 'admins') name.appendChild(node('span', 'tag', t('accounts.customer')));
@@ -425,10 +413,17 @@ export function renderAccountList() {
             const sub = r.id === 'main' ? t('accounts.mainAccount')
                 : r.created ? t('accounts.created', { date: new Date(r.created).toLocaleDateString(locale()) }) : '';
             text.append(name, node('span', '', [sub, r.signedIn || r.current ? '' : t('accounts.notHere')].filter(Boolean).join(' · ')));
-            // At most two buttons: the way in (switch, or the invitation when not signed in here) and the settings of the
-            // account ("Edit": name, admin, reach, delete and the bots on the person's own computer, setups.js)
+            // The way in (switch, or the invitation when not signed in here, as a link or by scanning the person's code)
+            // and the settings of the account ("Edit": name, admin, reach, delete and the bots on the person's own
+            // computer, setups.js)
             if (!r.current && r.signedIn) button(t('relays.switch'), '', () => (r.own ? switchAccount(r.id) : openOtherChat(r.relay, r.id)));
-            if (r.manageable && !r.signedIn) button(t('accounts.invite'), '', () => { accountError(''); send({ type: 'account_invite', id: r.id }); });
+            // An account with a setup is invited by its setup link: it runs on the person's computer only
+            if (r.manageable && !r.signedIn) button(t('accounts.invite'), '', () => {
+                accountError('');
+                if (hasSetup(r.id)) inviteWithSetup(r);
+                else send({ type: 'account_invite', id: r.id });
+            });
+            if (r.manageable && !r.signedIn && r.own && canScanQr()) button(t('accounts.scanInvite'), '', () => void scanForAccount(r));
             // The own account: its name, and its password unless it is main (that one is the relay's setup)
             if (r.current && state.account) button(t('accounts.edit'), '', () => openOwnAccount());
             if (r.manageable) button(t('accounts.edit'), '', () => {
@@ -514,6 +509,8 @@ export function loadAccounts() {
     showCustomerChoice();
     renderAccountList();
     if (state.account) send({ type: 'accounts' });
+    // The setups decide what an invitation is (inviteWithSetup)
+    if (state.account?.admin) send({ type: 'setups' });
 }
 
 /** Above "Sign out": which account this device is signed in to, and on which relay when there are several. */
@@ -571,6 +568,9 @@ function openOwnAccount() {
     el.accountsOwnName.value = state.account.name;
     el.accountsPassword.value = '';
     el.accountsPasswordField.hidden = state.account.id === 'main';
+    // The own picture: every account sets its own (the relay's list carries it)
+    const own = relayAccounts.find((a) => a.id === state.account.id) || { ...state.account };
+    el.accountsOwnAvatar.replaceChildren(accountAvatarField(own));
     openSettingsDialog(t('setup.title', { name: state.account.name }), el.accountsOwn, true);
     el.accountsOwnName.focus();
 }
@@ -584,12 +584,14 @@ export function saveOwnAccount() {
         accountError(t('accounts.passwordShort', { count: MIN_PASSWORD }));
         return;
     }
+    if (!name) el.accountsOwnName.value = state.account.name;
     const change = {};
     if (name && name !== state.account.name) change.name = name;
     if (password && state.account.id !== 'main') change.password = password;
-    if (Object.keys(change).length) send({ type: 'account_update', id: state.account.id, ...change });
+    if (!Object.keys(change).length) return;
+    send({ type: 'account_update', id: state.account.id, ...change });
     el.accountsPassword.value = '';
-    closeSettingsDialog(el.accountsOwn);
+    toast(t('accounts.saved'));
 }
 
 /** The admin's form behind "Add" (a link to redeem, a new person) in the settings dialog; an invitation on display goes away with it. */
@@ -637,7 +639,7 @@ export function receiveAccountCreated(f) {
         send({ type: 'accounts' });
         return;
     }
-    pendingInvite = { token: f.pair.token, name: f.account.name, self: selfInvite };
+    pendingInvite = { token: f.pair.token, name: f.account.name, self: selfInvite, approval: approvalFor(f.account.id) };
     selfInvite = false;
     send({ type: 'pair_link', token: f.pair.token, expiresAt: f.pair.expiresAt });
 }
@@ -655,6 +657,11 @@ export function receiveInvite(link) {
     if (!link.url.includes(`pair=${invite.token}`)) {
         if (invite.self) toast(t('accounts.inviteOld', { machine: upper(link.machine || '') }));
         else accountError(t('accounts.inviteOld', { machine: upper(link.machine || '') }));
+        return true;
+    }
+    // Asked for by a scanned code in the account's row: sealed for that device instead of shown
+    if (invite.approval) {
+        approvalLink(link);
         return true;
     }
     // Created for this device: it redeems the invitation itself (with the end-to-end key) and loads in the new account

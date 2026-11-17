@@ -163,15 +163,24 @@ function actualModel(model, list = state.models) {
     return alias ? alias.value : model;
 }
 
-/** Display name like modelDisplayName() in shared/protocol.ts, e.g. "Opus 5.5". */
+/**
+ * A model's name without its version, as withoutVersion() in shared/protocol.ts: "Opus 5.5" → "Opus". The app names
+ * models by family only (decision of the user, 2026-11-16).
+ */
+export function withoutVersion(name) {
+    const short = name.replace(/[\s-]+v?\d+(?:[.-]\d+)*(?![\w.])/gi, '').replace(/\s{2,}/g, ' ').trim();
+    return short || name;
+}
+
+/** Display name like modelDisplayName() in shared/protocol.ts, e.g. "Opus". */
 export function modelDisplay(model, list = state.models) {
     const entry = list.find((m) => m.value === model);
     const target = entry ? entry.resolvedModel : model;
     const alias = list.find((m) => m.value !== 'default' && !ENGINES[m.value] && m.resolvedModel === target);
     const name = (alias || entry || {}).displayName;
-    if (name) return name;
+    if (name) return withoutVersion(name);
     // list from the machine not there yet
-    return model === 'default' ? t('model.default') : model.charAt(0).toUpperCase() + model.slice(1);
+    return model === 'default' ? t('model.default') : withoutVersion(model.charAt(0).toUpperCase() + model.slice(1));
 }
 
 function modelSwitch(chatId, picked) {
@@ -182,13 +191,15 @@ function modelSwitch(chatId, picked) {
     row.setAttribute('aria-label', t('model.label'));
     const values = models.length ? models.map((m) => m.value).filter((v) => MODEL_SHORT.includes(v) || ENGINES[v]) : MODEL_SHORT;
     if (!values.includes(current)) values.push(current);
-    for (const value of values) {
-        // The default of an engine is named after the engine in the switch, not after the model behind it. A model
-        // family goes without its version: the alias always runs the newest one the CLI offers (the version is in the
-        // tooltip). Only a pinned id from the editor keeps its version, it is that one model.
-        const family = MODEL_SHORT.includes(value);
-        const k = node('button', 'chip' + (value === current ? ' on' : ''), ENGINES[value] || (family ? value.charAt(0).toUpperCase() + value.slice(1) : modelDisplay(value, models)));
-        if (family && models.length) k.title = modelDisplay(value, models);
+    // The default of an engine is named after the engine in the switch, not after the model behind it; a family by its
+    // name, never with a version
+    const label = (value) => ENGINES[value] || (MODEL_SHORT.includes(value) ? value.charAt(0).toUpperCase() + value.slice(1) : modelDisplay(value, models));
+    const labels = values.map(label);
+    for (const [i, value] of values.entries()) {
+        // A pinned id from the editor that would read like a family's chip ("Opus") says that it is pinned
+        const pinned = !MODEL_SHORT.includes(value) && !ENGINES[value];
+        const text = pinned && labels.filter((x) => x === labels[i]).length > 1 ? t('model.pinned', { name: labels[i] }) : labels[i];
+        const k = node('button', 'chip' + (value === current ? ' on' : ''), text);
         k.type = 'button';
         k.setAttribute('role', 'radio');
         k.setAttribute('aria-checked', String(value === current));

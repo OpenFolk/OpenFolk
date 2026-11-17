@@ -141,7 +141,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   summary, they get a notification, and the user gets a "Continue with …" button in the bot's chat. Bots do not read
   the chats between people.
 - **Files.** Attach, paste or drop files; images and PDFs go straight to the model. Bots send files with
-  `send_file`. Secrets (`.env`, keys) and the backend's data are never handed out. Asked to, a bot sets its own
+  `send_file`. Pictures show in the chat (also those a bot sends, fetched from its machine) and open large with a tap;
+  videos (MP4, WebM, MOV) play in the app. Files go through the relay end-to-end encrypted, up to 20 MB each.
+  Secrets (`.env`, keys) and the backend's data are never handed out. Asked to, a bot sets its own
   profile picture from an image in its folder with `set_avatar` (PNG, JPEG, WebP or GIF up to 300 KB) or makes one with
   `make_avatar` like the editor's "AI avatar" (a photo with the image model's key, else a drawn portrait); its chat says
   so, and the editor puts another one back.
@@ -204,9 +206,10 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   session. Codex threads from its VS Code extension and CLI are listed too; continuing one runs the conversation on
   Codex and needs the ChatGPT sign-in (with an API key the bots keep their threads apart). Cursor, Copilot,
   Antigravity and OpenCode have no list of their sessions to read. The other way round, "Open this chat in the IDE"
-  and "… in a terminal" above that list hand a chat's session to its machine: by default VS Code with Claude Code for
-  VS Code, or a terminal with `claude --resume`; `HANDOVER_IDE` and `HANDOVER_TERMINAL` set other commands, the
-  settings of the machine turn either off. A backend
+  and "… in a terminal" above that list hand a chat's session to its machine: an IDE with Claude Code's extension (VS
+  Code by default; Cursor, Windsurf, VS Code Insiders or VSCodium chosen in the settings of the machine, the button then
+  names it), or a terminal with `claude --resume`; `HANDOVER_IDE` and `HANDOVER_TERMINAL` in the `.env` set other
+  commands and win over the choice, the settings of the machine turn either off. A backend
   without a desktop (a Windows task in session 0, a Linux service) cannot open windows; the desktop app, running in the
   signed-in session of that machine, opens them for it.
 - **Several machines.** The same backend runs on every machine; bots exist once. Every bot lives on one machine
@@ -359,8 +362,8 @@ For your phone from anywhere, push and machines that wake for their routines, ru
 (`ghcr.io/openfolk/openfolk`, Docker Compose, Coolify, Unraid) and claim it with the setup code from its log: in the
 app (first steps, or settings → "Devices and security" → "Move to a relay on a server"), where the backend moves over
 and the page follows it, signed in there; or in the terminal with `npm run claim`. The desktop app joins a computer to
-that relay with the link from "Add machine" ("Connect this computer to my server"), or by a QR code on its setup page
-that a signed-in phone scans, and, on Windows and Linux, runs its backend
+that relay with the link from "Add machine" (the field "Invitation link" on its setup page), or by a QR code on its
+setup page that a signed-in phone scans, and, on Windows and Linux, runs its backend
 without signing in ("Run without signing in" in the tray menu). Backends from a checkout start with their machine (a
 scheduled task on Windows, a systemd user service on Linux) or run as a container that never sleeps (`ghcr.io/openfolk/openfolk-local`);
 `docker-compose.server.yml` puts relay and backend on one server (`docker-compose.coolify.yml` in Coolify), and its
@@ -387,8 +390,11 @@ main account; nothing changes until a second one exists.
   "Create invitation link", admin and delete. One button "Add" takes whatever you were given: an invitation into an
   account, a pairing link of another relay, or just a relay's address (then it asks for account and password); an
   admin also creates a new person there ("Create account and invitation link"). The invitation is a pairing link with
-  a QR code, valid for 15 minutes; whoever opens it is signed in to the new account and may set a password of their own
+  a QR code, valid for 7 days and once (a new one replaces it); whoever opens it is signed in to the new account and may set a password of their own
   afterwards. The main account always is an admin.
+- **Profile pictures:** "Edit" on one's own account sets its picture (cropped square, made small on the device); an
+  admin sets one for every account under "Edit" in its row. The relay keeps it with the account's name, and the
+  person chats and the accounts list show it instead of the initials.
 - **Machines per account:** in the form for a new account and under "Edit" in its row an admin ticks which of the
   relay's machines the account runs on: "All my machines, new ones too" (the default) or one by one, for example only
   the cloud server for a colleague and none for a customer. A machine not ticked does not serve the account, and its
@@ -444,8 +450,9 @@ prepare everything and send them one link.
    and changes nothing) and a development bot that changes the project and pushes, each with the https address of
    the repository and a token of its own for it (read-only for the support bot). Tick whom the person can write to
    (you and further team members) and whom the bots hand a conversation over to. Save.
-2. **Link:** "Make setup link" gives a link valid for 7 days, once; a new one replaces it, "Revoke link" ends it. It
-   carries the key of your chats, so send it only to that person.
+2. **Link:** "Create invitation link" in the account's row gives, for an account with a stored setup, the setup
+   link, valid for 7 days, once; a new one replaces it, "Revoke link" ends it. It carries the key of your chats, so send
+   it only to that person. Their phone they pair afterwards from their desktop app ("Pair another device").
 3. **The person opens it:** the relay's page has "Open in OpenFolk"; the desktop app asks once and then joins your
    relay as a machine bound to that account. It clones each repository into a folder of its own with its token and
    makes the bots. The person sees their bots and the people they may write to, nothing else.

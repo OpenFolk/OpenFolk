@@ -272,9 +272,15 @@ export function vscodeError(f, message) {
 // The other way round: open the session of a chat at its machine, in an IDE window or a terminal. The bot hands it
 // over; the next message here continues the same session, with everything that was added at the machine.
 
+/** The IDE a machine opens chats in, by name, when its backend says which (the machine setting); else null. */
+function ideOf(where) {
+    return (where && state.backendPerMachine[where]?.ide) || null;
+}
+
 /** @param {'ide' | 'terminal'} target */
-function placeOf(target) {
-    return t(target === 'ide' ? 'vscode.inIde' : 'vscode.inTerminal');
+function placeOf(target, where) {
+    const ide = target === 'ide' ? ideOf(where) : null;
+    return ide ? t('vscode.inApp', { ide }) : t(target === 'ide' ? 'vscode.inIde' : 'vscode.inTerminal');
 }
 
 /** The buttons for the targets the chat's machine offers; a backend from before knows only the IDE. */
@@ -284,6 +290,9 @@ function renderHandoverButtons() {
     const status = where ? state.backendPerMachine[where] : null;
     const targets = vs.chatId ? (status?.handover ?? ['ide']) : [];
     el.vsShow.hidden = !targets.includes('ide');
+    // named after the IDE of the machine's settings where the backend says which
+    const ide = ideOf(where);
+    el.vsShow.textContent = ide ? t('vscode.showIn', { ide }) : t('vscode.showIde');
     el.vsTerminal.hidden = !targets.includes('terminal');
 }
 
@@ -296,9 +305,9 @@ export async function showInVscode(chatId, target) {
     const where = b && responsibleMachine(b);
     if (!b) return false;
     if (!where) { void alertDialog(t('bot.sleepsNoMachine', { name: b.name }) + '.'); return false; }
-    if (!(await confirmDialog(t('vscode.showConfirm', { place: placeOf(target), machine: upper(where), name: b.name })))) return false;
+    if (!(await confirmDialog(t('vscode.showConfirm', { place: placeOf(target, where), machine: upper(where), name: b.name })))) return false;
     send({ type: 'vscode_show', chatId, target }, where);
-    showEvent(t('vscode.showing', { place: placeOf(target), machine: upper(where) }), false, chatId);
+    showEvent(t('vscode.showing', { place: placeOf(target, where), machine: upper(where) }), false, chatId);
     return true;
 }
 

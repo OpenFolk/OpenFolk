@@ -5,6 +5,56 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+### Added
+- Pictures and videos in the chat: a picture a bot sends with `send_file` (no preview) loads from its machine into
+  the message once it scrolls into view and opens large without a second fetch; videos (MP4, WebM, MOV) play in a
+  player over the page instead of downloading, fetched once per page.
+- Which IDE "Open this chat in the IDE" opens is chosen in the settings of the machine: VS Code (as before), Cursor,
+  Windsurf, VS Code Insiders or VSCodium (new machine setting `handoverIdeApp`); the button, the question and the
+  line in the chat name it. An own `HANDOVER_IDE` in the `.env` still wins and locks the choice with the reason
+  (`offers.ideFromEnv` in `machine_settings`, `ide` in `backend_status`).
+- Profile pictures for accounts: everyone sets their own under "Edit" in the accounts list, an admin sets one for every
+  account in its "Edit" dialog. The picture is cropped square and shrunk to 256 px on the device; the relay keeps it
+  with the account (new optional `avatar` in `account_update`, `RelayAccount` and `Person`, a PNG, JPEG or WebP data
+  URL of at most 150,000 characters, `null` removes it) and hands it to the backends with the people, so person chats
+  and the accounts list show it instead of the initials.
+
+### Changed
+- The choice of accounts after signing out no longer offers "Create a new account": a new account comes from the
+  account menu or the settings of an admin who is signed in.
+- A tap on a favorite at the top of the list opens the chat that waits for you: one with an open question, else the
+  newest finished chat with something unread, which may be one of the bot's conversations; otherwise the main chat.
+- The speech model for voice messages stays loaded while "Keep the model loaded" (formerly "Load the model when the
+  backend starts", on by default) is on in the settings of the machine: it is no longer stopped after 30 idle minutes,
+  so a voice message after a pause no longer waits for Whisper's cold start. Switched off, the model loads on demand
+  and stops after 30 idle minutes as before.
+- Models are named without their version everywhere: in the chat header, the list, the model switch (no version in
+  its tooltip either), the chat's line after a switch, the plan's weekly bars per model and the image and speech
+  models in the settings ("Opus" instead of "Opus 5.5", "GPT Sol (Codex)" instead of "GPT-6.1 Sol (Codex)"). A model id
+  pinned in the bot's settings that would read like a family's chip says "(pinned)".
+- One link for a person set up on their own computer: "Create invitation link" in the row of an account with a stored
+  setup makes its setup link, shown with "Revoke link" like an invitation; "Make setup link" and "Delete setup" left
+  the account's "Edit" dialog. Delete and remove sit at the bottom of that dialog; it has no "Close" and no "Save
+  name" any more, names and passwords are saved as their field is left. In the list of accounts on a phone the buttons
+  of a row with two go below its text.
+- The invitation of a person into an account is valid for 7 days instead of 15 minutes and survives a restart of the
+  relay, so the person can install an app first. It still works once; a new invitation replaces the account's last,
+  and deleting the account ends it. Pairing links for one's own further devices stay at 15 minutes.
+- One way in: the sign-in of the web app and the desktop app's setup page are the same card. Both start with the field
+  "Invitation link", which takes any link someone sent (an invitation into an account, a pairing link, a setup link,
+  on the desktop also a machine's invitation) and tells them apart; below follow the QR code and the password. The
+  desktop app adds only "Start on this computer" for someone without an invitation; its ways A to C and the glossary
+  are gone. In the apps the address field of the sign-in is the server URL again.
+- An admin can invite by QR code: "Scan QR code" in the row of an account that is not signed in here scans the code on
+  that person's sign-in and, after a confirmation naming device and account, sends the account's invitation sealed to
+  that device. The code on the setup page of the person's desktop app gets the account's setup link, so the computer
+  is set up without a link; an account without a stored setup says so. No new frame.
+
+### Fixed
+- A setup link pasted where an invitation goes ("Add" under accounts, the address field of the sign-in, the scanner)
+  was cut down to the relay's address and ended at the password form. The desktop app now takes it over and asks
+  whether to set this computer up, a browser shows the link's page, and a phone says the link belongs on the computer.
+
 ## [0.6.0] - 2026-11-15
 
 ### Added

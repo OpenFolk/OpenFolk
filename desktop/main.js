@@ -155,32 +155,18 @@ const TEXTS = {
         foldersSetupSummary: 'Folders the bots may work in (optional)',
         foldersSetupHint: 'Without a choice the bots get their own folder {default}, not your whole user folder. You can change this later in the menu under “Allowed folders …”.',
         pairAgain: 'Sign this window in again',
-        setupRelay: 'Display only: connect to an existing relay server',
         setupRelayHint: 'For a computer that only shows your bots, like your phone or browser does: this window is just the interface to a relay server you already have.',
         setupRelayWarn: 'This app then starts no backend on this computer, so bots that run here through the app are offline.',
         setupRelayConfirmText: 'Connect to this relay server? The app starts no backend here, so no bots run on this computer.',
         setupRelayConfirmYes: 'Yes, no bots run on this computer',
         setupRelayConfirmNo: 'Back',
-        setupWhere: 'On the computer where your bots should work, usually A or B.',
-        setupTermsTitle: 'What do these words mean?',
-        setupTermBot: 'Bot',
-        setupTermBotText: 'Your AI colleague. A bot always works on one computer.',
-        setupTermBackend: 'Backend',
-        setupTermBackendText: 'The program on a computer that runs the bots.',
-        setupTermRelay: 'Relay server',
-        setupTermRelayText: 'The go-between on the internet, e.g. openfolk.example.com, through which your phone, browser and computers find each other.',
-        setupLocalTitle: 'Start on this computer',
         setupLocalHint: 'The way if you are new to OpenFolk: backend and relay run on this computer, inside the app, with your Claude Code sign-in. The bots stop when you quit the app. Moving to a relay server of your own works later in the settings (“Move to a relay on a server”). If OpenFolk already runs on this computer, use C instead.',
         setupPhoneHint: 'For your phone, or the browser on another device, OpenFolk needs a relay server of its own:',
         setupPhoneLink: 'how to set it up',
         setupLocal: 'Start on this computer',
-        setupJoinTitle: 'Also connect this computer to my relay server',
-        setupJoinHint: 'Bots run on this computer, and phone and browser reach them through your relay server. Create the link in the app on a signed-in device: Settings, Machines, “Add machine”, then paste it here.',
-        setupJoinLabel: 'Link from “Add machine”',
-        setupJoin: 'Connect this computer',
-        setupQrOr: 'Or with your phone, by QR code: enter the address of your relay server, show the code and scan it with OpenFolk on your phone.',
+        setupQrOr: 'Or by QR code: enter the address of the relay server, show the code and have it scanned by a signed-in device.',
         setupQrShow: 'Show QR code',
-        setupQrHint: 'Scan it with OpenFolk on your phone (Settings, Devices, “Scan QR code”) or with the phone’s camera, then confirm there. The code is renewed when it expires.',
+        setupQrHint: 'Whoever invited you scans it in the row of your account (Settings, Accounts, “Scan QR code”); your own computer you approve yourself on a signed-in device (Settings, Devices, “Scan QR code”). The code is renewed when it expires.',
         setupQrCancel: 'Cancel',
         setupQrJoining: 'Approved, connecting this computer …',
         setupQrFailed: {
@@ -192,8 +178,8 @@ const TEXTS = {
             join: '{message}',
         },
         joinFailed: {
-            not_a_link: 'That is not a link. Copy the whole link from “Add machine”.',
-            no_invitation: 'The link has no invitation in it. Create a new one: Settings, Machines, “Add machine”.',
+            not_a_link: 'That is not a link. Copy the whole link you were sent.',
+            no_invitation: 'The link has no invitation in it. Ask for a new one.',
             https: 'The relay server needs HTTPS.',
             unreachable: 'The relay server does not answer: {message}',
             expired: 'The invitation is used up or expired (15 minutes). Create a new one in the app.',
@@ -214,6 +200,13 @@ const TEXTS = {
         disconnectDetail: 'Its bots stop running here and the app starts on this computer again, without them. What they did stays in this app’s profile.',
         disconnectYes: 'Disconnect',
         setupStarting: 'OpenFolk is starting …',
+        setupTagline: 'Your coding agents, as colleagues in a chat.',
+        setupIntro: 'Got an invitation link? Paste it here, it does the rest.',
+        setupInviteLabel: 'Invitation link',
+        setupInviteGo: 'Continue',
+        setupInviteEmpty: 'Paste the link you were sent.',
+        setupPasswordTitle: 'Sign in with the relay server and a password',
+        setupLocalOr: 'No invitation? Start OpenFolk on this computer:',
         setupFailed: 'The backend does not start ({error}). Its log: {log}',
         quitWaitTitle: 'A bot is still working',
         quitWaitText: 'OpenFolk quits as soon as the bots are done.',
@@ -271,7 +264,6 @@ const TEXTS = {
         notSetUp: 'not set up',
         invalidAddress: 'Please enter a server URL like https://openfolk.example.com.',
         setupTitle: 'Set up OpenFolk',
-        setupQuestion: 'How do you use OpenFolk?',
         setupLabel: 'Relay server URL',
         setupConnect: 'Connect',
         setupNoAnswer: 'The relay server does not answer: {error}',
@@ -315,32 +307,18 @@ const TEXTS = {
         foldersSetupSummary: 'Ordner, in denen Bots arbeiten dürfen (optional)',
         foldersSetupHint: 'Ohne Auswahl bekommen die Bots einen eigenen Ordner {default}, nicht deinen ganzen Benutzerordner. Das lässt sich später im Menü unter „Freigegebene Ordner …“ ändern.',
         pairAgain: 'Dieses Fenster neu anmelden',
-        setupRelay: 'Nur anzeigen: mit einem bestehenden Relay-Server verbinden',
         setupRelayHint: 'Für einen Rechner, der deine Bots nur anzeigt, wie Handy oder Browser: Dieses Fenster ist nur die Oberfläche zu einem Relay-Server, den du schon hast.',
         setupRelayWarn: 'Die App startet dann kein Backend auf diesem Rechner, Bots, die hier über die App liefen, sind offline.',
         setupRelayConfirmText: 'Mit diesem Relay-Server verbinden? Die App startet hier kein Backend, auf diesem Rechner laufen dann keine Bots.',
         setupRelayConfirmYes: 'Ja, auf diesem Rechner laufen keine Bots',
         setupRelayConfirmNo: 'Zurück',
-        setupWhere: 'Auf dem Rechner, auf dem deine Bots arbeiten sollen, meist A oder B.',
-        setupTermsTitle: 'Was bedeuten die Begriffe?',
-        setupTermBot: 'Bot',
-        setupTermBotText: 'Dein KI-Kollege. Ein Bot arbeitet immer auf einem Rechner.',
-        setupTermBackend: 'Backend',
-        setupTermBackendText: 'Das Programm auf einem Rechner, das die Bots ausführt.',
-        setupTermRelay: 'Relay-Server',
-        setupTermRelayText: 'Die Vermittlung im Internet, z. B. openfolk.example.com, über die Handy, Browser und Rechner zusammenfinden.',
-        setupLocalTitle: 'Auf diesem Rechner starten',
         setupLocalHint: 'Der Weg, wenn du neu bei OpenFolk bist: Backend und Relay laufen auf diesem Rechner in der App, mit deiner Claude-Code-Anmeldung. Die Bots stoppen, wenn du die App beendest. Der Umzug auf einen eigenen Relay-Server geht später in den Einstellungen („Auf ein Relay auf einem Server umziehen“). Läuft OpenFolk auf diesem Rechner schon, nimm stattdessen C.',
         setupPhoneHint: 'Für das Handy oder den Browser auf einem anderen Gerät braucht OpenFolk einen eigenen Relay-Server:',
         setupPhoneLink: 'Anleitung zur Einrichtung',
         setupLocal: 'Auf diesem Rechner starten',
-        setupJoinTitle: 'Diesen Rechner zusätzlich an meinen Relay-Server anschließen',
-        setupJoinHint: 'Hier laufen Bots, und Handy und Browser erreichen sie über deinen Relay-Server. Den Link erzeugst du in der App auf einem angemeldeten Gerät: Einstellungen, Rechner, „Rechner hinzufügen“, dann fügst du ihn hier ein.',
-        setupJoinLabel: 'Link aus „Rechner hinzufügen“',
-        setupJoin: 'Rechner anschließen',
-        setupQrOr: 'Oder mit dem Handy per QR-Code: Adresse deines Relay-Servers eingeben, Code anzeigen und mit OpenFolk auf dem Handy scannen.',
+        setupQrOr: 'Oder per QR-Code: Adresse des Relay-Servers eingeben, Code anzeigen und von einem angemeldeten Gerät scannen lassen.',
         setupQrShow: 'QR-Code anzeigen',
-        setupQrHint: 'Mit OpenFolk auf dem Handy scannen (Einstellungen, Geräte, „QR-Code scannen“) oder mit der Kamera des Handys, dann dort bestätigen. Läuft der Code ab, kommt ein neuer.',
+        setupQrHint: 'Wer dich eingeladen hat, scannt ihn in der Zeile deines Kontos (Einstellungen, Konten, „QR-Code scannen“); einen eigenen Rechner gibst du selbst auf einem angemeldeten Gerät frei (Einstellungen, Geräte, „QR-Code scannen“). Läuft der Code ab, kommt ein neuer.',
         setupQrCancel: 'Abbrechen',
         setupQrJoining: 'Freigegeben, der Rechner wird angeschlossen …',
         setupQrFailed: {
@@ -352,8 +330,8 @@ const TEXTS = {
             join: '{message}',
         },
         joinFailed: {
-            not_a_link: 'Das ist kein Link. Den ganzen Link aus „Rechner hinzufügen“ kopieren.',
-            no_invitation: 'Im Link steckt keine Einladung. Eine neue erstellen: Einstellungen, Rechner, „Rechner hinzufügen“.',
+            not_a_link: 'Das ist kein Link. Den ganzen Link kopieren, den du bekommen hast.',
+            no_invitation: 'Im Link steckt keine Einladung. Bitte um einen neuen.',
             https: 'Der Relay-Server braucht HTTPS.',
             unreachable: 'Der Relay-Server antwortet nicht: {message}',
             expired: 'Die Einladung ist verbraucht oder abgelaufen (15 Minuten). In der App eine neue erstellen.',
@@ -374,6 +352,13 @@ const TEXTS = {
         disconnectDetail: 'Seine Bots laufen dann nicht mehr hier, und die App startet wieder auf diesem Computer, ohne sie. Was sie getan haben, bleibt im Profil dieser App.',
         disconnectYes: 'Trennen',
         setupStarting: 'OpenFolk startet …',
+        setupTagline: 'Deine Coding-Agenten, als Kollegen im Chat.',
+        setupIntro: 'Du hast einen Einladungslink bekommen? Füge ihn hier ein, er erledigt den Rest.',
+        setupInviteLabel: 'Einladungslink',
+        setupInviteGo: 'Weiter',
+        setupInviteEmpty: 'Füge den Link ein, den du bekommen hast.',
+        setupPasswordTitle: 'Mit Relay-Server und Passwort anmelden',
+        setupLocalOr: 'Keine Einladung? OpenFolk auf diesem Computer starten:',
         setupFailed: 'Das Backend startet nicht ({error}). Sein Log: {log}',
         quitWaitTitle: 'Ein Bot arbeitet noch',
         quitWaitText: 'OpenFolk beendet sich, sobald die Bots fertig sind.',
@@ -431,7 +416,6 @@ const TEXTS = {
         notSetUp: 'nicht eingerichtet',
         invalidAddress: 'Bitte eine Server-URL wie https://openfolk.example.com eingeben.',
         setupTitle: 'OpenFolk einrichten',
-        setupQuestion: 'Wie nutzt du OpenFolk?',
         setupLabel: 'Relay-Server-URL',
         setupConnect: 'Verbinden',
         setupNoAnswer: 'Der Relay-Server antwortet nicht: {error}',
@@ -639,6 +623,15 @@ function setupLinkOf(arg) {
     return '';
 }
 
+/** A pairing link (`https://relay/#pair=…&e2e=…`, also an invitation into an account) itself; '' for anything else. */
+function pairingLinkOf(text) {
+    try {
+        const u = new URL(String(text || '').trim());
+        if ((u.protocol === 'https:' || u.protocol === 'http:') && new URLSearchParams(u.hash.slice(1)).get('pair')) return u.href;
+    } catch { /* not an address */ }
+    return '';
+}
+
 /** The profile has bots of its own from "on this computer": a setup link must not put them aside unasked. */
 function hasOwnBots() {
     try {
@@ -765,6 +758,13 @@ function createWindow() {
     });
     win.webContents.on('will-navigate', (e, url) => {
         if (url.startsWith('file://') || url.startsWith(APP)) return;
+        // A setup link pasted into the web app ("Add", the sign-in's address field): asked like one from the browser
+        const setup = setupLinkOf(url);
+        if (setup) {
+            e.preventDefault();
+            void openSetupLink(setup);
+            return;
+        }
         // The page of a relay before 0.2.0 reloads itself, e.g. after the sign-in
         try { if (oldRelays.has(new URL(url).origin)) return; } catch { /* no address */ }
         e.preventDefault();
@@ -1178,11 +1178,26 @@ if (!app.requestSingleInstanceLock()) {
         loadWebApp();
         return {};
     });
+    // The one field of the setup page takes every link someone sends: a setup link, an invitation into an account (a
+    // pairing link: this window signs in at that relay, as with its address and a password) or a machine's invitation
     ipcMain.handle('join-server', async (e, link) => {
         if (!fromSetup(e)) return { error: 'not allowed' };
         // A setup link pasted here: the same checks as one from the browser
         const blocked = setupLinkOf(link) ? setupBlocked(setupLinkOf(link)) : '';
         if (blocked) return { error: blocked };
+        const pairing = pairingLinkOf(link);
+        if (pairing) {
+            config.url = normalizeAddress(new URL(pairing).origin);
+            config.mode = 'relay';
+            saveConfig();
+            createMenu();
+            if (backend) void backend.stop().then(() => { backend = null; });
+            choosing = false;
+            stopQrJoin();
+            win.webContents.setUserAgent(baseAgent);
+            void relayPage(pairing).then((page) => win.loadURL(page), () => win.loadURL(appLinkFromPairing(pairing)));
+            return {};
+        }
         return joinWith(link);
     });
     // The same invitation by QR code: a signed-in device scans it and sends the link back sealed (qr-join.js)
@@ -1195,7 +1210,8 @@ if (!app.requestSingleInstanceLock()) {
             await startQrJoin({
                 relay: url, root: root(),
                 emit: (state) => { if (!sender.isDestroyed()) sender.send('qr-join', state); },
-                onLink: async (link) => (await joinWith(link)).error || '',
+                // An admin approving from the row of an account sends its setup link: the same checks as a pasted one
+                onLink: async (link) => (setupLinkOf(link) && setupBlocked(setupLinkOf(link))) || (await joinWith(link)).error || '',
             });
         } catch (err) {
             return { error: err.message };

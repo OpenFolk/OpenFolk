@@ -10,7 +10,7 @@ import { desktopVersion, iosBrowserTab, relayAddress } from './platform.js';
 import { loadPushSettings } from './push.js';
 import { loadAccounts } from './accounts.js';
 import { relayClaimForm } from './relay-claim.js';
-import { closeSettingsDialog, openSettingsDialog } from './menus.js';
+import { closeSettingsDialog, openSettingsDialog, withoutVersion } from './menus.js';
 import { pickFolderOn } from './editors.js';
 import { autoReadOn } from './read-aloud.js';
 import { dictationOn } from './voice.js';
@@ -568,6 +568,14 @@ function machineForm(host, ms) {
 
     details.appendChild(node('h4', '', t('settings.handover')));
     details.appendChild(checkField('settings.handoverIde', s.handoverIde && ms.offers.ide, (v) => set({ handoverIde: v }), !ms.offers.ide));
+    // Which IDE: a choice among the ones the backend knows; older backends do not know it. An own command in the
+    // .env wins, then the choice is shown locked with the reason
+    if ('handoverIdeApp' in s) {
+        const fromEnv = Boolean(ms.offers.ideFromEnv);
+        details.appendChild(selectField('settings.handoverIdeApp', s.handoverIdeApp, HANDOVER_IDES.map((ide) => [ide, `settings.ide.${ide}`]),
+            (v) => set({ handoverIdeApp: v }), !ms.offers.ide || !s.handoverIde || fromEnv));
+        if (fromEnv) details.appendChild(node('p', 'hint', t('settings.handoverIdeFromEnv')));
+    }
     details.appendChild(checkField('settings.handoverTerminal', s.handoverTerminal && ms.offers.terminal, (v) => set({ handoverTerminal: v }), !ms.offers.terminal));
 
     details.appendChild(node('h4', 'settings-git', t('settings.git')));
@@ -593,6 +601,9 @@ function machineForm(host, ms) {
     return details;
 }
 
+/** The IDEs of the machine setting, as HANDOVER_IDES in shared/protocol.ts; their names are i18n keys settings.ide.<id>. */
+const HANDOVER_IDES = ['vscode', 'cursor', 'windsurf', 'vscode-insiders', 'vscodium'];
+
 /** Download sizes of the speech models, for the setup's progress line. */
 const MODEL_SIZES = { 'large-v3-turbo': '1.6 GB', medium: '1.5 GB', small: '0.5 GB', base: '0.15 GB' };
 
@@ -603,7 +614,7 @@ function voiceSetupRow(host, voice) {
     const model = voice.state === 'installing' && voice.detail?.startsWith('model:') ? voice.detail.slice(6) : '';
     // ready without `speech`: an environment from before the voice for reading aloud, or a Python of one's own without it
     const text = voice.state === 'ready' ? t(voice.speech === false ? 'settings.voiceReadyNoSpeech' : 'settings.voiceReady')
-        : model ? t('settings.voiceInstallingModel', { model, size: MODEL_SIZES[model] || '?' })
+        : model ? t('settings.voiceInstallingModel', { model: withoutVersion(model), size: MODEL_SIZES[model] || '?' })
         : voice.state === 'installing' ? t(voice.detail === 'packages' ? 'settings.voiceInstallingPackages' : voice.detail === 'voices' ? 'settings.voiceInstallingVoices' : 'settings.voiceInstalling')
             : voice.state === 'failed' ? t('settings.voiceFailed', { error: detail })
                 : voice.state === 'unavailable' ? t('settings.voiceUnavailable') : t('settings.voiceMissing');

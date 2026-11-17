@@ -59,6 +59,16 @@ export default async function ({ start, check }) {
     const toTerminal = h.sent.findLast((f) => f.type === 'vscode_show');
     check('terminal: request with its target', toTerminal?.target === 'terminal', toTerminal);
     check('terminal: hint in the chat', (await events()).some((t) => t.includes('Opening in a terminal on DESK')), await events());
+    // the machine names its IDE (the machine setting): the button and the hint say which
+    await h.push({ ...status, handover: ['ide'], ide: 'Cursor' });
+    await p.click('[data-el=chat-title]');
+    await h.wait(150);
+    await p.click('#info-actions button[data-action="vscode"]');
+    await h.wait(100);
+    check('the button names the IDE of the machine', (await p.textContent('#vs-show')) === 'Open this chat in Cursor', await p.textContent('#vs-show'));
+    await p.click('#vs-show');
+    await h.wait(100);
+    check('the question and the hint name it too', dialog.includes('in Cursor on DESK') && (await events()).some((t) => t.includes('Opening in Cursor on DESK')), dialog);
     // nothing offered (a container, another account): no buttons
     await h.push({ ...status, handover: [] });
     await p.click('[data-el=chat-title]');

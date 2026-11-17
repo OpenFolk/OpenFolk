@@ -40,7 +40,7 @@ export default async function ({ start, check }) {
     const before = authsAfter();
     check('signed out: the start page with both accounts', await p.isVisible('#login-choose') && JSON.stringify(await rowNames(p)) === '["Alex","Work"]', await rowNames(p));
     check('… the form waits behind "another account"', await p.isHidden('#login-token') && await p.isVisible('#login-choose-other'));
-    check('… an admin among them: "Create a new account" offered', await p.isVisible('#login-choose-new'));
+    check('… no "new account" on the choice (that is the account menu\'s, signed in)', await p.locator('#login-choose button', { hasText: /new account/i }).count() === 0);
     check('… both keys kept', (await stored(p)).every((a) => a.device));
     await p.reload();
     await afterReload(h);
@@ -103,18 +103,20 @@ export default async function ({ start, check }) {
     check('forgotten: gone from the choice and from the device', JSON.stringify(await rowNames(q)) === '["Alex"]' && (await stored(q)).map((a) => a.id).join() === 'main');
     await f.close();
 
-    // ---- a new account from the choice: into the admin account, create, redeem the invitation here
+    // ---- a new account from the account menu of the signed-in admin: create, redeem the invitation here
     const n = await start({
         secure: true,
         auth: (x) => (x.pair === 'tok-neu' ? { type: 'auth', ok: true, device: { id: 'n', token: 'n.key', name: 'PC' }, account: NEU } : byDevice({ test: MAIN, 'n.key': NEU })(x)),
-        before: knows([{ ...MAIN, device: 'test', used: now }], true),
+        before: knows([{ ...MAIN, device: 'test', used: now }]),
         onSend: async (x, push) => {
             if (x.type === 'account_create') await push({ type: 'account_created', account: { ...NEU, created: '2026-11-10T08:00:00Z' }, pair: { token: 'tok-neu', expiresAt: '2026-11-10T08:15:00Z' } });
             if (x.type === 'pair_link') await push({ type: 'pair_link', machine: 'desk', url: `https://test.local/#pair=${x.token}&e2e=${Buffer.alloc(32, 7).toString('base64url')}`, expiresAt: '2026-11-10T08:15:00Z', svg: '<svg xmlns="http://www.w3.org/2000/svg"/>', e2e: true });
         },
     });
     const r = n.page;
-    await r.click('#login-choose-new');
+    await n.wait(300);
+    await r.click('#account-switch');
+    await r.click('#account-menu [data-account-action="new"]');
     await r.fill('#text-input', 'Neu');
     await r.click('#text-submit');
     await afterReload(n);

@@ -10,7 +10,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 
 /** Starts main.js against a profile folder; returns what the stand-in recorded. */
 function startApp(profile, config) {
-    const state = { handlers: {}, whenReady: null, win: null, tray: null, menu: null, restarts: 0, appEvents: {}, protocols: [], dialogs: [], answer: 0, scripts: [] };
+    const state = { handlers: {}, whenReady: null, win: null, tray: null, menu: null, restarts: 0, appEvents: {}, webEvents: {}, protocols: [], dialogs: [], answer: 0, scripts: [] };
     if (config) fs.writeFileSync(path.join(profile, 'config.json'), JSON.stringify(config));
     class Win {
         constructor() {
@@ -18,7 +18,7 @@ function startApp(profile, config) {
             this.events = {};
             this.hidden = false;
             this.agent = '';
-            this.webContents = { userAgent: 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', setUserAgent: (a) => { this.agent = a; }, setWindowOpenHandler: () => undefined, on: () => undefined, executeJavaScript: (code) => { state.scripts.push(code); return Promise.resolve(); } };
+            this.webContents = { userAgent: 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', setUserAgent: (a) => { this.agent = a; }, setWindowOpenHandler: () => undefined, on: (name, fn) => { state.webEvents[name] = fn; }, executeJavaScript: (code) => { state.scripts.push(code); return Promise.resolve(); } };
             state.win = this;
         }
         once() {}
@@ -135,6 +135,12 @@ export default async function ({ check }) {
         const ask = app.dialogs[shown];
         check('main: a new OpenFolk asks first, naming the relay', ask?.type === 'question' && ask.message.includes('relay.example.test') && app.dialogs.length === shown + 1, ask);
         check('main: cancelled, nothing joined', !fs.readFileSync(path.join(profile, '.env'), 'utf8').includes('RELAY_URL'));
+        // Pasted into the web app ("Add", the sign-in's address field): the page hands it over as a navigation
+        let stopped = false;
+        const asked = app.dialogs.length;
+        app.webEvents['will-navigate']({ preventDefault: () => { stopped = true; } }, viaBrowser[1]);
+        await settle();
+        check('main: a setup link from the web app is asked the same way, the page stays', stopped && app.dialogs[asked]?.type === 'question' && app.dialogs[asked].message.includes('relay.example.test'), app.dialogs[asked]);
         app.answer = 0;
 
         // Joined a relay (by invitation or setup link): the way back
@@ -159,6 +165,13 @@ export default async function ({ check }) {
         app.whenReady();
         await settle();
         check('main: a display-only window carries no mark', app.win.agent === 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', app.win.agent);
+
+        // The setup page's one field with an invitation into an account: the window signs in at that relay
+        const invited = await app.handlers['join-server'](fromSetup, 'https://other.example.test/#pair=tok&e2e=key');
+        await settle();
+        const page = app.win.loads.at(-1)?.url ?? '';
+        check('main: an invitation pasted on the setup page opens that relay with its sign-in, no join', !invited.error && page.startsWith('openfolk://app/#relay=') && page.includes(encodeURIComponent('https://other.example.test')) && page.includes('pair=tok'), { invited, page });
+        check('main: … and the app stays on that relay', JSON.parse(fs.readFileSync(path.join(profile, 'config.json'), 'utf8')).url === 'https://other.example.test/');
 
         // The web app's keyboard shortcuts as a menu: shown with their keys, the keys themselves left to the page
         const go = app.menu?.find((m) => m.label === 'Go')?.submenu ?? [];

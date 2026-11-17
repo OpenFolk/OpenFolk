@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { checkPassword, hashPassword } from './auth.ts';
 import { MIN_TOKEN_LENGTH } from './owner.ts';
-import { reaches, type Person, type Reach, type RelayAccount } from '../../shared/protocol.ts';
+import { isAccountAvatar, reaches, type Person, type Reach, type RelayAccount } from '../../shared/protocol.ts';
 
 export const ACCOUNTS_FILE = 'accounts.json';
 export const MAIN = 'main';
@@ -21,7 +21,7 @@ interface StoredAccount extends RelayAccount {
     hash?: string;
 }
 
-export type AccountChange = { name?: string; password?: string; admin?: boolean; reach?: Reach; contacts?: string[]; machines?: string[] | null };
+export type AccountChange = { name?: string; password?: string; admin?: boolean; reach?: Reach; contacts?: string[]; machines?: string[] | null; avatar?: string | null };
 const MAX_MACHINES = 100;
 export type AccountResult = 'ok' | 'name_taken' | 'invalid';
 
@@ -176,6 +176,12 @@ export class Accounts {
             if (change.machines === null) delete a.machines;
             else a.machines = machineList(change.machines);
         }
+        // null removes the picture; anything but a small image is refused
+        if (change.avatar === null) delete a.avatar;
+        else if (change.avatar !== undefined) {
+            if (!isAccountAvatar(change.avatar)) return 'invalid';
+            a.avatar = change.avatar;
+        }
         this.save();
         return 'ok';
     }
@@ -216,10 +222,13 @@ function toPublic(a: StoredAccount): RelayAccount {
     return {
         id: a.id, name: a.name, admin: a.id === MAIN || a.admin, created: a.created, reach: reachOf(a),
         ...(reachOf(a) === 'listed' ? { contacts: a.contacts ?? [] } : {}), ...(a.setupBy ? { setupBy: a.setupBy } : {}),
-        ...(a.machines ? { machines: a.machines } : {}),
+        ...(a.machines ? { machines: a.machines } : {}), ...(a.avatar ? { avatar: a.avatar } : {}),
     };
 }
 
 function toPerson(a: StoredAccount): Person {
-    return { id: a.id, name: a.name, admin: a.id === MAIN || a.admin, reach: reachOf(a), ...(reachOf(a) === 'listed' ? { contacts: a.contacts ?? [] } : {}) };
+    return {
+        id: a.id, name: a.name, admin: a.id === MAIN || a.admin, reach: reachOf(a), ...(reachOf(a) === 'listed' ? { contacts: a.contacts ?? [] } : {}),
+        ...(a.avatar ? { avatar: a.avatar } : {}),
+    };
 }

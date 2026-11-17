@@ -1,6 +1,7 @@
-// Setup page: the address of a relay of one's own, this computer joined to that relay with the link from "Add
-// machine", or "on this computer" (the backend inside the app with the relay embedded); the main process stores the
-// choice and loads the web app. Also shown while the backend starts and when it does not.
+// Setup page, built like the web app's sign-in: first the link someone sent (an invitation into an account, a setup
+// link, a machine's invitation; main.js tells them apart), then the QR code, the relay's address with a password, and
+// "on this computer" (the backend inside the app with the relay embedded). The main process stores the choice and
+// loads the web app. Also shown while the backend starts and when it does not.
 // Texts come from the main process (English or German, depending on the operating system's language).
 'use strict';
 const params = new URLSearchParams(location.search);
@@ -32,7 +33,12 @@ window.openfolkDesktop.info().then((i) => {
     document.getElementById('starting').hidden = !starting;
     document.getElementById('choice').hidden = starting;
     // The address field has the focus when that is the way in use or a relay did not answer
-    if (!starting && (i.mode === 'relay' || (!!params.get('error') && !params.get('log')))) input.focus();
+    if (!starting && (i.mode === 'relay' || (!!params.get('error') && !params.get('log')))) {
+        document.getElementById('password-way').open = true;
+        input.focus();
+    } else if (!starting) {
+        joinInput.focus();
+    }
     if (params.get('error') && params.get('log')) {
         failed.hidden = false;
         failed.textContent = fill(i.texts.setupFailed, { error: params.get('error'), log: params.get('log') });
@@ -47,14 +53,28 @@ document.getElementById('local').addEventListener('click', async () => {
 });
 
 const joinError = document.getElementById('join-error');
-document.getElementById('join-form').addEventListener('submit', async (e) => {
+const joinInput = document.getElementById('join');
+const joinForm = document.getElementById('join-form');
+
+async function join(link) {
+    asking(null);
+    joinError.textContent = '';
+    const button = joinForm.querySelector('button');
+    button.disabled = true;
+    const r = await window.openfolkDesktop.joinServer(link);
+    button.disabled = false;
+    if (r && r.error) joinError.textContent = r.error;
+}
+
+joinForm.addEventListener('submit', (e) => {
     e.preventDefault();
     joinError.textContent = '';
-    const button = e.target.querySelector('button');
-    button.disabled = true;
-    const r = await window.openfolkDesktop.joinServer(document.getElementById('join').value);
-    button.disabled = false;
-    if (r.error) joinError.textContent = r.error;
+    const link = joinInput.value.trim();
+    if (!link) { joinError.textContent = texts.setupInviteEmpty || ''; return; }
+    // An invitation into an account signs this window in at that relay without a backend here, as the address with a
+    // password does: asked first when this computer runs bots of its own
+    if (/[#&]pair=/.test(link) && currentMode === 'local') { asking(() => void join(link)); return; }
+    void join(link);
 });
 
 // The same invitation by QR code: main.js waits at the relay (qr-join.js), a signed-in phone scans and approves
@@ -104,19 +124,28 @@ window.openfolkDesktop.onQrJoin((s) => {
 const form = document.getElementById('form');
 const confirmBox = document.getElementById('relay-confirm');
 
-/** While the question is open the address cannot change and the form's button is out of the way. */
-function asking(on) {
+/** What "Yes" does while the question is open; null when none is. */
+let confirmed = null;
+
+/**
+ * The question before this computer stops running bots of its own; null closes it. While it is open the fields cannot
+ * change and their buttons are out of the way.
+ * @param {(() => void) | null} then
+ */
+function asking(then) {
+    confirmed = then;
+    const on = !!then;
     confirmBox.hidden = !on;
-    input.disabled = on;
-    form.querySelector('button').hidden = on;
+    for (const f of [form, joinForm]) {
+        f.querySelector('input').disabled = on;
+        f.querySelector('button').hidden = on;
+    }
 }
 
 async function saveAddress() {
+    asking(null);
     const r = await window.openfolkDesktop.saveAddress(input.value);
-    if (r.error) {
-        asking(false);
-        error.textContent = r.error;
-    }
+    if (r.error) error.textContent = r.error;
 }
 
 form.addEventListener('submit', (e) => {
@@ -126,7 +155,7 @@ form.addEventListener('submit', (e) => {
     // Already the way in use: nothing changes for the backend, no question
     if (currentMode === 'relay') { void saveAddress(); return; }
     // Connecting to a server means this app starts no backend here: said before it happens
-    asking(true);
+    asking(() => void saveAddress());
 });
-document.getElementById('relay-confirm-yes').addEventListener('click', () => void saveAddress());
-document.getElementById('relay-confirm-no').addEventListener('click', () => asking(false));
+document.getElementById('relay-confirm-yes').addEventListener('click', () => { if (confirmed) confirmed(); });
+document.getElementById('relay-confirm-no').addEventListener('click', () => asking(null));

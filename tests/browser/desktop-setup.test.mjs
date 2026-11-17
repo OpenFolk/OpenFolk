@@ -1,5 +1,6 @@
-// The desktop app's setup page (desktop/setup.html, setup.js): the three ways explained, a question before this
-// computer is left without a backend of its own, and every text of the page in both languages of desktop/main.js.
+// The desktop app's setup page (desktop/setup.html, setup.js), built like the web app's sign-in: the invitation link
+// first, then the QR code, the server URL with a password and "on this computer"; a question before this computer is
+// left without a backend of its own, and every text of the page in both languages of desktop/main.js.
 // The page runs without Electron here; a stand-in for the bridge of preload.js records what the page asks for.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,8 +29,6 @@ export default async function ({ check }) {
     const texts = fs.readFileSync(path.join(ROOT, 'desktop', 'main.js'), 'utf8').split('\n');
     const stale = texts.filter((l) => /setup\w+: /.test(l) && /\b(use|nimm stattdessen|usually|meist) [123]\b|\b[123] (or|oder) [123]\b/.test(l));
     check('setup page: the texts point at letters, not at numbers', stale.length === 0, stale);
-    const all = texts.join('\n');
-    check('setup page: the texts name the ways A, B and C', /usually A or B/.test(all) && /use C instead/.test(all) && /meist A oder B/.test(all) && /nimm stattdessen C/.test(all));
     const serverWords = texts.filter((l) => /^\s+(setup\w+|https|unreachable|too_old): /.test(l) && /\b[Ss]erver\b/.test(l.replace(/Relay-Server|[Rr]elay server|“[^”]*”|„[^“]*“/g, "")));
     check('setup page: where the relay is meant the texts say relay server', serverWords.length === 0, serverWords);
 
@@ -40,14 +39,14 @@ export default async function ({ check }) {
             await context.addInitScript(`
                 window.__calls = [];
                 window.openfolkDesktop = {
-                    info: async () => ({ mode: ${JSON.stringify(mode)}, language: 'en', version: '0.0.0', texts: { setupHint: 'OpenFolk {version}', invalidAddress: 'Please enter a server URL.', foldersSetupHint: 'Hint {default}', foldersDefault: 'Own folder {default}', foldersDefaultTag: 'default', foldersAdd: 'Add folder …', foldersRemove: 'Remove', foldersLastRemoved: '{default} applies.', foldersWide: '{folder} is very wide.', foldersEnvWarn: 'ALLOWED_ROOTS ({value})' } }),
+                    info: async () => ({ mode: ${JSON.stringify(mode)}, language: 'en', version: '0.0.0', texts: { setupHint: 'OpenFolk {version}', invalidAddress: 'Please enter a server URL.', setupInviteEmpty: 'Paste the link you were sent.', foldersSetupHint: 'Hint {default}', foldersDefault: 'Own folder {default}', foldersDefaultTag: 'default', foldersAdd: 'Add folder …', foldersRemove: 'Remove', foldersLastRemoved: '{default} applies.', foldersWide: '{folder} is very wide.', foldersEnvWarn: 'ALLOWED_ROOTS ({value})' } }),
                     saveAddress: async (url) => { window.__calls.push(url); return ${JSON.stringify(answer)}; },
-                    chooseLocal: async () => ({}), joinServer: async () => ({}),
+                    chooseLocal: async () => ({}), joinServer: async (link) => { window.__joined.push(link); return {}; },
                     qrJoinStart: async (url) => { window.__qr.push(url); return {}; },
                     qrJoinStop: async () => { window.__qr.push('stop'); },
                     onQrJoin: (handler) => { window.__qrEvent = handler; },
                 };
-                window.__qr = [];`);
+                window.__qr = []; window.__joined = [];`);
             const page = await context.newPage();
             const errors = [];
             page.on('pageerror', (e) => errors.push(e.message));
@@ -60,21 +59,20 @@ export default async function ({ check }) {
         let s = await open('');
         const p = s.page;
         const shown = (sel) => p.isVisible(sel);
-        check('setup page: says which way fits where bots should work', (await p.textContent('.where')).includes('A or B'));
-        const badges = await p.$$eval('.option .badge', (n) => n.map((x) => x.textContent));
-        check('setup page: the three ways are lettered A, B, C', badges.join() === 'A,B,C', badges);
-        const order = await p.$$eval('.option', (n) => n.map((x) => (x.querySelector('#local') ? 'local' : x.querySelector('#join-form') ? 'join' : x.querySelector('#form') ? 'relay' : '?')));
-        check('setup page: order is this computer, this computer plus relay server, display only', order.join() === 'local,join,relay', order);
+        const order = await p.$$eval('#choice > *', (n) => n.filter((x) => x.id).map((x) => x.id));
+        check('setup page: the invitation link first, then the QR code, the password and this computer', order.join() === 'join-form,relay-confirm,qr-form,qr-box,password-way,local-way', order);
+        check('setup page: the cursor waits in the invitation field', await p.evaluate(() => document.activeElement?.id === 'join'));
+        check('setup page: no lettered ways and no glossary any more', !(await p.$('.badge')) && !(await p.$('.terms')));
+        const filled = await p.$$eval('button', (n) => n.filter((x) => x.offsetParent && getComputedStyle(x).backgroundColor !== 'rgba(0, 0, 0, 0)').map((x) => x.textContent));
+        check('setup page: only "Continue" of the invitation has the filled button', filled.length === 1 && filled[0] === (await p.textContent('#join-form button')), filled);
+        check('setup page: the server URL with a password is folded away', !(await shown('#form')));
 
-        // The words, folded away until asked for
-        check('setup page: the explanation of the words is folded at first', (await p.isVisible('.terms summary')) && !(await p.isVisible('.terms dl')));
-        await p.click('.terms summary');
-        const terms = await p.$$eval('.terms dt', (n) => n.map((x) => x.textContent));
-        check('setup page: unfolded it explains bot, backend and relay server', (await p.isVisible('.terms dl')) && terms.join() === 'Bot,Backend,Relay server', terms);
-        await p.click('.terms summary');
-
-        const fills = await p.$$eval('.option > button, .option form > button', (n) => n.map((x) => getComputedStyle(x).backgroundColor !== 'rgba(0, 0, 0, 0)'));
-        check('setup page: only A, "Start on this computer", has the filled button; B and C are outlined', fills.join() === 'true,false,false,false', fills);
+        // The invitation field: whatever was sent goes to the main process, which tells the links apart
+        await p.click('#join-form button');
+        check('setup page: an empty invitation field says what to paste', (await p.textContent('#join-error')) === 'Paste the link you were sent.' && (await p.evaluate(() => window.__joined)).length === 0);
+        await p.fill('#join', ' https://relay.example.test/#setup=abc&e2e=key ');
+        await p.click('#join-form button');
+        check('setup page: a link goes to the main process as it is', JSON.stringify(await p.evaluate(() => window.__joined)) === '["https://relay.example.test/#setup=abc&e2e=key"]');
 
         // B by QR code: the phone scans what the main process draws (desktop/qr-join.js)
         await p.click('#qr-form button');
@@ -91,19 +89,15 @@ export default async function ({ check }) {
         await p.click('#qr-cancel');
         check('setup page: QR code: "Cancel" drops the request and brings the form back', (await p.evaluate(() => window.__qr)).at(-1) === 'stop' && await shown('#qr-form') && !(await shown('#qr-box')));
 
-        // Alternatives, not steps: always one below the other, each as wide as the page allows (at most 820 px)
-        const tops = () => p.$$eval('.option', (n) => n.map((x) => { const r = x.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width) }; }));
+        // The card of the web app's sign-in: at most 400 px wide, nothing sticking out in a narrow window
         await p.setViewportSize({ width: 1600, height: 900 });
-        let boxes = await tops();
-        const page = await p.$eval('main', (n) => Math.round(n.getBoundingClientRect().width));
-        check('setup page: in a wide window the ways stand one below the other, not side by side', boxes.every((b) => b.x === boxes[0].x) && new Set(boxes.map((b) => b.y)).size === 3, boxes);
-        check('setup page: every way uses the full width of the page, which stops at 820 px', page === 820 && boxes.every((b) => b.width === boxes[0].width && b.width >= page - 2 * 28 - 1), { page, boxes });
-        await p.setViewportSize({ width: 520, height: 900 });
-        boxes = await tops();
-        check('setup page: in a narrow window they stand one below the other as well', boxes.every((b) => b.x === boxes[0].x) && new Set(boxes.map((b) => b.y)).size === 3, boxes);
+        const card = await p.$eval('main', (n) => Math.round(n.getBoundingClientRect().width));
+        check('setup page: one card like the sign-in, at most 400 px wide', card === 400, card);
+        await p.setViewportSize({ width: 360, height: 900 });
         check('setup page: nothing sticks out sideways when narrow', await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
         await p.setViewportSize({ width: 1280, height: 720 });
-        check('setup page: the server way warns that no backend runs here', await shown('#form') && (await p.textContent('.option .warn')).includes('no backend on this computer'));
+        await p.click('#password-way summary');
+        check('setup page: unfolded, the server way warns that no backend runs here', await shown('#form') && (await p.textContent('#password-way .warn')).includes('no backend on this computer'));
 
         await p.click('#form button');
         check('setup page: an empty address is refused without asking', (await p.textContent('#error')) === 'Please enter a server URL.' && !(await shown('#relay-confirm')) && (await s.calls()).length === 0);
@@ -126,6 +120,7 @@ export default async function ({ check }) {
 
         // A refused address: back at the form with the reason
         s = await open('', { error: 'The server needs HTTPS.' });
+        await s.page.click('#password-way summary');
         await s.page.fill('#url', 'http://x.test');
         await s.page.click('#form button');
         await s.page.click('#relay-confirm-yes');
@@ -139,6 +134,20 @@ export default async function ({ check }) {
         await s.page.click('#form button');
         await s.page.waitForFunction(() => window.__calls.length > 0);
         check('setup page: from the server way to another address: saved at once', !(await s.page.isVisible('#relay-confirm')) && (await s.calls())[0] === 'https://other.example.test');
+        check('setup page: on the server way, the page opens with that way unfolded', await s.page.isVisible('#form'));
+        await s.context.close();
+
+        // On this computer: an invitation into an account leaves it without bots, so the page asks first
+        s = await open('local');
+        await s.page.fill('#join', 'https://relay.example.test/#pair=tok&e2e=key');
+        await s.page.click('#join-form button');
+        check('setup page: an invitation on a computer with its own backend asks first', await s.page.isVisible('#relay-confirm') && (await s.page.evaluate(() => window.__joined)).length === 0 && await s.page.isDisabled('#join'));
+        await s.page.click('#relay-confirm-yes');
+        await s.page.waitForFunction(() => window.__joined.length > 0);
+        check('setup page: after "Yes" the invitation goes to the main process', JSON.stringify(await s.page.evaluate(() => window.__joined)) === '["https://relay.example.test/#pair=tok&e2e=key"]' && !(await s.page.isVisible('#relay-confirm')));
+        await s.page.fill('#join', 'https://relay.example.test/#setup=abc&e2e=key');
+        await s.page.click('#join-form button');
+        check('setup page: a setup link is not asked here (the main process asks)', (await s.page.evaluate(() => window.__joined)).length === 2 && !(await s.page.isVisible('#relay-confirm')));
         await s.context.close();
     } finally {
         await browser.close();

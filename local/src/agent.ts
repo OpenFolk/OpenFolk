@@ -73,7 +73,7 @@ import { synthesize } from './speech.ts';
 import { transcriber } from './voice.ts';
 import { setupVoice, voiceStatus } from './voice-setup.ts';
 import { isInside, MAX_ENTRIES, MAX_LIST, projectDir, listMachineSessions, listVscodeSessions, transcriptStoreError, transcriptPath, Watcher } from './vscode.ts';
-import { availableTemplate, handOver, handoverTargets, hasDesktop, openSignInTerminal, signInCommand } from './handover.ts';
+import { availableTemplate, handOver, handoverIdeName, handoverTargets, hasDesktop, ideFromEnv, openSignInTerminal, signInCommand } from './handover.ts';
 import { claimRelay } from './relay-switch.ts';
 
 import {
@@ -318,6 +318,8 @@ export class BotManager implements SessionHooks {
             protocol: PROTOCOL_VERSION, minClientProtocol: MIN_CLIENT_PROTOCOL,
             handover: this.accountId === ownerAccount() ? handoverTargets() : [], ...(BACKEND_VERSION ? { version: BACKEND_VERSION } : {}),
         };
+        const ide = this.accountId === ownerAccount() ? handoverIdeName() : null;
+        if (ide) Object.assign(status, { ide });
         const json = JSON.stringify(status);
         if (!cid && json === this.backendStatusJson) return;
         if (!cid) this.backendStatusJson = json;
@@ -552,7 +554,7 @@ export class BotManager implements SessionHooks {
             ...(machineSettings().claudeAuth === 'both' ? { keyFallback: keyFallbackState() } : {}),
             offers: {
                 shutdown: available !== 'none', ide: availableTemplate('ide') !== null, terminal: availableTemplate('terminal') !== null,
-                voice: voice.state !== 'unavailable',
+                voice: voice.state !== 'unavailable', ideFromEnv: ideFromEnv(),
             },
         }, cid));
     }
@@ -1306,6 +1308,11 @@ export class BotManager implements SessionHooks {
                     console.log(`machine settings: ${[...changed, ...secrets].join(', ') || 'unchanged'}`);
                     // The speech model loads with these values: the next voice message starts it anew
                     if (changed.includes('voiceModel') || changed.includes('voiceDevice')) transcriber.stop();
+                    // Kept loaded: load it now; no longer kept: the idle limit applies from here on
+                    if (changed.includes('voicePreload')) {
+                        if (after.voicePreload) transcriber.preload();
+                        else transcriber.idleLater();
+                    }
                     // Sessions pick up a new sign-in on their next turn; which engines are ready shows after a new query
                     const signIn = changed.includes('claudeAuth') || changed.includes('claudeKeyBudgetUsd') || changed.includes('engineAuth') || frame.anthropicKey !== undefined || engineKeys.length > 0;
                     if (signIn) for (const s of this.sessions.values()) s.reload();

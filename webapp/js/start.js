@@ -14,7 +14,7 @@ import { autoReadOn, setAutoRead, primeReadAloud, readWaitingAnswer, setupSpeech
 import { addFiles, dictationOn, finishDictation, pauseRecording, rec, setDictation, shrinkImage, startRecording, stopRecording } from './voice.js';
 import { endTalk, startTalk, talkVisibility, tapTalk, toggleTalkMic } from './talk.js';
 import {
-    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, closeSettingsDialog, infoAction, menuButton, newCategory, openGitPage, openMachinesPage,
+    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, newCategory, openGitPage, openMachinesPage,
     renderGitTotal, renderPageTitle, submitText, toggleHeaderSwitch,
 } from './menus.js';
 import { adoptVscodeSession, openVscode, renderVscodeAdoptButton, renderVscodeSub, showInVscode, showVscodeList, vs } from './vscode.js';
@@ -31,11 +31,12 @@ import {
     showNewAccountForm, signOut, switchAccount,
 } from './accounts.js';
 import { openRelay, switchRelay } from './relays.js';
-import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, startQrLogin, stopQrLogin } from './qr-login.js';
+import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, signInWithLink, startQrLogin, stopQrLogin } from './qr-login.js';
 import { VERSION } from './release.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
-import { showSetupLanding } from './setups.js';
+import { showSetupLanding, takeSetupLink } from './setups.js';
 import { onShortcutKey, runCommand, setupPalette } from './palette.js';
+import { closeVideo } from './media.js';
 
 // The first pane exists from the start; on phones and laptops it stays the only one
 createPane();
@@ -60,7 +61,14 @@ function useRelayAddress(text, params) {
 
 el.loginForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
+    // Enter in the field "Invitation link" (the form's own button is for the password)
+    if (el.loginInvite.value.trim()) {
+        await signInWithLink(el.loginInvite.value);
+        return;
+    }
     if (bundled) {
+        // A setup link is no sign-in: it sets this computer up (setups.js)
+        if (takeSetupLink(el.loginRelay.value)) return;
         // The field takes the relay's address or a whole pairing link (address, one-time sign-in, end-to-end key)
         const link = parsePairingLink(el.loginRelay.value);
         const address = link ? useRelayAddress(link.address, link.params) : '';
@@ -97,12 +105,13 @@ el.e2eEnter.addEventListener('click', () => { closeSettings(); askForKey(''); })
 // QR codes: the app scans them itself; with a server address the start page shows its own code
 el.loginScan.addEventListener('click', () => void scanToSignIn());
 el.loginQrRenew.addEventListener('click', renewQrLogin);
+el.loginInviteGo.addEventListener('click', () => void signInWithLink(el.loginInvite.value));
 el.devicesScan.addEventListener('click', () => void scanToApprove());
 el.loginRelay.addEventListener('change', () => {
     if (!bundled) return;
     void checkTotp(true);
     const link = parsePairingLink(el.loginRelay.value);
-    if (!link || link.params.get('pair')) return;
+    if (!link || link.params.get('pair') || link.params.get('setup')) return;
     const before = relayAddress();
     if (!useRelayAddress(link.address, link.params)) return;
     if (relayAddress() !== before) stopQrLogin();
@@ -129,13 +138,14 @@ el.accountsSignOut.addEventListener('click', signOut);
 // The start page's choice of accounts
 el.loginChooseOther.addEventListener('click', showLoginForm);
 el.loginChooseBack.addEventListener('click', backToChooser);
-el.loginChooseNew.addEventListener('click', newAccount);
 el.login.addEventListener('click', closeChooserMenus);
 el.accountsJoin.addEventListener('click', joinAny);
 el.accountsScan.addEventListener('click', () => void scanAny());
-el.accountsOwnSave.addEventListener('click', saveOwnAccount);
-el.accountsOwnClose.addEventListener('click', () => closeSettingsDialog(el.accountsOwn));
-el.accountsOwnName.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') saveOwnAccount(); });
+// The own account saves as a field is left; Enter leaves it
+for (const field of [el.accountsOwnName, el.accountsPassword]) {
+    field.addEventListener('change', saveOwnAccount);
+    field.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') field.blur(); });
+}
 el.accountsCreate.addEventListener('click', createAccount);
 el.accountsLinkGo.addEventListener('click', redeemLink);
 el.accountsLink.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); redeemLink(); } });
@@ -542,6 +552,7 @@ document.addEventListener('keydown', (ev) => {
     if (!el.talk.hidden) { endTalk(); return; }
     const large = document.getElementById('image-view');
     if (large && !large.hidden) { large.hidden = true; return; }
+    if (closeVideo()) return;
     // the docked info panel is a column, not a dialog: Escape closes it only from inside
     const docked = el.app.classList.contains('info-docked') && !el.info.contains(document.activeElement);
     for (const o of [el.palette, el.shortcuts, el.textDialog, el.keyDialog, el.settingsDialog, el.settings, el.rEditor, el.kEditor, el.folderPicker, el.avatarPicker, el.editor, el.gEditor, el.info, el.vscode, el.archive, el.forward]) {

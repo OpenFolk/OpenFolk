@@ -80,8 +80,9 @@ async function startQrJoin({ relay, root, emit, onLink }) {
                 emit({ state: 'error', reason: 'open', message: e.message });
                 return;
             }
-            // A device with a web app from before this feature approves a device sign-in: it sends a pairing link
-            if (!params.get('join')) {
+            // A machine's invitation, or the setup link of the account an admin approved this computer for. A device with
+            // a web app from before this feature approves a device sign-in: it sends a pairing link
+            if (!params.get('join') && !params.get('setup')) {
                 emit({ state: 'error', reason: params.get('pair') ? 'old_app' : 'open', message: 'no invitation' });
                 return;
             }

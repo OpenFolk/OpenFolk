@@ -185,6 +185,27 @@ check('unknown reach refused', !!(await owner.next((m) => m.type === 'error' && 
 owner.send({ type: 'account_update', id, password: 'owner-sets-it-012345' }); // gitleaks:allow
 check('an admin cannot set someone else\'s password', !!(await owner.next((m) => m.type === 'error' && m.request === 'account_update')));
 
+// A profile picture: one's own always, another account's only for an admin, only a small image
+const picture = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+guest.got.length = 0;
+desk.got.length = 0;
+guest.send({ type: 'account_update', id, avatar: picture });
+const withPicture = await guest.next((m) => m.type === 'accounts');
+check('sets its own picture', ((withPicture?.list ?? []) as { id: string; avatar?: string }[]).find((a) => a.id === id)?.avatar === picture, withPicture);
+check('… backends get it with the people', !!(await desk.next((m) => m.type === 'people' && (m.list as { id: string; avatar?: string }[]).some((p) => p.id === id && p.avatar === picture))));
+guest.send({ type: 'account_update', id: 'main', avatar: picture });
+check('not another account\'s picture', !!(await guest.next((m) => m.type === 'error' && m.request === 'account_update')));
+guest.send({ type: 'account_update', id, avatar: 'javascript:alert(1)' });
+check('no picture that is no image', !!(await guest.next((m) => m.type === 'error' && m.request === 'account_update')));
+guest.send({ type: 'account_update', id, avatar: `data:image/png;base64,${'A'.repeat(200_000)}` });
+check('no picture that is too large', !!(await guest.next((m) => m.type === 'error' && m.request === 'account_update')));
+owner.got.length = 0;
+owner.send({ type: 'account_update', id, avatar: null });
+const removed = await owner.next((m) => m.type === 'accounts');
+check('an admin removes another account\'s picture', !((removed?.list ?? []) as { id: string; avatar?: string }[]).find((a) => a.id === id)?.avatar, removed);
+owner.send({ type: 'account_update', id, avatar: picture });
+check('an admin sets another account\'s picture', ((await owner.next((m) => m.type === 'accounts' && (m.list as { id: string; avatar?: string }[]).some((a) => a.id === id && a.avatar === picture))) !== undefined));
+
 // The machines an account runs on
 owner.send({ type: 'accounts' });
 const withMachines = await owner.next((m) => m.type === 'accounts');

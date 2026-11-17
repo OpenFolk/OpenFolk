@@ -92,5 +92,13 @@ export default async function ({ start, check }) {
     await h.wait(300);
     const saved = h.sent.find((f) => f.type === 'bot_save');
     check('saving sends the contact along', saved && saved.bot.contact === 'kunde', saved);
+    await p.keyboard.press('Escape');
+
+    // The person's picture, set on the relay, shows instead of the initials
+    const picture = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+    await h.push({ type: 'people', machine: 'desk', list: [{ ...people[0], avatar: picture }], chats: [] });
+    await p.evaluate(() => openChat('p:kunde'));
+    await h.wait(300);
+    check('a person\'s picture in the chat\'s header', (await p.evaluate(() => document.querySelector('.pane:not([hidden]) [data-el=chat-avatar] img')?.getAttribute('src'))) === picture);
     check('no page errors', h.errors.length === 0, h.errors);
 }

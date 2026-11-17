@@ -42,7 +42,7 @@ Optional schränkt Tailscale die Verbindung des Backends weiter ein (`docs/tails
 > ein Mac braucht eine Anmeldung, und die automatische Anmeldung der Desktop-Sitzung gibt es nur unter Windows. Das
 > Relay läuft überall, wo Node 22 oder Docker läuft.
 
-**In zwei Minuten ausprobieren:** die Desktop-App installieren und „Auf diesem Rechner starten“ wählen:
+**In zwei Minuten ausprobieren:** die Desktop-App installieren und unten auf der Startseite „Auf diesem Rechner starten“ wählen:
 
 | System | Download | Hinweis |
 | --- | --- | --- |
@@ -135,7 +135,9 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   Favorit, Stumm und Suche wie bei jedem Chat. Ein Bot mit „Übergabe an“ in seinen Einstellungen bekommt das
   Werkzeug `hand_over`: Er schickt der Person seine Zusammenfassung, sie bekommt eine Benachrichtigung, und der User
   im Bot-Chat einen Knopf „Weiter mit …“. Bots lesen Chats zwischen Personen nicht.
-- **Dateien** anhängen, einfügen oder hineinziehen; Bots schicken Dateien mit `send_file`. Auf Wunsch setzt ein Bot
+- **Dateien** anhängen, einfügen oder hineinziehen; Bots schicken Dateien mit `send_file`. Bilder
+  stehen direkt im Chat (auch die eines Bots, vom Rechner geholt) und öffnen sich mit einem Tipp groß; Videos (MP4,
+  WebM, MOV) laufen in der App. Bis 20 MB je Datei, Ende-zu-Ende verschlüsselt über das Relay. Auf Wunsch setzt ein Bot
   mit `set_avatar` sein eigenes Profilbild aus einem Bild in seinem Ordner (PNG, JPEG, WebP oder GIF bis 300 KB) oder
   erzeugt eines mit `make_avatar` wie „KI-Avatar“ im Editor (Foto mit dem Schlüssel des Bildmodells, sonst gezeichnet);
   sein Chat sagt es, der Editor setzt ein anderes zurück.
@@ -201,8 +203,10 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   VS-Code-Erweiterung und der CLI stehen mit darin; weitergemacht wird mit Codex, und das braucht die ChatGPT-Anmeldung.
   Für Cursor, Copilot, Antigravity und OpenCode gibt es keine lesbare Liste ihrer Sessions.
   „Diesen Chat in der IDE öffnen“ und „… im Terminal öffnen“ über der Liste übergeben die Session eines Chats an seinen
-  Rechner, standardmäßig an VS Code (mit Claude Code für VS Code) oder an ein Terminal mit `claude --resume`; andere
-  Befehle über `HANDOVER_IDE` und `HANDOVER_TERMINAL`, abschalten in den Einstellungen des Rechners. Läuft das Backend ohne Desktop (Windows-Aufgabe in Sitzung 0,
+  Rechner: an eine IDE mit der Claude-Code-Erweiterung (standardmäßig VS Code; Cursor, Windsurf, VS Code Insiders oder
+  VSCodium in den Einstellungen des Rechners gewählt, der Knopf nennt sie dann) oder an ein Terminal mit `claude --resume`;
+  `HANDOVER_IDE` und `HANDOVER_TERMINAL` in der `.env` setzen andere Befehle und gehen der Auswahl vor, abschalten in den
+  Einstellungen des Rechners. Läuft das Backend ohne Desktop (Windows-Aufgabe in Sitzung 0,
   Linux-Dienst), öffnet die Desktop-App in der angemeldeten Sitzung die Fenster für es.
 - **Mehrere Rechner:** Auf jedem Rechner läuft dasselbe Backend, die Bots gibt es nur einmal. Jeder Bot wohnt auf
   einem Rechner und arbeitet dort in einem Ordner; schläft der Rechner, schläft der Bot, und die App bietet das
@@ -335,7 +339,7 @@ mit einem Volume; es speichert keine Nachrichten und sieht keine Zugangsdaten.
 3. **Relay übernehmen** von dem Rechner, auf dem dein Backend schon läuft. Desktop-App: Einstellungen → „Geräte und
    Sicherheit“ → „Auf ein Relay auf einem Server umziehen“, Adresse und Code eingeben; das Backend zieht ohne Neustart
    um, die Seite folgt und ist dort angemeldet. Quellcode: `npm run claim -- https://relay.example.com <Code>` und dann
-   `npm run restart`. Nicht „Nur anzeigen: mit einem bestehenden Relay-Server verbinden“ auf der Setup-Seite der
+   `npm run restart`. Nicht „Mit Relay-Server und Passwort anmelden“ auf der Startseite der
    Desktop-App wählen: Das startet auf diesem Rechner kein Backend mehr, die Bots gehen offline.
 4. **Handy koppeln:** Einstellungen → „Geräte und Sicherheit“ → „Weiteres Gerät koppeln“, den QR-Code mit dem Handy
    scannen (Link einmalig, 15 Minuten). Im Browser die Adresse des Relays öffnen und als App zum Home-Bildschirm
@@ -454,8 +458,11 @@ eingerichtet hat, besitzt das Hauptkonto; solange es kein zweites gibt, ändert 
   weiteren Personen auf diesem Relay mit „Einladungslink erstellen“, Admin und Löschen. Ein Knopf „Hinzufügen“ nimmt,
   was man bekommen hat: eine Einladung in ein Konto, einen Kopplungslink eines anderen Relays oder nur die Adresse
   eines Relays (dann fragt die App nach Konto und Passwort); ein Admin legt dort auch eine neue Person an („Konto
-  anlegen und Einladungslink erstellen“). Die Einladung ist ein Kopplungslink mit QR-Code, 15 Minuten gültig; wer ihn
+  anlegen und Einladungslink erstellen“). Die Einladung ist ein Kopplungslink mit QR-Code, 7 Tage und einmal gültig (ein neuer ersetzt ihn); wer ihn
   öffnet, ist im neuen Konto angemeldet und kann sich danach ein eigenes Passwort setzen. Das Hauptkonto ist immer Admin.
+- **Profilbilder:** „Bearbeiten“ am eigenen Konto setzt sein Bild (quadratisch zugeschnitten, auf dem Gerät
+  verkleinert); ein Admin setzt es für jedes Konto unter „Bearbeiten“ in dessen Zeile. Das Relay hält es neben dem
+  Namen des Kontos, Personen-Chats und Kontenliste zeigen es statt der Initialen.
 - **Rechner je Konto:** Im Formular für ein neues Konto und unter „Bearbeiten“ in seiner Zeile hakt ein Admin an, auf
   welchen Rechnern des Relays das Konto läuft: „Alle meine Rechner, auch neue“ (Standard) oder einzeln, etwa nur den
   Cloud-Server für einen Kollegen und keinen für einen Kunden. Ein Rechner ohne Haken bedient das Konto nicht, und
@@ -468,8 +475,12 @@ eingerichtet hat, besitzt das Hauptkonto; solange es kein zweites gibt, ändert 
   siehe unten), auf einem Handy nicht zu erledigen. Deshalb zuerst das Konto anlegen und die Einladung auf dem eigenen
   PC öffnen (ein schon angemeldetes Gerät kommt so ins neue Konto dazu), dort die Anmeldung für jeden Rechner machen,
   dessen Bots die Person nutzen soll, und erst dann in der Liste der Konten eine neue Einladung für die Person erstellen.
-  Sie öffnet den Link oder scannt den Code auf ihrem Gerät und sieht ein fertiges Konto. Link und QR-Code sind dieselbe
-  Einladung und gelten einmal: entweder den Link öffnen oder den Code scannen, nicht beides.
+  Sie öffnet den Link oder fügt ihn auf der Anmeldung (Browser, Apps, Startseite der Desktop-App) ins Feld
+  „Einladungslink“ ein und sieht ein fertiges Konto. Link und QR-Code sind dieselbe Einladung und gelten einmal:
+  entweder den Link öffnen oder den Code scannen, nicht beides.
+- **Per QR-Code statt Link:** Die Anmeldung der Person zeigt einen QR-Code; in der Zeile ihres Kontos „QR-Code
+  scannen“ und bestätigen, dann ist ihr Gerät in ihrem Konto angemeldet. Zeigt die Startseite ihrer Desktop-App den
+  Code, geht so der Einrichtungslink an ihren Computer (Konto mit gespeicherter Einrichtung, siehe unten).
 - **Wechseln:** Der Name neben dem Titel in der Seitenleiste zeigt das aktive Konto und wechselt zwischen den Konten
   und Relays dieses Geräts; ein Einladungslink auf einem schon angemeldeten Gerät fügt sein Konto ebenfalls hinzu.
 - **Abmelden:** „Abmelden“ in diesem Menü (oder ganz unten in den Einstellungen) führt zur Auswahl der Konten dieses Geräts;
@@ -514,9 +525,13 @@ sich dort bei Claude an; du bereitest alles vor und schickst ihr einen Link.
    Projekt aus dem Code und ändert nichts), und einen Entwicklungsbot, der das Projekt ändert und pusht, jeweils mit
    der https-Adresse des Repositorys und einem eigenen Token dafür (für den Supportbot ein Lese-Token). Ankreuzen, wen
    die Person anschreiben kann (dich und weitere Teammitglieder) und an wen die Bots ein Gespräch übergeben. Speichern.
-2. **Link:** „Einrichtungslink erzeugen“ liefert einen Link, 7 Tage und einmal gültig; ein neuer ersetzt ihn, „Link
-   widerrufen“ beendet ihn. Er enthält den Schlüssel eurer Chats, also nur an diese Person schicken.
-3. **Die Person öffnet ihn:** Die Seite des Relays hat „In OpenFolk öffnen“; die Desktop-App fragt einmal und tritt
+2. **Link:** „Einladungslink erstellen“ in der Zeile des Kontos liefert bei einem Konto mit gespeicherter
+   Einrichtung den Einrichtungslink, 7 Tage und einmal gültig; ein neuer ersetzt ihn, „Link widerrufen“ beendet ihn.
+   Er enthält den Schlüssel eurer Chats, also nur an diese Person schicken. Ihr Handy koppelt die Person danach in
+   ihrer Desktop-App („Weiteres Gerät koppeln“).
+3. **Die Person öffnet ihn:** Die Seite des Relays hat „In OpenFolk öffnen“, oder sie fügt ihn auf der Startseite der
+   Desktop-App ins Feld „Einladungslink“ ein (statt des Links geht auch „QR-Code scannen“ in der Zeile ihres Kontos);
+   die Desktop-App fragt einmal und tritt
    dann deinem Relay als Rechner bei, der an dieses Konto gebunden ist. Sie klont jedes Repository mit seinem Token in
    einen eigenen Ordner und legt die Bots an. Die Person sieht ihre Bots und die Personen, denen sie schreiben darf,
    sonst nichts.

@@ -271,7 +271,9 @@ export function showImageLarge(src, name, path = '') {
     o.classList.toggle('photo', Boolean(path));
     o.dataset.path = path;
     const img = o.querySelector('img');
-    if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+    // Only the view's own original goes: a picture shown from the bubble's cache (media.js) is still needed there
+    if (img.dataset.owned && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+    delete img.dataset.owned;
     if (src) img.src = src;
     else img.removeAttribute('src');
     img.alt = name || '';
@@ -284,6 +286,7 @@ export function imageOriginal(f) {
     if (!o || o.hidden || o.dataset.path !== f.path) return;
     const bytes = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0));
     showImageLarge(URL.createObjectURL(new Blob([bytes], { type: f.mime })), f.name, f.path);
+    /** @type {HTMLImageElement} */ (o.querySelector('img')).dataset.owned = '1';
 }
 
 export function shortFolder(folder) {
