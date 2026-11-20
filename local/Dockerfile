@@ -13,21 +13,21 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl git gosu openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
-# The Claude Code CLI for the one-time sign-in (`claude`); the sessions run on the binary bundled with the Agent SDK.
-# Pinned to the version that SDK bundles (claudeCodeVersion in its package.json), so a rebuild gives the same image.
-ARG CLAUDE_CODE_VERSION=2.1.296
-# The npm cache is cleaned in the same layer, otherwise it stays in the image (~0.7 GB after npm ci).
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} --no-audit --no-fund \
-    && npm cache clean --force
-
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY local/package.json local/
 # npm installs the musl builds of the Agent SDK and Copilot next to the glibc ones (~0.4 GB); this image is glibc
 # (bookworm), so they are never loaded. Codex ships only a musl binary, it lives inside codex-linux-* and stays.
+# The npm cache is cleaned in the same layer, otherwise it stays in the image (~0.7 GB after npm ci).
+# `claude` (the CLI for the one-time sign-in) is the native binary the Agent SDK bundles, linked instead of a second
+# global install of @anthropic-ai/claude-code (~260 MB): same version by construction, the sessions run on it anyway.
 RUN npm ci -w local --omit=dev --no-audit --no-fund \
     && npm cache clean --force \
-    && rm -rf node_modules/@*/*musl* node_modules/opencode-*-musl
+    && rm -rf node_modules/@*/*musl* node_modules/opencode-*-musl \
+    && bin=$(ls node_modules/@anthropic-ai/claude-agent-sdk-linux-*/claude | head -n 1) \
+    && test -x "$bin" \
+    && ln -s "/app/$bin" /usr/local/bin/claude \
+    && claude --version
 COPY shared ./shared
 COPY local/src ./local/src
 COPY local/tools ./local/tools

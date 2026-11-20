@@ -39,6 +39,27 @@ export function deviceForm() {
  */
 export const bundled = isNative || location.protocol === 'openfolk:';
 
+/**
+ * The desktop app's bridge for setting up the computer the window runs on (desktop/preload.js, main.js): after a
+ * sign-in at a relay the app asks whether this computer still has no backend there (`wanted`), learns the end-to-end
+ * key the page takes over (`key`, so the backend it starts reads what the account's other devices read) and gets the
+ * relay's invitation for this computer (`offer`). While the app signs this page in out of sight (desktop/main.js
+ * signInAway), `none` says there is nothing to set up and `needed` that the user has to sign in: the window then shows
+ * the web app itself. Null everywhere else.
+ * @type {{ wanted: (relay: string) => Promise<{ wanted: boolean, key: boolean }>, key: (relay: string, key: string) => void, offer: (o: { relay: string, kind: string, token: string }) => void, none: () => void, needed: (message?: string, code?: string) => void } | null}
+ */
+export const desktopMachine = (() => {
+    const d = /** @type {any} */ (window).openfolkDesktop;
+    if (!bundled || !d || typeof d.machineWanted !== 'function') return null;
+    return {
+        wanted: (relay) => d.machineWanted(relay).then((r) => ({ wanted: !!(r && r.wanted), key: !!(r && r.key) }), () => ({ wanted: false, key: false })),
+        key: (relay, key) => { void d.machineKey(relay, key); },
+        offer: (o) => { void d.machineOffer(o); },
+        none: () => { if (typeof d.machineNone === 'function') void d.machineNone(); },
+        needed: (message = '', code = '') => { if (typeof d.signInNeeded === 'function') void d.signInNeeded(String(message), String(code)); },
+    };
+})();
+
 /** An Apple keyboard: the shortcuts take Cmd instead of Ctrl, and the overview shows the keys' symbols. */
 export const appleKeys = /Mac|iPhone|iPad/.test(/** @type {any} */ (navigator).userAgentData?.platform || navigator.platform || '');
 /** The key of the shortcuts held alone: Cmd on a Mac, Ctrl elsewhere (AltGr reports Ctrl and Alt, and is no shortcut). */

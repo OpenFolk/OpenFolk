@@ -1,10 +1,9 @@
-/* OpenFolk web app: the first steps, shown in place of the chat list while there is nothing to show yet. */
+/* OpenFolk web app: the sign-in to an AI provider in the start view, while no engine of a connected machine is ready. */
 import { t } from './i18n.js';
-import { node, state } from './core.js';
-import { send, upper } from './e2e.js';
+import { el, node, state } from './core.js';
+import { responsibleMachine, send, upper } from './e2e.js';
 import { keyField } from './settings.js';
 import { renderChatList } from './list.js';
-import { relayClaimForm } from './relay-claim.js';
 
 /** Engines the web app can sign in with a device code (DEVICE_LOGIN_ENGINES in shared/protocol.ts). */
 const DEVICE_LOGIN = ['codex', 'copilot'];
@@ -32,7 +31,7 @@ export function signInTerminalAnswer(machine, message = '', via = undefined) {
 }
 
 /**
- * @typedef {{ title?: string, done: boolean, text: string, code?: string, buttons?: { label: string, run: () => void, disabled?: boolean }[], extra?: HTMLElement }} Step
+ * @typedef {{ title?: string, done: boolean, lost?: boolean, text: string, code?: string, buttons?: { label: string, run: () => void, disabled?: boolean }[], extra?: HTMLElement }} Step
  */
 
 /**
@@ -91,9 +90,29 @@ function tryWithoutSignIn(machine, off) {
 function signInStep() {
     const known = state.online.filter((m) => state.setupPerMachine[m]);
     if (!known.length) return { done: true, text: t('welcome.aiDone') };
-    const ready = known.filter((m) => Object.values(state.setupPerMachine[m].engines || {}).includes('ready'));
-    if (ready.length) return { done: true, text: t('welcome.aiDone') };
-    const machine = known[0];
+    const ready = (m) => Object.values(state.setupPerMachine[m].engines || {}).includes('ready');
+    // A machine that runs bots and lost its sign-in (it expired, a token was revoked): named with its bots, also while
+    // another machine is fine, since those bots answer nothing until it is signed in again
+    const lost = known.find((m) => !ready(m) && Object.keys(state.setupPerMachine[m].engines || {}).length && botsOn(m).length);
+    if (lost) {
+        const step = machineStep(lost);
+        return { ...step, lost: true, title: t('welcome.aiLostTitle', { machine: upper(lost) }), text: `${t('welcome.aiLost', { machine: upper(lost), bots: botsOn(lost).join(', ') })} ${step.text}` };
+    }
+    if (known.some(ready)) return { done: true, text: t('welcome.aiDone') };
+    return machineStep(known[0]);
+}
+
+/** Names of the bots that run on a machine right now. */
+function botsOn(machine) {
+    return state.bots.filter((b) => responsibleMachine(b) === machine).map((b) => b.name);
+}
+
+/**
+ * The sign-in on one machine, while none of its engines is ready.
+ * @param {string} machine
+ * @returns {Step}
+ */
+function machineStep(machine) {
     const s = state.setupPerMachine[machine];
     if (s.noEngine) return chooseStep(machine);
     const engines = s.engines || {};
@@ -178,64 +197,40 @@ function signInStep() {
 }
 
 /**
- * Four steps a new installation goes through: a machine with a backend, a sign-in to an AI provider there, the first
- * bot, the other devices. Steps that are done get a check mark; the next open one carries its button. Re-rendered
- * with the chat list, so it follows the machines, their sign-ins and the bots as they appear.
- * @param {{ newBot: () => void, devices: () => void }} actions
+ * The sign-in to an AI provider while a machine is connected and none of its engines is ready yet; null otherwise.
+ * Shown in the start view next to the list (renderStartSetup) and, on a phone, where the start view is out of sight,
+ * at the top of the list (list.js). Built anew with every render of the list, so it follows the sign-ins as they come.
+ * @returns {HTMLElement | null}
  */
-export function renderWelcome(actions) {
-    const box = node('li', 'welcome');
-    box.append(node('h2', '', t('welcome.title')), node('p', 'welcome-intro', t('welcome.intro')));
-    const machineDone = state.online.length > 0;
-    const botDone = state.bots.length > 0;
-    const ai = machineDone ? signInStep() : { done: false, text: t('welcome.aiWaiting') };
-    // Only this computer reaches an embedded relay; a phone needs a relay of one's own on a server
-    const embedded = state.online.some((m) => state.setupPerMachine[m]?.relay === 'embedded');
-    /** @type {Step[]} */
-    const steps = [
-        {
-            done: machineDone,
-            title: t('welcome.machine'),
-            text: machineDone ? t('welcome.machineDone', { machines: state.online.map(upper).join(', ') }) : t('welcome.machineOff'),
-            code: machineDone ? '' : 'npm start',
-        },
-        { title: t('welcome.ai'), ...ai },
-        {
-            done: botDone,
-            title: t('welcome.bot'),
-            text: botDone ? t('welcome.botDone') : t('welcome.botText'),
-            buttons: botDone || !machineDone ? [] : [{ label: t('welcome.botButton'), run: actions.newBot }],
-        },
-        {
-            done: false,
-            title: t('welcome.devices'),
-            text: t('welcome.devicesText') + (embedded ? ` ${t('welcome.devicesEmbedded')}` : ''),
-            buttons: machineDone && !embedded ? [{ label: t('welcome.devicesButton'), run: actions.devices }] : [],
-            // The phone needs a relay on a server: claim it from here, the backend moves over
-            extra: (embedded && relayClaimForm(renderChatList)) || undefined,
-        },
-    ];
-    const list = node('ol', 'welcome-steps');
-    steps.forEach((s, i) => {
-        const item = node('li', s.done ? 'done' : '');
-        const mark = node('span', 'welcome-mark', s.done ? '✓' : String(i + 1));
-        const body = node('div', 'welcome-body');
-        body.append(node('strong', '', s.title), node('span', '', s.text));
-        if (s.code && !s.done) body.append(node('code', '', s.code));
-        for (const button of s.buttons ?? []) {
-            const b = /** @type {HTMLButtonElement} */ (node('button', 'primary small', button.label));
-            b.type = 'button';
-            b.disabled = Boolean(button.disabled);
-            b.addEventListener('click', button.run);
-            body.append(b);
-        }
-        if (s.extra) body.append(s.extra);
-        item.append(mark, body);
-        list.append(item);
-    });
-    box.append(list);
-    const docs = node('p', 'welcome-docs');
-    docs.innerHTML = t('welcome.docs');
-    box.append(docs);
-    return box;
+export function setupCard(lost = false) {
+    const step = state.online.length ? signInStep() : null;
+    // A machine that lost its sign-in is a matter of the status page (and the "!" on its tab), not of the chat list;
+    // the list and the start view keep the first steps of a new installation
+    if (!step || step.done || Boolean(step.lost) !== lost) return null;
+    const body = node('div', 'welcome-body');
+    body.append(node('strong', '', step.title || t('welcome.ai')), node('span', '', step.text));
+    if (step.code) body.append(node('code', '', step.code));
+    for (const button of step.buttons ?? []) {
+        const b = /** @type {HTMLButtonElement} */ (node('button', 'primary small', button.label));
+        b.type = 'button';
+        b.disabled = Boolean(button.disabled);
+        b.addEventListener('click', button.run);
+        body.append(b);
+    }
+    if (step.extra) body.append(step.extra);
+    return body;
+}
+
+/** Whether a machine that runs bots lost its sign-in (the status page shows it, its tab gets a "!"). */
+export function signInLost() {
+    return state.online.length > 0 && Boolean(signInStep().lost);
+}
+
+/** The start view's copy of the sign-in (setupCard), or nothing. */
+export function renderStartSetup() {
+    const box = el.chatSetup;
+    if (!box) return;
+    const card = setupCard();
+    box.replaceChildren(...(card ? [card] : []));
+    box.hidden = !card;
 }

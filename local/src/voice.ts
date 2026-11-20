@@ -13,7 +13,14 @@ import { voicePython, voiceStatus } from './voice-setup.ts';
 
 const SCRIPT = path.join(projectRoot, 'local', 'tools', 'transcribe.py');
 const IDLE_MIN = 30;
-const START_TIMEOUT_S = 180;
+/**
+ * Right after a machine starts or wakes, loading Python, the CUDA libraries and 1.6 GB of model from a cold disk takes
+ * minutes; with three, the first voice message after waking failed while Whisper was still loading.
+ */
+const START_TIMEOUT_S = 10 * 60;
+/** A preload that failed (often the graphics card not ready yet after waking) is tried again this often, this far apart. */
+const PRELOAD_RETRIES = 3;
+const PRELOAD_RETRY_S = 90;
 /** A model not on the machine yet is downloaded at the start (up to 1.6 GB); transcribe.py says so first. */
 const DOWNLOAD_TIMEOUT_S = 30 * 60;
 const JOB_TIMEOUT_S = 180;
@@ -133,6 +140,22 @@ class Transcriber {
         this.start().catch(() => { /* the transcription reports the error itself */ });
     }
 
+    private retry: NodeJS.Timeout | null = null;
+
+    /** Loads the model for good (voicePreload); a failed start is tried again a few times, the reason in the log. */
+    private keepLoaded(left = PRELOAD_RETRIES): void {
+        this.idleLater();
+        this.start().catch((e: Error) => {
+            if (!machineSettings().voicePreload || left <= 0) {
+                log(`Whisper not loaded: ${e.message}`);
+                return;
+            }
+            log(`Whisper not loaded (${e.message}), trying again in ${PRELOAD_RETRY_S} s`);
+            if (this.retry) clearTimeout(this.retry);
+            this.retry = setTimeout(() => { this.retry = null; if (!this.ready) this.keepLoaded(left - 1); }, PRELOAD_RETRY_S * 1000);
+        });
+    }
+
     /** Stops the service after IDLE_MIN without work, unless the machine keeps the model loaded (voicePreload). */
     idleLater(): void {
         if (this.idle) clearTimeout(this.idle);
@@ -150,7 +173,7 @@ class Transcriber {
         void voiceStatus().then((s) => {
             if (s.state !== 'ready') return;
             log('loading Whisper at start');
-            this.warmUp();
+            this.keepLoaded();
         });
     }
 
@@ -190,6 +213,8 @@ class Transcriber {
     stop(): void {
         if (this.idle) clearTimeout(this.idle);
         this.idle = null;
+        if (this.retry) clearTimeout(this.retry);
+        this.retry = null;
         this.proc?.stdin.end();
         this.proc?.kill();
     }

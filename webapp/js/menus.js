@@ -48,6 +48,9 @@ export const ICONS = {
     speaker: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/>',
     stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
     copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
+    link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+    up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+    down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
     forward: '<path d="M15 5l5 5-5 5"/><path d="M20 10H10a6 6 0 0 0-6 6v4"/>',
     monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     folder: '<path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
@@ -133,20 +136,13 @@ export function chatSwitches(id, picked) {
     return parts;
 }
 
-/** Entries that stand above the switches, at the very top of a bot's menu and page. */
-const TOP_ACTIONS = ['conversation_new', 'main_to_conversation', 'rename'];
-
-/** The chat's entries split into those at the very top and the rest. */
-function splitTopButtons(buttons) {
-    const isTop = (k) => TOP_ACTIONS.includes(k.dataset.action);
-    return [buttons.filter(isTop), buttons.filter((k) => !isTop(k))];
-}
-
-/** The menu of a chat on a long press or right click in the list: "New conversation", switches, then the entries. */
+/**
+ * The menu of a chat on a long press or right click in the list: the switches, then the entries, led by "New
+ * conversation" and "Move to a conversation" (chatMenuButtons puts them first).
+ */
 export function fillChatMenu(menu, id) {
     delete menu.dataset.view;
-    const [top, rest] = splitTopButtons(chatMenuButtons(id));
-    menu.replaceChildren(...top, ...chatSwitches(id, () => { menu.hidden = true; }), ...rest);
+    menu.replaceChildren(...chatSwitches(id, () => { menu.hidden = true; }), ...chatMenuButtons(id));
 }
 
 // Model switch at the top of the chat menu: takes effect right away, the context stays (in the main chat for the bot,
@@ -359,9 +355,9 @@ export function renderInfoChat(force = false) {
         head.append(node('strong', '', conversationTitle(id)), node('span', '', t('info.conversation')));
         parts.unshift(head);
     }
-    const [top, rest] = splitTopButtons(chatMenuButtons(id, true));
-    el.infoSwitches.replaceChildren(...top, ...parts);
-    el.infoActions.replaceChildren(...rest);
+    // The entries below the switches, "New conversation" and "Move to a conversation" at their top
+    el.infoSwitches.replaceChildren(...parts);
+    el.infoActions.replaceChildren(...chatMenuButtons(id, true));
 }
 
 /** The info covers the chat on the phone and as an overlay: whatever leads to the chat leaves it; docked it stays. */
@@ -774,6 +770,8 @@ function gitOpenAll() {
 export function receiveGitStatus(f) {
     state.gitPerMachine[f.machine || '?'] = f.status || {};
     renderChatList();
+    // the headers show the open changes of their bot too
+    renderHeaders();
     renderGitTotal();
     refreshMachinesPage();
 }

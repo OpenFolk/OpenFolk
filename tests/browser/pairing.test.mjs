@@ -64,6 +64,7 @@ export default async function ({ start, check }) {
     const app = await start({ secure: true, device: null, before: fakeCapacitor, bots: [BOT], auth: (f) => (f.pair === 'app-token'
         ? { type: 'auth', ok: true, device: { id: 'dev2', token: 'dev2.secret', name: 'Pixel' } }
         : { type: 'auth', ok: false, code: 'wrong_password', message: 'no' }) });
+    await app.page.selectOption('#login-method', 'password');
     await app.page.fill('#login-relay', `https://relay.example.com/#pair=app-token&e2e=${KEY}`);
     await app.page.click('#login-form button[type="submit"]');
     await app.wait(300);

@@ -421,7 +421,23 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
             reply({ type: 'machine_tokens', list: machineTokens.all() });
             return;
         }
-        void handleWakeRequest(request, reply, (host) => bridge.markWoken(host));
+        if (request.type === 'machine_own') {
+            // The computer a signed-in device sits at: 'main' gets one of the relay's own machines, every other account
+            // a machine bound to it, which serves that account only and brings nobody else in
+            const invite = context.account === MAIN ? machineTokens.invite() : machineTokens.ownInvite(context.account);
+            log(`Invitation for the own computer of account ${context.account} (by device ${context.device}), valid until ${invite.expiresAt}`);
+            reply({ type: 'machine_own', kind: context.account === MAIN ? 'join' : 'setup', ...invite });
+            return;
+        }
+        // The status list and waking: an account sees and wakes only the machines that serve it, not the owner's others
+        const visible = (host: string) => bridge.machineVisible(host, context.account);
+        if (request.type === 'wake' && !visible(String(request.host ?? ''))) {
+            reply({ type: 'wake_result', host: request.host, ok: false, code: 'unknown_machine', message: 'Unknown machine.' });
+            return;
+        }
+        void handleWakeRequest(request, (f) => reply(f.type === 'machine_status'
+            ? { ...f, hosts: Object.fromEntries(Object.entries(f.hosts).filter(([host]) => visible(host))) }
+            : f), (host) => bridge.markWoken(host));
     }, machinesSeen);
     bridge.accountList = () => ({ ids: accounts.ids(), deleted: accounts.deletedIds(), people: accounts.people() });
     bridge.setupBy = (id) => accounts.setupBy(id);

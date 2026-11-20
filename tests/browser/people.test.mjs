@@ -100,5 +100,29 @@ export default async function ({ start, check }) {
     await p.evaluate(() => openChat('p:kunde'));
     await h.wait(300);
     check('a person\'s picture in the chat\'s header', (await p.evaluate(() => document.querySelector('.pane:not([hidden]) [data-el=chat-avatar] img')?.getAttribute('src'))) === picture);
+    // A backend from before profile pictures answers last without the picture: it stays
+    const headerPicture = () => p.evaluate(() => document.querySelector('.pane:not([hidden]) [data-el=chat-avatar] img')?.getAttribute('src') || null);
+    await h.push({ type: 'people', machine: 'old', list: people, chats: [] });
+    await h.wait(200);
+    check('… kept when an older backend sends the people without it', (await headerPicture()) === picture);
+    // Removed on the relay: no backend has it any more, the initials come back
+    await h.push({ type: 'people', machine: 'desk', list: people, chats: [] });
+    await h.wait(200);
+    check('… and gone once no backend has it', (await headerPicture()) === null);
     check('no page errors', h.errors.length === 0, h.errors);
+    await h.close();
+
+    // An invited account: everyone its invitation lets it write to is in the list from the start, without a message
+    const marco = [{ id: 'main', name: 'Marco', admin: true, reach: 'all' }];
+    const inv = await start({
+        bots: [], device: 'test', auth: () => ({ type: 'auth', ok: true, account: { id: 'erik', name: 'Erik', admin: false } }),
+        onSend: async (f, push, z, reply) => {
+            if (f.type === 'auth' || f.type === 'people') await reply({ type: 'people', machine: 'desk', list: marco, chats: [] });
+        },
+    });
+    await inv.push({ type: 'people', machine: 'desk', list: marco, chats: [] });
+    await inv.wait(300);
+    const invRows = await inv.page.evaluate(() => [...document.querySelectorAll('#chat-list li[data-chat]')].map((l) => l.dataset.chat));
+    check('invited account: the people it may write to are in the list without a message', invRows.includes('p:main'), invRows);
+    await inv.close();
 }

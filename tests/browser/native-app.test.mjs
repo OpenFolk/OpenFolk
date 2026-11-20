@@ -46,9 +46,10 @@ function fakeCapacitor() {
 export default async function ({ start, check }) {
     // ---- in the browser the server URL is the page's own origin, shown but not editable; the socket goes there
     const web = await start({ device: null });
+    await web.page.selectOption('#login-method', 'password');
     check('browser: server URL shown read-only', await web.page.isVisible('#login') && await web.page.evaluate(() => {
         const i = /** @type {HTMLInputElement} */ (document.getElementById('login-relay'));
-        return !!i.offsetParent && i.readOnly && i.value === location.origin && i.previousElementSibling.textContent === 'Server URL';
+        return !!i.offsetParent && i.readOnly && i.value === location.origin && i.previousElementSibling.textContent === 'URL';
     }));
     await web.page.fill('#login-token', 'secret');
     await web.page.click('#login-form button[type="submit"]');
@@ -60,15 +61,20 @@ export default async function ({ start, check }) {
     // ---- the app: asks for the relay first, even with a device key
     const h = await start({ secure: true, before: fakeCapacitor, bots: [{ id: 'pdf', name: 'PDF-Reader', role: 'Test', avatar: '', folder: 'C:/www/pdf', model: 'default', approval: 'risky', tone: '', machine: '' }] });
     const p = h.page;
+    check('app: the choice of the setup method first, no field yet', await p.isVisible('#login-method') && await p.evaluate(() => [...document.querySelectorAll('#login-form label input')].filter((i) => i.offsetParent).length === 0));
+    check('app: the methods', await p.evaluate(() => [...document.querySelectorAll('#login-method option')].map((o) => o.value).join(',')) === ',invite,password,qr');
+    await p.selectOption('#login-method', 'qr');
+    check('app: the QR code needs the URL first', await p.evaluate(() => [...document.querySelectorAll('#login-form label input')].filter((i) => i.offsetParent).map((i) => i.id).join(',')) === 'login-relay');
+    await p.selectOption('#login-method', 'password');
     check('app: login with editable server URL', await p.isVisible('#login') && await p.isEditable('#login-relay'));
-    check('app: invitation link, relay, password and name from the start, no code field while no relay asks for one', await p.evaluate(() => [...document.querySelectorAll('#login-form label input')].filter((i) => i.offsetParent).map((i) => i.id).join(',')) === 'login-invite-link,login-relay,login-token,login-name');
+    check('app: URL and password: relay, password and name, no code field while no relay asks for one', await p.evaluate(() => [...document.querySelectorAll('#login-form label input')].filter((i) => i.offsetParent).map((i) => i.id).join(',')) === 'login-relay,login-token,login-name');
     check('app: no connection without relay address', !(await p.evaluate(() => window.__wsUrls)));
 
     await p.fill('#login-relay', 'ftp://example.com');
     await p.fill('#login-token', 'secret');
     await p.click('#login-form button[type="submit"]');
     await h.wait(100);
-    check('invalid address is refused', (await p.textContent('#login-error')).includes('server URL'), await p.textContent('#login-error'));
+    check('invalid address is refused', (await p.textContent('#login-error')).includes('enter the URL'), await p.textContent('#login-error'));
 
     await p.fill('#login-relay', 'relay.example.com/some/path');
     await p.click('#login-form button[type="submit"]');
@@ -132,4 +138,34 @@ export default async function ({ start, check }) {
     });
     await cold.wait(300);
     check('cold start from a notification opens the chat', await cold.page.evaluate(() => document.getElementById('app').classList.contains('chat-open')) && (await cold.page.evaluate(() => document.querySelector('[data-el=chat-name]').firstChild.textContent)) === 'PDF-Reader');
+
+    // ---- the desktop app: the password typed on its setup page ("URL and password") signs in at once, asked once
+    const desk = await start({
+        secure: true, device: null, path: '#relay=https%3A%2F%2Frelay.example.com',
+        before: `(${fakeCapacitor})(); window.__asked = []; window.openfolkDesktop = { takePassword: async (relay) => { window.__asked.push(relay); return window.__asked.length === 1 ? 'from-setup' : ''; } };`,
+    });
+    await desk.wait(400);
+    const deskAuth = desk.sent.find((f) => f.type === 'auth' && f.token);
+    check('desktop: the password from the setup page signs in, without the form', deskAuth?.token === 'from-setup', desk.sent.filter((f) => f.type === 'auth'));
+    check('desktop: asked once, for the relay of the page', JSON.stringify(await desk.page.evaluate(() => window.__asked)) === '["https://relay.example.com"]', await desk.page.evaluate(() => window.__asked));
+    await desk.close();
+
+    // ---- the desktop app, signed in as a window: the web app asks the relay for this computer's invitation and hands
+    // it to the app, which sets the computer up (desktop/main.js, the second step of the setup)
+    const bridge = (key) => `(${fakeCapacitor})(); window.__offers = []; window.__keys = [];
+        window.openfolkDesktop = { takePassword: async () => '', machineWanted: async () => ({ wanted: true, key: ${key} }), machineKey: async (relay, k) => { window.__keys.push([relay, k]); }, machineOffer: async (o) => { window.__offers.push(o); } };`;
+    const own = (f, push, state, reply) => { if (f.type === 'machine_own') return reply({ type: 'machine_own', kind: 'setup', token: 't'.repeat(32), expiresAt: new Date(Date.now() + 900_000).toISOString() }); };
+    const mach = await start({ secure: true, path: '#relay=https%3A%2F%2Frelay.example.com', before: bridge(true), onSend: own });
+    await mach.wait(2200);
+    check('desktop: signed in, the web app asks the relay for this computer', mach.sent.filter((f) => f.type === 'machine_own').length === 1, mach.sent.map((f) => f.type));
+    check('desktop: … and hands the invitation to the app', JSON.stringify(await mach.page.evaluate(() => window.__offers)) === JSON.stringify([{ relay: 'https://relay.example.com', kind: 'setup', token: 't'.repeat(32) }]), await mach.page.evaluate(() => window.__offers));
+    await mach.page.evaluate(async (k) => (await import('/js/e2e.js')).adoptKey(k), 'A'.repeat(43));
+    check('desktop: a key the page takes over goes to the app, for the backend of this computer', JSON.stringify(await mach.page.evaluate(() => window.__keys)) === JSON.stringify([['https://relay.example.com', 'A'.repeat(43)]]), await mach.page.evaluate(() => window.__keys));
+    await mach.close();
+
+    // Machines awake that the app has no key for: a backend here would get a key of its own, so nothing is asked
+    const nokey = await start({ secure: true, path: '#relay=https%3A%2F%2Frelay.example.com', before: bridge(false), onSend: own });
+    await nokey.wait(2200);
+    check('desktop: without the key of the machines awake, no invitation is asked for', !nokey.sent.some((f) => f.type === 'machine_own') && (await nokey.page.evaluate(() => window.__offers)).length === 0, nokey.sent.map((f) => f.type));
+    await nokey.close();
 }

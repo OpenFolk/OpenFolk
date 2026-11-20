@@ -49,8 +49,9 @@ export default async function ({ start, check }) {
     });
     const p = fresh.page;
     await fresh.wait(300);
-    check('sign-in: the field "Invitation link" comes first', await p.isVisible('#login-invite-link')
-        && await p.evaluate(() => !!(document.getElementById('login-invite').compareDocumentPosition(document.getElementById('login-token')) & Node.DOCUMENT_POSITION_FOLLOWING)));
+    check('sign-in: the invitation link is a setup method, its field only once chosen', !(await p.isVisible('#login-invite-link')));
+    await p.selectOption('#login-method', 'invite');
+    check('… then the field, without the password', await p.isVisible('#login-invite-link') && !(await p.isVisible('#login-token')));
     await p.fill('#login-invite-link', 'just some text');
     await p.click('#login-invite-go');
     await fresh.wait(100);
@@ -66,6 +67,7 @@ export default async function ({ start, check }) {
 
     const landing = await start({ device: null });
     await landing.wait(300);
+    await landing.page.selectOption('#login-method', 'invite');
     await landing.page.fill('#login-invite-link', `http://test.local/#setup=st-9&e2e=${KEY}`);
     await landing.page.click('#login-invite-go');
     await landing.page.waitForLoadState('load');

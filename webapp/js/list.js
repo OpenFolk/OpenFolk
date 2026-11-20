@@ -3,17 +3,16 @@ import { locale, t, tn } from './i18n.js';
 import { el, node, state, closest } from './core.js';
 import { CHAT_DRAG, activePane, paneFor, visibleChats } from './panes.js';
 import { bot, clockTime, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, modelsOfChat, openApprovals, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
-import { allChats, baseChats, categoryOf, collapsed, conversationsOf, isFavorite, isMuted, sortedCategories, toggleCollapsed, toggleConversations, toggleFavorite } from './connection.js';
+import { allChats, baseChats, categoryOf, collapsed, conversationsOf, isFavorite, isMuted, moveCategory, setCategory, sortedCategories, toggleCollapsed, toggleConversations, toggleFavorite } from './connection.js';
 import { loadingBar, openBeside, openChat, swipeBack } from './chat.js';
 import { isUnread, toggleUnread } from './chat-features.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 import { ICONS, archiveConversation, chatMenuAction, deleteCategory, fillChatMenu, gitOpenOf, menuButton, modelDisplay, openGitPage, renameCategory, withoutVersion } from './menus.js';
 import { setBadge } from './platform.js';
-import { openEditor, openInfo, openRoutineEditor } from './editors.js';
+import { openInfo, openRoutineEditor } from './editors.js';
 import { RECENT_DAYS, renderPaletteResult } from './palette.js';
-import { renderWelcome } from './welcome.js';
-import { openSettingsAt } from './settings.js';
+import { renderStartSetup, setupCard } from './welcome.js';
 import { openOtherChat, otherLabel, otherRows, otherUnreadCount } from './others.js';
 
 // ================================================================ Sidebar
@@ -97,17 +96,26 @@ export function renderChatList() {
         return;
     }
     el.chatList.innerHTML = '';
+    // The sign-in to an AI provider: on a phone at the top of the list, otherwise in the start view (CSS picks); the
+    // start view's copy comes second, so a key field that had the focus gets it back there
+    const card = setupCard();
+    if (card) {
+        const item = node('li', 'start-setup in-list');
+        item.append(card);
+        el.chatList.appendChild(item);
+    }
+    renderStartSetup();
     const ids = baseChats();
     // Bots and groups of the other accounts this device is signed in to (others.js), sorted in with the own ones
     const foreign = otherRows();
     if (ids.length === 0) {
-        // Nothing to list yet: the first steps instead (machine, first bot, other devices). An account of someone who
-        // came to chat (a customer) has people to write to and no bots; the engines' sign-in is not its first step.
-        // While the machines or their bots are still on their way, the first steps would flash up before the chats.
-        el.chatList.appendChild(!state.onlineKnown || (state.online.length && !state.botsKnown) ? listLoading()
+        // Nothing to list yet: an invited account without a machine or with people to write to gets a note, the rest an
+        // empty list (the sign-in to an AI provider is in the start view, renderStartSetup). While the machines or their
+        // bots are still on their way, a note would flash up before the chats.
+        const note = !state.onlineKnown || (state.online.length && !state.botsKnown) || (!state.online.length && machineMayCome()) ? listLoading()
             : state.account && state.account.id !== 'main' && !state.online.length ? noMachineStart()
-                : state.people.length && state.account && state.account.id !== 'main' ? peopleStart()
-                    : renderWelcome({ newBot: () => openEditor(null), devices: () => openSettingsAt(el.settingsDevices) }));
+                : state.people.length && state.account && state.account.id !== 'main' ? peopleStart() : null;
+        if (note) el.chatList.appendChild(note);
         for (const r of foreign.sort((x, y) => x.section - y.section || y.ts.localeCompare(x.ts))) el.chatList.appendChild(foreignRow(r));
         setBadge(otherUnreadCount());
         return;
@@ -145,7 +153,12 @@ export function renderChatList() {
         const cat = cats[s - 3];
         const inSection = rows[s] || [];
         if (cat) el.chatList.appendChild(categoryHeading(cat, inSection.length));
-        else if (several && inSection.length) el.chatList.appendChild(node('li', 'section', titles[s]));
+        else if (s === REST && cats.length) {
+            // "In no folder": also the place to drop a chat that is to leave its folder, so it stands while folders exist
+            const rest = node('li', 'section', titles[s]);
+            rest.dataset.category = '';
+            el.chatList.appendChild(rest);
+        } else if (several && inSection.length) el.chatList.appendChild(node('li', 'section', titles[s]));
         const folded = Boolean(cat) && collapsed.has('c:' + cat.id);
         for (const { id, foreign: other } of inSection) {
             // a folded folder: only chats open in a pane right now stay visible
@@ -257,6 +270,23 @@ function favoriteStrip(ids) {
     }
     strip.appendChild(row);
     return strip;
+}
+
+/**
+ * How long after the page started an empty list of machines still means "on its way" rather than "none": the desktop
+ * app's own backend connects some seconds after its setup (it restarts for the provider chosen), a woken machine
+ * too. The loading bar until then, not "no machine reachable".
+ */
+const MACHINE_GRACE_MS = 45_000;
+const pageStarted = Date.now();
+let graceTimer = null;
+
+/** True while the grace time runs; renders the list once more when it ends, so the note comes if still nobody is there. */
+function machineMayCome() {
+    const left = pageStarted + MACHINE_GRACE_MS - Date.now();
+    if (left <= 0) return false;
+    graceTimer ??= setTimeout(() => renderChatList(), left + 50);
+    return true;
 }
 
 function listLoading() {
@@ -542,7 +572,57 @@ function categoryHeading(c, count) {
     li.appendChild(node('span', 'name', c.name));
     if (closed && count) li.appendChild(node('span', 'count', String(count)));
     li.addEventListener('click', () => toggleCollapsed('c:' + c.id));
+    // With a mouse a folder moves up or down by dragging its heading
+    if (canDrag.matches) {
+        li.draggable = true;
+        li.addEventListener('dragstart', (ev) => {
+            ev.dataTransfer.setData(FOLDER_DRAG, c.id);
+            ev.dataTransfer.effectAllowed = 'move';
+        });
+    }
     return li;
+}
+
+const FOLDER_DRAG = 'application/x-openfolk-folder';
+
+/**
+ * Dropping on a folder's heading: a dragged bot or group goes into that folder ("In no folder" takes it out), a
+ * dragged folder takes the place of this one, before it in the upper half, after it in the lower.
+ */
+export function setupFolderDrop() {
+    const types = (ev) => (ev.dataTransfer ? [...ev.dataTransfer.types] : []);
+    const target = (ev) => /** @type {HTMLElement | null} */ (closest(ev, '#chat-list li.section[data-category]'));
+    const clear = () => { for (const x of el.chatList.querySelectorAll('.drop-target, .drop-before, .drop-after')) x.classList.remove('drop-target', 'drop-before', 'drop-after'); };
+    const after = (ev, li) => { const r = li.getBoundingClientRect(); return ev.clientY > r.top + r.height / 2; };
+    el.chatList.addEventListener('dragover', (ev) => {
+        const li = target(ev);
+        const folder = types(ev).includes(FOLDER_DRAG);
+        if (!li || (!folder && !types(ev).includes(CHAT_DRAG)) || (folder && !li.dataset.category)) return clear();
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'move';
+        clear();
+        li.classList.add(folder ? (after(ev, li) ? 'drop-after' : 'drop-before') : 'drop-target');
+    });
+    el.chatList.addEventListener('dragleave', (ev) => { if (!el.chatList.contains(/** @type {Node} */ (ev.relatedTarget))) clear(); });
+    el.chatList.addEventListener('drop', (ev) => {
+        const li = target(ev);
+        clear();
+        if (!li) return;
+        const folder = ev.dataTransfer.getData(FOLDER_DRAG);
+        if (folder) {
+            ev.preventDefault();
+            if (!li.dataset.category || folder === li.dataset.category) return;
+            const others = sortedCategories().map((c) => c.id).filter((x) => x !== folder);
+            moveCategory(folder, others.indexOf(li.dataset.category) + (after(ev, li) ? 1 : 0));
+            renderChatList();
+            return;
+        }
+        const chat = ev.dataTransfer.getData(CHAT_DRAG);
+        // Folders hold bots and groups; a conversation follows its bot, a person stays where it is
+        if (!chat || chat.includes('~') || isPerson(chat)) return;
+        ev.preventDefault();
+        if (categoryOf(chat) !== li.dataset.category) setCategory(chat, li.dataset.category || '');
+    });
 }
 
 /** Head of a folder's menu as a page: back, folder icon, name. */
@@ -571,8 +651,14 @@ function openCategoryMenu(id, x, y) {
     rename.dataset.action = 'rename';
     const remove = menuButton('delete', t('category.delete'), 'danger');
     remove.dataset.action = 'delete';
+    // Moving without a mouse (the phone): up and down, where there is room
+    const order = sortedCategories().map((c) => c.id);
+    const at = order.indexOf(id);
+    const moves = [];
+    if (at > 0) { const up = menuButton('up', t('category.moveUp')); up.dataset.action = 'up'; moves.push(up); }
+    if (at < order.length - 1) { const down = menuButton('down', t('category.moveDown')); down.dataset.action = 'down'; moves.push(down); }
     rowShow = rowMenuAt(() => categoryHead(id), x, y);
-    rowShow(rename, remove);
+    rowShow(...moves, rename, remove);
 }
 
 export function setupListLongPress() {
@@ -591,8 +677,13 @@ export function setupListLongPress() {
         // archive and open changes put themselves into the menu again
         rowMenu.hidden = true;
         if (rowMenu.dataset.category) {
-            if (action.dataset.action === 'rename') renameCategory(rowMenu.dataset.category);
-            else deleteCategory(rowMenu.dataset.category);
+            const id = rowMenu.dataset.category;
+            const at = sortedCategories().findIndex((c) => c.id === id);
+            if (action.dataset.action === 'rename') renameCategory(id);
+            else if (action.dataset.action === 'up' || action.dataset.action === 'down') {
+                moveCategory(id, at + (action.dataset.action === 'up' ? -1 : 1));
+                renderChatList();
+            } else deleteCategory(id);
             return;
         }
         chatMenuAction(rowMenu.dataset.chat, action.dataset.action, rowMenu, rowShow);

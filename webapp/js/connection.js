@@ -1,6 +1,6 @@
 /* OpenFolk web app: connection to the relay and handling of incoming frames. */
 import { t, tn } from './i18n.js';
-import { COLLAPSED_KEY, DEVICE_KEY, SIGNED_OUT_KEY, TOKEN_KEY, el, state, storage, toast } from './core.js';
+import { COLLAPSED_KEY, DEVICE_KEY, SIGNED_OUT_KEY, TOKEN_KEY, el, peopleWithPictures, state, storage, toast } from './core.js';
 import { activePane, capacity, createPane, isWide, paneFor, panes, rememberedPanes, visibleChats } from './panes.js';
 import { askForKey, bot, botIdOf, decrypt, e2e, group, imageOriginal, isGroup, isPerson, mergeStates, plain, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList, renderSearchResult, renderUsage, setSearchMarks } from './list.js';
@@ -10,7 +10,7 @@ import { historyUnchanged, markSeen, receiveCommands, noteIncoming, receiveSeen,
 import { approvalsToBottom, attachmentBar, dropStaleLive, expireApprovalCard, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderJobs, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
 import { dictationDone, dictationRefused, imageRequested, playback, removeVoicePending, startPlayback } from './voice.js';
 import { mediaArrived } from './media.js';
-import { bundled, connectionVia, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
+import { bundled, connectionVia, desktopMachine, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
 import { answerFolderAsk, closeDialog, gitError, receiveDuplicated, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
 import { receiveVscodeHistory, receiveVscodeSessions, vs, vscodeError, vscodeReconnected, vscodeShown } from './vscode.js';
 import {
@@ -18,6 +18,7 @@ import {
     receiveSuggestion, renderRoutines, suggestButton,
 } from './editors.js';
 import { checkPush, renderPushSettings } from './push.js';
+import { focusMethod, renderMethods, takeDesktopPassword } from './login-method.js';
 import { presenceToNewMachines, presenceUnknown } from './activity.js';
 import {
     autologonReported, machineJoinError, settingsSaveFailed, settingsSaved, receiveMachineTokens, receiveSettings, renderDevices, renderMachineJoin, renderAbout, renderPairLink, renderSettings, renderTotp,
@@ -60,21 +61,25 @@ export async function checkTotp(other = false) {
     el.loginTotpField.hidden = !totpActive;
 }
 
-export function showLogin(message) {
+export function showLogin(message, code = '') {
+    // Signed in out of sight by the desktop app: a refusal goes back to its setup page, a question (a TOTP code) to
+    // the user in the window
+    if (message && desktopMachine) desktopMachine.needed(message, code);
     el.login.hidden = false;
     el.loginError.textContent = message || '';
     el.loginError.hidden = !message;
     // The apps bring the web app along and need the relay's address; the browser's page is served by the relay, so
     // there the field only shows where this page comes from
-    el.loginIntro.textContent = t(bundled ? 'login.introApp' : 'login.intro');
+    el.loginIntro.textContent = '';
     const relayLabel = /** @type {HTMLElement} */ (el.loginRelay.previousElementSibling);
     relayLabel.dataset.i18n = bundled ? 'login.relay' : 'login.server';
     relayLabel.textContent = t(relayLabel.dataset.i18n);
     el.loginRelay.readOnly = !bundled;
     el.loginRelay.tabIndex = bundled ? 0 : -1;
     if (!bundled || !el.loginRelay.value) el.loginRelay.value = relayAddress();
-    const first = bundled && !el.loginRelay.value ? el.loginRelay : totpActive && el.loginToken.value ? el.loginTotp : el.loginToken;
-    first.focus();
+    renderMethods();
+    focusMethod();
+    void takeDesktopPassword();
     void checkTotp();
     // A scanned QR code of a new device: this one has to be signed in before it can approve it
     if (!message && approvalWaiting()) {
@@ -83,6 +88,26 @@ export function showLogin(message) {
     }
     void startQrLogin();
     renderChooser();
+}
+
+/** Asked once per page: the desktop app sets up the computer it runs on. */
+let machineAsked = false;
+
+/**
+ * The desktop app signed in at a relay and this computer runs no backend there yet: ask the relay for this computer's
+ * invitation ("machine_own"), which the app redeems in its step "Set up this computer". Only when the backend can get
+ * the right end-to-end key: the app knows it, or nothing here is encrypted yet (no key, no machine awake).
+ */
+function offerOwnMachine() {
+    if (!desktopMachine || machineAsked) return;
+    machineAsked = true;
+    // The machines awake and a first encrypted frame arrive right after the sign-in
+    setTimeout(async () => {
+        const { wanted, key } = await desktopMachine.wanted(relayAddress());
+        const fresh = !e2e.key && !e2e.seenActive && state.online.length === 0;
+        if (wanted && state.signedIn && (key || fresh)) send({ type: 'machine_own' });
+        else desktopMachine.none();
+    }, 1500);
 }
 
 /** Sign-in: a pairing link once, otherwise the device key, otherwise once the password (from the form or stored). */
@@ -196,7 +221,7 @@ export function checkConnection() {
  * Frames that arrive unencrypted even with end-to-end encryption: the relay's own (RelayFrame) and errors. pair_wait and
  * pair_first are RelayFrames too, but they only reach the sign-in page (qr-login.js), which has its own socket.
  */
-const PLAIN_TYPES = new Set(['agents', 'auth', 'devices', 'accounts', 'account_created', 'account_invite', 'pair_request', 'pair_approved', 'machine_status', 'wake_result', 'machine_tokens', 'totp', 'totp_setup', 'error']);
+const PLAIN_TYPES = new Set(['agents', 'auth', 'devices', 'accounts', 'account_created', 'account_invite', 'pair_request', 'pair_approved', 'machine_status', 'wake_result', 'machine_tokens', 'machine_own', 'totp', 'totp_setup', 'error']);
 let plainWarned = false;
 
 async function handleIncoming(f) {
@@ -274,6 +299,7 @@ function receive(f) {
                 send({ type: 'wake_status' });
                 scheduleWakePoll();
                 startApproval();
+                offerOwnMachine();
             } else {
                 const paired = !!state.pairToken;
                 state.rejected = true;
@@ -290,7 +316,7 @@ function receive(f) {
                 }
                 if (f.loggedOut && dropCurrentAccount()) break;
                 if (f.totp) totpActive = true;
-                showLogin(messageText(f) || t('login.failed'));
+                showLogin(messageText(f) || t('login.failed'), f.code || '');
             }
             break;
         case 'devices':
@@ -318,6 +344,9 @@ function receive(f) {
         case 'accounts':
             setRelayMachines(f.machines);
             renderAccounts(f.list, f.current);
+            break;
+        case 'machine_own':
+            if (desktopMachine && /^(join|setup)$/.test(f.kind) && typeof f.token === 'string') desktopMachine.offer({ relay: relayAddress(), kind: f.kind, token: f.token });
             break;
         case 'account_created':
         case 'account_invite':
@@ -477,8 +506,8 @@ function receive(f) {
                 }
             }
             break;
-        case 'people':
-            state.people = f.list || [];
+        case 'people': {
+            state.people = peopleWithPictures(state.peopleByMachine, f);
             state.personChats = f.chats || [];
             for (const id of personChatIds()) if (!(id in state.last)) send({ type: 'history', chatId: id, limit: 1 });
             renderChatList();
@@ -488,6 +517,7 @@ function receive(f) {
                 state.openAfterBots = null;
             }
             break;
+        }
         case 'history': {
             const last = f.entries[f.entries.length - 1];
             setLast(f.chatId, last);
@@ -982,10 +1012,16 @@ export function personChatIds() {
     return [...new Set([...state.people.map((p) => p.id), ...state.personChats.filter((c) => !c.cleared || state.lastTs['p:' + c.id]).map((c) => c.id)])].map((id) => 'p:' + id);
 }
 
-/** Main chats of the bots and groups (without further conversations), and the person chats with something in them. */
+/**
+ * Main chats of the bots and groups (without further conversations), and the person chats with something in them. An
+ * invited account lists everyone it may write to from the start (its invitation names them); the main account, which
+ * reaches every account, only those it writes with.
+ */
 export function baseChats() {
+    const contactsListed = state.account && state.account.id !== 'main';
+    const people = new Set(state.people.map((p) => 'p:' + p.id));
     return [...state.bots.map((b) => b.id), ...state.groups.map((g) => 'g:' + g.id),
-        ...personChatIds().filter((id) => state.lastTs[id] || isFavorite(id) || paneFor(id))];
+        ...personChatIds().filter((id) => state.lastTs[id] || isFavorite(id) || paneFor(id) || (contactsListed && people.has(id)))];
 }
 
 export function conversationsOf(b) {
@@ -1014,8 +1050,17 @@ export function toggleCollapsed(key) {
 }
 
 /** The folders of the chat list in the order shown: by name. */
+/** The folders as the list shows them: by their place (moved by the user), the rest by name after them. */
 export function sortedCategories() {
-    return [...state.categories].sort((a, b) => a.name.localeCompare(b.name));
+    return [...state.categories].sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.name.localeCompare(b.name));
+}
+
+/** Moves a folder to `index` among the folders (drag and drop, or up/down in its menu); shown at once. */
+export function moveCategory(id, index) {
+    const ids = sortedCategories().map((c) => c.id).filter((x) => x !== id);
+    ids.splice(Math.max(0, Math.min(index, ids.length)), 0, id);
+    ids.forEach((x, order) => { const c = state.categories.find((y) => y.id === x); if (c) c.order = order; });
+    send({ type: 'category_order', ids });
 }
 
 /** The folder of a bot or group in the list ('' = none, or one that no longer exists). */

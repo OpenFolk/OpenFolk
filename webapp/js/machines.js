@@ -9,6 +9,7 @@ import { connectionVia } from './platform.js';
 /** @typedef {import('./panes.js').Pane} Pane */
 import { renderSettings } from './settings.js';
 import { confirmDialog } from './dialogs.js';
+import { setupCard, signInLost } from './welcome.js';
 
 // ---------------------------------------------------------------- Machines and waking
 
@@ -69,10 +70,22 @@ function machineDetails(host, connected) {
 
 /** The details under the machines change with many frames; while the status page is open they are redrawn. */
 export function refreshMachinesPage() {
+    renderStatusBadge();
     if (!el.machinesPage.hidden) renderMachines();
 }
 
+/** The "!" on the status tab while a machine that runs bots lost its sign-in; the page says which and how. */
+export function renderStatusBadge() {
+    const lost = signInLost();
+    el.tabStatusBadge.hidden = !lost;
+    el.tabStatusBadge.title = lost ? t('status.signInLost') : '';
+}
+
 export function renderMachines() {
+    renderStatusBadge();
+    const card = setupCard(true);
+    el.machinesSignin.replaceChildren(...(card ? [card] : []));
+    el.machinesSignin.hidden = !card;
     const st = state.machineStatus;
     const hosts = new Set([...state.online, ...(st ? Object.keys(st.hosts || {}) : [])]);
     el.machines.innerHTML = '';

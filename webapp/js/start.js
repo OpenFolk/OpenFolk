@@ -5,7 +5,7 @@ import { adoptKey, adoptPairingLink, askForKey, bot, e2eStart, fillAvatar, forge
 import { allChats, checkConnection, checkTotp, connect, credentials, renderAccount, setAgentStatus, showLogin } from './connection.js';
 import { bundled, platformKind, onNotificationOpen, parsePairingLink, relayAddress, requestPushPermission, setRelayAddress } from './platform.js';
 import { CHAT_DRAG, SIDEBAR_PX, activePane, closeSettings, createPane, layoutPanes, paneOf, panes, setActivePane, setSidebarWidth, visibleChats } from './panes.js';
-import { chooseSearchFilter, closeChatSearch, listTap, onChatSearchInput, onSearchInput, openRowMenu, renderChatList, renderUsage, setupListLongPress, setupListSwipe, setupSearchBox, stepChatSearch } from './list.js';
+import { chooseSearchFilter, closeChatSearch, listTap, onChatSearchInput, onSearchInput, openRowMenu, renderChatList, renderUsage, setupFolderDrop, setupListLongPress, setupListSwipe, setupSearchBox, stepChatSearch } from './list.js';
 import { addEmptyPane, closeChat, dropChat, openChat, paneActivated, renderChatHeader, setupSwipeBack, swipeBack } from './chat.js';
 import { renderMachines, wake } from './machines.js';
 import { checkMention, closeMention, markSeen, mentionKey, renderForwardList, renderHistory, renderPinned, scroll, setReply, setupMessageMenu, tapPinned, unpinShown } from './chat-features.js';
@@ -35,6 +35,7 @@ import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, signInWithL
 import { VERSION } from './release.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
 import { showSetupLanding, takeSetupLink } from './setups.js';
+import { applyMethod, focusMethod } from './login-method.js';
 import { onShortcutKey, runCommand, setupPalette } from './palette.js';
 import { closeVideo } from './media.js';
 
@@ -62,7 +63,7 @@ function useRelayAddress(text, params) {
 el.loginForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     // Enter in the field "Invitation link" (the form's own button is for the password)
-    if (el.loginInvite.value.trim()) {
+    if (el.loginMethod.value === 'invite' && el.loginInvite.value.trim()) {
         await signInWithLink(el.loginInvite.value);
         return;
     }
@@ -103,6 +104,11 @@ el.pairCreate.addEventListener('click', () => {
 el.e2eEnter.addEventListener('click', () => { closeSettings(); askForKey(''); });
 
 // QR codes: the app scans them itself; with a server address the start page shows its own code
+el.loginMethod.addEventListener('change', () => {
+    el.loginError.hidden = true;
+    applyMethod();
+    focusMethod();
+});
 el.loginScan.addEventListener('click', () => void scanToSignIn());
 el.loginQrRenew.addEventListener('click', renewQrLogin);
 el.loginInviteGo.addEventListener('click', () => void signInWithLink(el.loginInvite.value));
@@ -290,6 +296,7 @@ document.addEventListener('click', (ev) => {
 });
 setupListSwipe();
 setupListLongPress();
+setupFolderDrop();
 setupQueueSwipe();
 setupSearchBox();
 setupMessageMenu();
@@ -361,6 +368,7 @@ const PANE_CLICKS = {
     'chat-settings': (p, ev) => openChatSettings(p, ev),
     'chat-model': (p, ev) => { ev.stopPropagation(); toggleHeaderSwitch(p, 'model'); },
     'chat-machine': (p, ev) => { ev.stopPropagation(); toggleHeaderSwitch(p, 'machine'); },
+    'chat-git': (p, ev) => { ev.stopPropagation(); const b = bot(p.chatId); if (b) openGitPage(b, true); },
     'rb-cancel': (p) => setReply(p, null),
     'cs-older': (p) => stepChatSearch(p, 1),
     'cs-newer': (p) => stepChatSearch(p, -1),

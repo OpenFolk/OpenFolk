@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 // Allowed root for this test: the folder containing this repo (set before the config is loaded)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 process.env.ALLOWED_ROOTS = path.dirname(projectRoot);
-const { avatarDataUrl, descriptionFrom, resultFrom, photoPrompt, folderContext, prompt, checkSvg } = await import('./suggestions.ts');
+const { avatarDataUrl, descriptionFrom, resultFrom, photoPrompt, folderContext, prompt, checkSvg, suggestionEngine, jsonIn } = await import('./suggestions.ts');
 
 let failures = 0;
 const check = (name: string, ok: boolean) => { console.log(`${ok ? 'ok    ' : 'FAILED'} ${name}`); if (!ok) failures++; };
@@ -57,6 +57,15 @@ check('SVG: too large rejected', throws(() => checkSvg(good.replace('<rect', '<r
 check('avatar data URL: the photo as it is', avatarDataUrl({ what: 'avatar', image: 'data:image/jpeg;base64,/9j/4AAQ' }) === 'data:image/jpeg;base64,/9j/4AAQ');
 check('avatar data URL: the SVG encoded', avatarDataUrl({ what: 'avatar', svg: '```svg\n' + good + '\n```' }) === `data:image/svg+xml;base64,${Buffer.from(good).toString('base64')}`);
 check('avatar data URL: a bad SVG or another result is an error', throws(() => avatarDataUrl({ what: 'avatar', svg: '<div/>' })) && throws(() => avatarDataUrl({ what: 'role', role: 'x' })));
+
+// The engine that answers: Claude while it is on, otherwise the bot's own, otherwise the first one on
+const onOnly = (...l: string[]) => (e: string) => l.includes(e);
+check('engine: Claude while it is on, also for a bot on another engine', suggestionEngine('default', onOnly('claude', 'opencode')) === 'claude' && suggestionEngine('codex', onOnly('claude', 'codex')) === 'claude');
+check('engine: Claude off: the bot\'s own engine', suggestionEngine('opencode:opencode/big-pickle', onOnly('codex', 'opencode')) === 'opencode');
+check('engine: Claude off, the bot on Claude: the first one on', suggestionEngine('default', onOnly('opencode')) === 'opencode' && suggestionEngine(undefined, onOnly('copilot', 'opencode')) === 'copilot');
+check('engine: none on stays Claude', suggestionEngine('default', onOnly()) === 'claude');
+check('JSON in an answer with a fence or words around it', JSON.stringify(jsonIn('Sure:\n```json\n{"role":"Servers"}\n```')) === '{"role":"Servers"}'
+    && jsonIn('no json') === undefined && jsonIn('{broken') === undefined);
 
 if (failures) process.exit(1);
 console.log('all tests passed');

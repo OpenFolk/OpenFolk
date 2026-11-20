@@ -155,6 +155,10 @@ export function editorValues(v) {
  */
 function newBotModel(machine) {
     const engines = state.setupPerMachine[machine]?.engines || {};
+    // Claude switched off on that machine: the first engine that is on
+    const off = state.machineSettings[machine]?.settings?.disabledEngines || [];
+    const on = off.includes('claude') && ['codex', 'cursor', 'copilot', 'antigravity', 'opencode'].find((e) => !off.includes(e));
+    if (on) return on;
     return engines.claude !== 'ready' && engines.opencode === 'ready' ? 'opencode' : 'default';
 }
 

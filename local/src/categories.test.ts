@@ -73,5 +73,20 @@ check('frame: assign (also out), delete', checkClientFrame({ type: 'category_ass
 check('frame: the editors may send the folder', checkClientFrame({ type: 'bot_save', bot: { ...base, id: 'anna', name: 'Anna', category: '' } }).ok
     && checkClientFrame({ type: 'group_save', group: { id: 'team', name: 'Team', avatar: null, members: ['a', 'b'], category: 'kunden' } }).ok);
 
+// The order of the folders: moved ones by their place, the rest by name after them; a renamed one keeps its place
+for (const n of ['Alpha', 'Beta', 'Gamma']) bots.saveCategory({ id: '', name: n });
+const names = () => bots.sortCategories(bots.loadCategories()).map((c) => c.name).join(',');
+const idOf = (n: string) => bots.loadCategories().find((c) => c.name === n)!.id;
+bots.orderCategories([idOf('Gamma'), idOf('Alpha')]);
+check('ordered: the named ones first, the rest in their previous order', names().startsWith('Gamma,Alpha,'), names());
+const before = bots.loadCategories().find((c) => c.name === 'Gamma')!.updatedAt;
+bots.orderCategories([idOf('Gamma'), idOf('Alpha')]);
+check('the same order again: no folder gets a new time', bots.loadCategories().find((c) => c.name === 'Gamma')!.updatedAt === before);
+bots.saveCategory({ id: idOf('Alpha'), name: 'Alpha 2' });
+check('a rename keeps the place', names().startsWith('Gamma,Alpha 2,'), names());
+bots.orderCategories(['nope', idOf('Beta')]);
+check('an unknown id is skipped', names().startsWith('Beta,'), names());
+check('frame: order', checkClientFrame({ type: 'category_order', ids: ['a', 'b'] }).ok && !checkClientFrame({ type: 'category_order', ids: 'a' }).ok);
+
 fs.rmSync(dir, { recursive: true, force: true });
 if (failures) process.exit(1);

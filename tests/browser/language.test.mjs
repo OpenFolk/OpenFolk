@@ -15,7 +15,8 @@ export default async function ({ start, check }) {
         newTitle: document.getElementById('btn-new').title,
         empty: document.querySelector('#chat-empty p').textContent,
         status: document.querySelector('#agent-status span').textContent,
-        machines: document.querySelector('[data-tab=machines]').textContent.trim(),
+        // The tab's label, without the hidden "!" of a lost sign-in (its badge)
+        machines: document.querySelector('[data-tab=machines] [data-i18n]').textContent.trim(),
     }));
     let s = await texts();
     check('German browser: German UI and <html lang="de">', s.lang === 'de' && s.settings === 'Einstellungen' && s.status === 'DESK, WORKSTATION verbunden · über test.local', s);

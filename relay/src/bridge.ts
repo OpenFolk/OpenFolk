@@ -35,7 +35,7 @@ const DUPLICATE_CHECK_MS = 5_000;
 /** The same security warning at most this often as a push. */
 const WARNING_INTERVAL_MS = 10 * 60_000;
 
-const RELAY_REQUESTS = new Set<string>(['wake_status', 'wake', 'devices', 'device_logout', 'accounts', 'account_create', 'account_update', 'account_delete', 'account_invite', 'pair_request', 'pair_approve', 'totp_status', 'totp_begin', 'totp_confirm', 'totp_off', 'machine_tokens', 'machine_token_remove']);
+const RELAY_REQUESTS = new Set<string>(['wake_status', 'wake', 'devices', 'device_logout', 'accounts', 'account_create', 'account_update', 'account_delete', 'account_invite', 'pair_request', 'pair_approve', 'totp_status', 'totp_begin', 'totp_confirm', 'totp_off', 'machine_tokens', 'machine_token_remove', 'machine_own']);
 
 export type WarningCode = Extract<AgentInbound, { type: 'warning' }>['code'];
 
@@ -193,14 +193,14 @@ export class Bridge {
 
     /**
      * The people a backend learns of. A bound machine belongs to someone else: it hears of its account and the people
-     * that account can reach, without whom those may reach in turn.
+     * that account can reach, with their pictures but without whom those may reach in turn.
      */
     private peopleFor(agent: Agent, people: Person[]): Person[] {
         if (!agent.bound) return people;
         const self = people.find((p) => p.id === agent.bound);
         if (!self) return [];
         return people.filter((p) => p === self || reaches(self, p) || this.mayRoute(self.id, p.id))
-            .map((p) => (p === self ? p : { id: p.id, name: p.name, admin: p.admin, reach: p.reach === 'listed' ? 'all' : p.reach }));
+            .map((p) => (p === self ? p : { id: p.id, name: p.name, admin: p.admin, reach: p.reach === 'listed' ? 'all' : p.reach, ...(p.avatar ? { avatar: p.avatar } : {}) }));
     }
 
     /** A deleted account: its browsers are disconnected, the backends remove its data. */
@@ -223,6 +223,16 @@ export class Bridge {
     private visibleTo(machine: string, account: string): boolean {
         const bound = this.boundMachines().get(machine);
         return bound ? bound === account : this.runsOn(account, machine);
+    }
+
+    /**
+     * Whether an account's browsers may see machine `machine` in the status list and wake it: 'main' every machine,
+     * any other account the machines that serve it (its own bound ones, the relay's it runs on). Names of the wake
+     * service may differ in case from the machines' names.
+     */
+    machineVisible(machine: string, account: string): boolean {
+        if (account === MAIN) return true;
+        return [...new Set([machine, machine.toLowerCase()])].some((m) => this.visibleTo(m, account));
     }
 
     /** Whether machine `machine` is one the backend sees: a bound machine sees its own kind, every other the unbound. */

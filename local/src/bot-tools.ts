@@ -1,4 +1,4 @@
-// The bots' own tools (list_bots, list_conversations, message_bot, send_file, set_avatar, make_avatar, set_profile, routines, knowledge, history, hand_over), the same for every engine: Claude gets
+// The bots' own tools (list_bots, list_conversations, message_bot, send_file, set_avatar, make_avatar, set_profile, routines, folders, knowledge, history, hand_over), the same for every engine: Claude gets
 // them as an MCP server, the other engines as plain functions (EngineTool). What a tool needs of the bot manager
 // comes through ToolHost; this module imports only types from agent.ts.
 
@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import { createSdkMcpServer, tool, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type { Sender } from './agent.ts';
-import { loadBots, mayMessage, roleLine } from './bots.ts';
+import { loadBots, loadCategories, loadGroups, mayMessage, roleLine, sortCategories } from './bots.ts';
 import type { EngineTool } from './codex.ts';
 import { config } from './config.ts';
 import { botFile } from './files.ts';
@@ -49,6 +49,10 @@ export interface ToolHost {
     setProfile(s: BotSession, profile: BotProfile): ToolText;
     /** Creates or changes one of the bot's own routines and says so in the chat. */
     setRoutine(s: BotSession, change: RoutineChange): ToolText;
+    /** Lists the folders of the chat list with what is in them. */
+    listFolders(): ToolText;
+    /** Puts bots and groups into a folder of the chat list (created if missing; '' takes them out) and says so in the chat. */
+    setFolder(s: BotSession, folder: string, chats: string[]): ToolText;
     /** Makes the bot's own profile picture like the editor's "AI avatar" (wish: what it should show) and stores it. */
     makeAvatar(s: BotSession, wish: string): Promise<ToolText>;
     knowledgeChanged(locations: KnowledgeLocation[], by: BotSession): void;
@@ -298,6 +302,24 @@ export function botTools(s: BotSession, host: ToolHost) {
             async (args) => host.setRoutine(s, args),
         ),
         tool(
+            'list_folders',
+            'Lists the folders of the user\'s chat list and the bots and groups in each, and those in none.',
+            {},
+            async () => host.listFolders(),
+        ),
+        tool(
+            'set_folder',
+            'Sorts bots and groups of the user\'s chat list into a folder, which is created if it does not exist yet; '
+            + 'an empty folder takes them out of theirs. Only when the user asks for it. The chat shows the change, the '
+            + 'user can move them again with a long press in the list.',
+            {
+                folder: z.string().max(40).describe('Name of the folder, e.g. "Agents"; "" takes the chats out of their folder'),
+                chats: z.array(z.string().max(200)).min(1).max(100)
+                    .describe('Bots and groups by id or name (see list_bots); a group as its name or g:<id>'),
+            },
+            async (args) => host.setFolder(s, args.folder, args.chats),
+        ),
+        tool(
             'make_avatar',
             'Makes your profile picture and sets it: a portrait photo by the image model when its key is in the shared settings '
             + '(about 6 cents, up to two minutes), otherwise a drawn portrait. Only when the user asks for it or agrees. Your name '
@@ -332,6 +354,16 @@ export function imageType(data: Buffer): string | null {
 }
 
 /** list_routines: the bot's own routines with what set_routine changes and how the last runs went. */
+/** The folders of the chat list with their bots and groups, then those in none (list_folders). */
+export function foldersText(): string {
+    const chats = [...loadBots().map((b) => ({ name: `${b.name} (${b.id})`, category: b.category })), ...loadGroups().map((g) => ({ name: `${g.name} (group g:${g.id})`, category: g.category }))];
+    const folders = sortCategories(loadCategories());
+    const ids = new Set(folders.map((f) => f.id));
+    const lines = folders.map((f) => `- ${f.name}: ${chats.filter((c) => c.category === f.id).map((c) => c.name).join(', ') || 'empty'}`);
+    const loose = chats.filter((c) => !c.category || !ids.has(c.category)).map((c) => c.name);
+    return `${lines.join('\n') || 'No folders yet.'}\nIn no folder: ${loose.join(', ') || 'none'}`;
+}
+
 function routinesText(botId: string): string {
     const list = routinesWithNextRun().filter((r) => r.botId === botId);
     if (!list.length) return 'You have no routines yet. set_routine creates one.';

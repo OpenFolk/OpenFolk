@@ -73,9 +73,18 @@ export interface AccountRouter {
 const KEEP_MS = 3 * 60_000;
 const PING_MS = 25_000;
 
+
+/**
+ * After a start, a rejection because the machine is still connected is tried again this often, this far apart (a
+ * restart's overlap); an object so the tests can shorten it.
+ */
+export const overlapRetry = { times: 9, ms: 20_000 };
 export class RelayClient {
     private ws: WebSocket | null = null;
     private retryDelay = 1000;
+    /** The relay took this process's sign-in at least once; before that, a rejection is mostly a restart overlapping its predecessor. */
+    private accepted = false;
+    private overlapRetries = 0;
     private stopped = false;
     private pingTimer: NodeJS.Timeout | null = null;
     private router: AccountRouter | null = null;
@@ -344,6 +353,7 @@ export class RelayClient {
             // Only the first message shows the relay accepted the sign-in; a backend rejected right away (4009)
             // should not knock again every second
             this.retryDelay = 1000;
+            this.accepted = true;
             let e: AgentInbound;
             try {
                 e = JSON.parse(raw.toString()) as AgentInbound;
@@ -451,9 +461,17 @@ export class RelayClient {
             for (const h of this.router?.all() ?? []) h.updateAgents([config.machine], false);
             if (this.stopped) return;
             if (code === 4009) {
-                // Another backend is already connected as this machine: retry rarely
-                this.retryDelay = Math.max(this.retryDelay, 5 * 60_000);
-                this.log(`REJECTED: a backend is already connected to the relay as ${config.machine} (is it running twice, or is someone using AGENT_TOKEN?)`);
+                if (!this.accepted && this.overlapRetries < overlapRetry.times) {
+                    // Just started and never in: mostly a restart (a container redeployed) while the predecessor is
+                    // still connected for a moment; it goes soon, so knock again shortly instead of being away for minutes
+                    this.overlapRetries++;
+                    this.retryDelay = overlapRetry.ms;
+                    this.log(`rejected: ${config.machine} is still connected, probably the previous instance shutting down; again in ${overlapRetry.ms / 1000} s`);
+                } else {
+                    // Another backend is already connected as this machine: retry rarely
+                    this.retryDelay = Math.max(this.retryDelay, 5 * 60_000);
+                    this.log(`REJECTED: a backend is already connected to the relay as ${config.machine} (is it running twice, or is someone using AGENT_TOKEN?)`);
+                }
             }
             if (code === 4004) {
                 // Logged out in the app: the token is gone, a new invitation is the way back

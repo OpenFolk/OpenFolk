@@ -266,6 +266,8 @@ export interface Category {
     name: string;
     createdAt: string;
     updatedAt: string;
+    /** Place in the list, set by moving folders; missing = after the placed ones, by name. Missing from older backends. */
+    order?: number;
 }
 
 export type CategoryInput = Pick<Category, 'id' | 'name'>;
@@ -895,6 +897,8 @@ export type ClientFrame =
     | { type: 'category_delete'; categoryId: string }
     /** Put a bot or group ('g:<id>') into a folder; '' takes it out. */
     | { type: 'category_assign'; chatId: string; categoryId: string }
+    /** The folders in this order (moved by drag and drop or in a folder's menu); folders not named keep theirs after them. */
+    | { type: 'category_order'; ids: string[] }
     | { type: 'favorite'; chatId: string; on: boolean }
     | { type: 'mute'; chatId: string; on: boolean }
     | { type: 'push_settings'; kinds: Partial<Record<PushKind, PushPriority>> }
@@ -1109,7 +1113,12 @@ export type RelayRequest =
     /** The machines joined by invitation; answers "machine_tokens". Only 'main'. */
     | { type: 'machine_tokens' }
     /** Logs a joined machine out: its token is gone and its backend disconnected; answers "machine_tokens". */
-    | { type: 'machine_token_remove'; machine: string };
+    | { type: 'machine_token_remove'; machine: string }
+    /**
+     * An invitation for the computer this device sits at (the desktop app after its sign-in); answers "machine_own".
+     * Every account may ask: 'main' gets a machine of the relay, another account a machine bound to it.
+     */
+    | { type: 'machine_own' };
 
 /**
  * The part behind '#' of a pairing link (`pair=…&e2e=…`), sealed for a device that shows a QR code: ECDH P-256 of
@@ -1456,6 +1465,11 @@ export type RelayFrame =
     | { type: 'totp'; active: boolean; available: boolean }
     /** The secret being set up, as text and as the address for the QR code. */
     | { type: 'totp_setup'; secret: string; uri: string }
+    /**
+     * The invitation "machine_own" asked for, valid 15 minutes: `kind` says how it is redeemed, as the `#join=` of
+     * "Add machine" or as the `#setup=` of a setup link (bound to the asking account).
+     */
+    | { type: 'machine_own'; kind: 'join' | 'setup'; token: string; expiresAt: string }
     /** Machines with a token of their own (joined by invitation). */
     | { type: 'machine_tokens'; list: { machine: string; created: string; /** bound to this account by a setup link */ account?: string }[] }
     /** All accounts for an admin, otherwise only one's own. */

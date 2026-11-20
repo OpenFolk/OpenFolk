@@ -71,7 +71,7 @@ export default async function ({ start, check }) {
     await h.openChat('Skool Sven');
     await p.click('[data-el=chat-title]');
     await h.wait(200);
-    // "New conversation" stands above the switches, the rest below the open changes
+    // The switches first, then the entries, "New conversation" at their top
     const onPage = [...await entries('#info-switches'), ...await entries('#info-actions')];
     const pageChips = await p.locator('#info-switches .model-switch .chip').allTextContents();
     // the page shows open changes and the archive itself and is the info

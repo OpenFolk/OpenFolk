@@ -110,12 +110,15 @@ export default async function ({ start, check }) {
     const np = fresh.page;
     await fresh.wait(300);
     check('start page asks the relay for a request', fresh.sent.some((f) => f.type === 'pair_wait'));
-    check('QR code shown below the fields', await np.isVisible('#login-qr svg path'));
+    check('no QR code before the method is chosen', !(await np.isVisible('#login-qr')));
+    await np.selectOption('#login-method', 'qr');
+    check('QR code shown for its method', await np.isVisible('#login-qr svg path'));
     const link = await np.getAttribute('#login-qr-code', 'data-link');
     const pk = /#approve=req-1&pk=([\w-]+)$/.exec(link || '')?.[1] || '';
     check('code holds the server URL, the id and a public key', link?.startsWith('https://test.local/#approve=req-1&pk=') && pk.length > 80, link);
+    await np.selectOption('#login-method', 'scan');
     check('scanner button in the browser too', await np.isVisible('#login-scan'));
-    check('hint for pairing from a signed-in device', (await np.textContent('#login-form')).includes('Pair another device'));
+    check('no help text about pairing on the card', !(await np.textContent('#login-form')).includes('Pair another device'));
 
     // ---- the signed-in device opens the code: confirms, asks a backend for a link and seals it
     let box = null;
@@ -187,7 +190,8 @@ export default async function ({ start, check }) {
     // ---- a relay from before QR sign-in refuses the request: no code, no second attempt
     const old = await start({ secure: true, device: null, onSend: (f, push, state, reply) => { if (f.type === 'pair_wait') reply({ type: 'auth', ok: false, code: 'wrong_password' }); } });
     await old.wait(300);
-    check('old relay: no QR code', !(await old.page.isVisible('#login-qr')) && old.sent.filter((f) => f.type === 'pair_wait').length === 1);
+    check('old relay: no QR code, not offered', !(await old.page.isVisible('#login-qr')) && old.sent.filter((f) => f.type === 'pair_wait').length === 1
+        && !(await old.page.evaluate(() => [...document.querySelectorAll('#login-method option')].some((o) => o.value === 'qr'))));
     await old.close();
 
     // ---- a new code on request: a fresh request at the relay, the old one's connection closed
@@ -199,6 +203,7 @@ export default async function ({ start, check }) {
         },
     });
     await renew.wait(300);
+    await renew.page.selectOption('#login-method', 'qr');
     const before = await renew.page.getAttribute('#login-qr-code', 'data-link');
     check('renew button below the code', await renew.page.isVisible('#login-qr-renew'));
     await renew.page.click('#login-qr-renew');
@@ -214,6 +219,7 @@ export default async function ({ start, check }) {
     const web = await start({ secure: true, device: null, before: fakeCamera });
     const wp = web.page;
     await wp.evaluate(() => { window.__cameraText = 'https://test.local/#pair=web-qr'; });
+    await wp.selectOption('#login-method', 'scan');
     await wp.click('#login-scan');
     await wp.waitForSelector('.qr-scan video');
     check('browser: camera shown in an overlay', await wp.isVisible('.qr-scan video'));
@@ -227,6 +233,7 @@ export default async function ({ start, check }) {
     // ---- cancelling the scan closes the camera and leaves the start page as it was
     const esc = await start({ secure: true, device: null, before: fakeCamera });
     await esc.page.evaluate(() => { window.__cameraText = 'no code here'; });
+    await esc.page.selectOption('#login-method', 'scan');
     await esc.page.click('#login-scan');
     await esc.page.waitForSelector('.qr-scan video');
     await esc.page.keyboard.press('Escape');
@@ -239,6 +246,7 @@ export default async function ({ start, check }) {
     // ---- the app scans a signed-in device's pairing code on its start page
     const app = await start({ secure: true, device: null, before: fakeCapacitor, recordDialogs: true });
     const p = app.page;
+    await p.selectOption('#login-method', 'scan');
     check('app: scanner button on the start page', await p.isVisible('#login-scan'));
     await p.evaluate((k) => { window.__scanResult = `https://relay.example.com/#pair=app-qr&e2e=${k}`; }, KEY);
     await p.click('#login-scan');

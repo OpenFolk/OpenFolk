@@ -93,6 +93,42 @@ function joinServer(link) {
     });
 }
 
+/**
+ * The third setup step for the backend on this computer (local/tools/ai-setup.mjs): `status`, `claude` (the sign-in
+ * with the subscription, in the browser), `key` (the API key, given as `input` on stdin) or `on <engine>`. Every
+ * line of JSON goes to `onLine`; `done` resolves with the last one. `stop` ends a sign-in still running together with
+ * the CLI it started (on Windows the whole process tree: the CLI would outlive the tool otherwise).
+ */
+function aiSetup(command, { input = '', onLine = () => undefined } = {}) {
+    const child = spawn(process.execPath, [path.join(root(), 'local', 'tools', 'ai-setup.mjs'), ...command.split(' ')], {
+        cwd: root(), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', OPENFOLK_ENV_FILE: envFile(), DATA_DIR: dataDir() },
+    });
+    let last = null;
+    let rest = '';
+    let err = '';
+    child.stdout.on('data', (c) => {
+        const lines = (rest + c).split(/\r?\n/);
+        rest = lines.pop() ?? '';
+        for (const l of lines) {
+            try { last = JSON.parse(l); onLine(last); } catch { /* not ours */ }
+        }
+    });
+    child.stderr.on('data', (c) => { err = (err + c).slice(-2000); });
+    child.stdin.on('error', () => undefined);
+    child.stdin.end(input);
+    const done = new Promise((resolve) => {
+        child.on('error', (e) => resolve({ ok: false, state: 'failed', message: e.message }));
+        child.on('close', () => resolve(last ?? { ok: false, state: 'failed', message: err.trim().split(/\r?\n/).pop() || 'no answer' }));
+    });
+    const stop = () => {
+        if (child.exitCode !== null) return;
+        if (process.platform === 'win32' && child.pid) execFile('taskkill.exe', ['/T', '/F', '/PID', String(child.pid)], { windowsHide: true }, () => undefined);
+        else child.kill();
+    };
+    return { child, done, stop };
+}
+
 /** A free port on 127.0.0.1. Chosen once and kept: the web app's sign-in belongs to its origin. */
 function freePort() {
     return new Promise((resolve, reject) => {
@@ -164,6 +200,20 @@ class Backend {
         });
     }
 
+    /**
+     * Resolves once the backend started by this app has passed its first start, where a new data folder gets its
+     * machine settings (local/src/index.ts writes backend.pid after that); false after `ms`.
+     */
+    async settled(ms = 40_000) {
+        for (const until = Date.now() + ms; Date.now() < until && !this.failure; ) {
+            const pid = this.child && this.child.pid;
+            if (this.useTask && runningBackend(dataDir())) return true;
+            try { if (pid && fs.readFileSync(path.join(dataDir(), 'backend.pid'), 'utf8').trim() === String(pid)) return true; } catch { /* not yet */ }
+            await new Promise((r) => setTimeout(r, 300));
+        }
+        return false;
+    }
+
     /** Resolves once the relay answers (the embedded one, or the one of RELAY_URL); false after `ms` or when the backend gave up. */
     async ready(ms = 60_000) {
         // The task's backend starts 30 s after boot and again 30 s after it ended: wait for its PID first
@@ -217,12 +267,12 @@ class Backend {
      * profile's .env anew. Resolves 'restarted' when it ended within `ms`, otherwise 'waiting': a bot is still working
      * (or the scheduled task runs the backend) and the restart follows by itself as soon as nothing works.
      */
-    restartWhenIdle(ms = 12_000) {
+    restartWhenIdle(ms = 12_000, reason = 'desktop app: allowed folders changed') {
         if (!this.child && !this.useTask) {
             this.start();
             return Promise.resolve('restarted');
         }
-        fs.writeFileSync(path.join(dataDir(), 'restart.request'), JSON.stringify({ reason: 'desktop app: allowed folders changed', since: new Date().toISOString() }));
+        fs.writeFileSync(path.join(dataDir(), 'restart.request'), JSON.stringify({ reason, since: new Date().toISOString() }));
         if (this.useTask || !this.exited) return Promise.resolve('waiting');
         return Promise.race([this.exited.then(() => 'restarted'), new Promise((resolve) => setTimeout(() => resolve('waiting'), ms))]);
     }
@@ -264,4 +314,4 @@ function guardQuit(getBackend, ask) {
     });
 }
 
-module.exports = { Backend, freePort, guardQuit, dataDir, joinServer, profileRoots, remoteUrl, root, setProfileEnv };
+module.exports = { Backend, aiSetup, freePort, guardQuit, dataDir, joinServer, profileRoots, remoteUrl, root, setProfileEnv };

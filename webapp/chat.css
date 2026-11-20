@@ -261,11 +261,13 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .search-results .empty-hint { color: var(--muted); text-align: center; cursor: default; padding: 24px 16px; }
 .chat-list { list-style: none; margin: 0; padding: 0 0 var(--tab-room); overflow-y: auto; flex: 1; min-height: 0; }
 .chat-list li {
-    display: grid; grid-template-columns: 48px 1fr auto; gap: 12px; align-items: center;
     padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--line);
     /* a long press opens the own menu, not text selection or the iOS preview */
     -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
 }
+/* The grid of picture, name and status only for the rows of chats: a card, a hint or a heading in the list keeps its
+   own layout (a card that took it had its text in the 48px picture column, a word a line) */
+.chat-list > li[data-chat] { display: grid; grid-template-columns: 48px 1fr auto; gap: 12px; align-items: center; }
 .chat-list li.active { background: var(--hover); }
 /* open in another pane next to the active one */
 .chat-list li.open { background: color-mix(in srgb, var(--hover) 55%, transparent); }
@@ -700,6 +702,9 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
     border: 1px solid var(--line); padding: 3px 7px; text-align: left; vertical-align: top; overflow-wrap: break-word;
 }
 .bubble .content a { color: var(--link); }
+/* No system link preview on a long press: iOS loads the target page for it, which took the app down with heavy pages
+   and links meant for another app; a tap opens the link, "Copy link" is in the message's menu */
+.messages a { -webkit-touch-callout: none; }
 
 /* Tool rows: expandable with result */
 .tool { font: 12px/1.35 var(--mono); color: var(--muted); max-width: 100%; }
@@ -1092,6 +1097,7 @@ a.primary, a.btn { text-decoration: none; }
 .start-card h1 { margin: 0; text-align: center; font-size: 26px; }
 .start-card .tagline { margin: -8px 0 0; text-align: center; color: var(--muted); }
 .start-card .start-intro { margin: 0; font-size: 13.5px; color: var(--muted); text-align: center; }
+.start-card .start-intro:empty { display: none; }
 .start-card label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
 .start-card label:has(input[hidden]) { display: none; }
 .start-card label small { font-size: 12px; line-height: 1.4; }
@@ -1100,6 +1106,13 @@ a.primary, a.btn { text-decoration: none; }
     border-radius: 10px; padding: 11px 12px; width: 100%;
 }
 .start-card input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+/* The choice of the setup method: a field like the others; until one is chosen, nothing else follows */
+.start-card select {
+    font: inherit; font-size: 16px; color: var(--text); background: var(--bar-bg); border: 1px solid var(--line);
+    border-radius: 10px; padding: 11px 12px; width: 100%;
+}
+.start-card select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+.start-card .method-off { display: none !important; }
 .start-card input[readonly] { color: var(--muted); background: transparent; }
 .start-card input[readonly]:focus { outline: none; border-color: var(--line); }
 .start-card .primary { padding: 12px 18px; font-size: 15px; margin-top: 4px; }
@@ -1110,7 +1123,7 @@ a.primary, a.btn { text-decoration: none; }
 .start-card .login-qr[hidden] { display: none; }
 .start-card .login-or { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
 /* The choice of accounts (signed out, or a key expired): the form's fields wait behind "Sign in to another account" */
-.start-card.choosing > :is(label, button, .login-qr, .login-invite, .start-help) { display: none; }
+.start-card.choosing > :is(label, button, select, .login-qr, .login-first, .login-invite, .start-help) { display: none; }
 .start-card .login-invite { display: flex; flex-direction: column; gap: 10px; }
 .start-card .login-invite .login-or { text-align: center; }
 .start-card .login-choose { display: flex; flex-direction: column; gap: 10px; }
@@ -1134,6 +1147,13 @@ a.primary, a.btn { text-decoration: none; }
 .chat-list li.welcome { display: block; cursor: default; padding: 18px 16px 22px; border-bottom: 0; }
 .welcome h2 { margin: 0 0 6px; font-size: 18px; }
 .welcome-intro { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; }
+/* The sign-in to an AI provider in the start view: a card like the sign-in's, left-aligned */
+.start-setup { width: 100%; max-width: 440px; text-align: left; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+.start-setup[hidden] { display: none; }
+/* Not the grid of a chat row (avatar column first): the card's text would wrap in the narrow first column, a word a line */
+#chat-list .start-setup.in-list { display: block; max-width: none; margin: 10px; width: auto; list-style: none; cursor: default; }
+@media (min-width: 761px) { #chat-list .start-setup.in-list { display: none; } }
+.start-setup .welcome-body .primary { align-self: flex-start; }
 .welcome-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
 .welcome-steps li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; }
 .welcome-mark {
@@ -1151,7 +1171,8 @@ a.primary, a.btn { text-decoration: none; }
 .welcome-login a { color: var(--accent); word-break: break-all; }
 .welcome-login code { font-size: 15px; letter-spacing: 0.08em; }
 .welcome-extra { display: flex; flex-direction: column; gap: 6px; }
-.login-first { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.login-first { display: flex; flex-direction: column; gap: 10px; }
+.login-first[hidden] { display: none; }
 .login-first input { font: 15px var(--mono); letter-spacing: 0.06em; }
 .relay-claim { display: flex; flex-direction: column; gap: 6px; }
 .relay-claim p { margin: 0; }
@@ -1396,3 +1417,13 @@ kbd { font: 12px var(--mono); padding: 2px 6px; border: 1px solid var(--line); b
 .device-list .account-row-avatar { width: 32px; height: 32px; font-size: 13px; }
 .account-avatar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .account-avatar .avatar.large { width: 64px; height: 64px; font-size: 24px; }
+/* The open changes in the chat's header: like in the list, a little larger to tap */
+.bar .chat-git { padding: 4px 6px; font-size: 13px; }
+.bar .chat-git svg { width: 15px; height: 15px; }
+/* Dragging in the list: a chat over a folder's heading, a folder before or after another */
+.chat-list li.section.drop-target { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.chat-list li.section.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.chat-list li.section.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.chat-list li.section.category[draggable=true] { cursor: grab; }
+/* The sign-in a machine lost, at the top of the status page */
+.machines-page .status-signin { max-width: none; margin: 0 0 16px; }

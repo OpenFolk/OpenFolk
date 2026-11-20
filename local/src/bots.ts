@@ -452,12 +452,28 @@ export function saveCategory(input: CategoryInput, chatId?: string): Category {
     const existing = categories.find((c) => c.id === id);
     if (input.id && !existing) throw new Error(t('bots.categoryNotFound'));
     const now = new Date().toISOString();
-    const category: Category = { id, name: input.name.trim() || id, createdAt: existing?.createdAt ?? now, updatedAt: now };
+    const category: Category = { id, name: input.name.trim() || id, createdAt: existing?.createdAt ?? now, updatedAt: now, ...(existing?.order !== undefined ? { order: existing.order } : {}) };
     if (existing) categories[categories.indexOf(existing)] = category;
     else categories.push(category);
     saveCategories(categories);
     if (chatId) setCategory(chatId, id);
     return category;
+}
+
+/** Puts the folders in this order; unknown ids are skipped, folders not named follow in their previous order. */
+export function orderCategories(ids: string[]): void {
+    const categories = loadCategories();
+    const now = new Date().toISOString();
+    const named = ids.map((id) => categories.find((c) => c.id === id)).filter((c): c is Category => Boolean(c));
+    const rest = sortCategories(categories.filter((c) => !named.includes(c)));
+    // Only folders whose place changed get a new time, so syncing does not overwrite a rename on another machine
+    const placed = [...new Set([...named, ...rest])].map((c, order) => (c.order === order ? c : { ...c, order, updatedAt: now }));
+    saveCategories(placed);
+}
+
+/** The folders as the list shows them: placed ones by their place, the rest by name after them. */
+export function sortCategories(list: Category[]): Category[] {
+    return [...list].sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.name.localeCompare(b.name));
 }
 
 /** Removes a folder; the bots and groups in it stay, without one (their change syncs with them). */

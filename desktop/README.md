@@ -5,25 +5,58 @@ brings along and shows under its own address `openfolk://app` (like the mobile a
 relay). One project builds all three: the Windows installer, the Linux AppImage and .deb, the Mac's .dmg. On Windows
 and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; everything else is the same.
 
-- **First start:** the setup page (`setup.html`) is built like the web app's sign-in, the same card with a few fields
-  more. From the top: the field "Invitation link", which takes any link someone sent; a QR code for a relay's address;
-  folded away, "Sign in with the relay server and a password"; and, only here, "Start on this computer" for someone
-  without an invitation. Only "Continue" of the invitation has the filled button. Which link it was the main process
-  decides (`join-server` in `main.js`): a setup link joins this computer bound to an account, a machine's invitation
-  joins it to the relay, an invitation into an account (a pairing link) shows that relay's page signed in, as the
-  password way does.
-  - **Start on this computer** ("no invitation?"): the app runs the backend (`../local/`) itself, with the relay embedded on 127.0.0.1, and
+- **First start:** the setup page (`setup.html`) is a wizard in three steps, on the card of the web app's sign-in.
+  Step 1, "Setup method", signs in: the choice "Choose a setup method", then only the
+  fields of that method. Step 2, "Set up this computer", asks for the folders the bots may work in and starts the
+  backend here; it follows every sign-in as long as this computer runs no backend at that relay (below, "This
+  computer after a sign-in"). Step 3, "Sign in to an AI provider", opens right below step 2 as soon as that worked,
+  on the same page and while the backend starts: first the choice of one provider, then only its button or field:
+  Claude with the subscription (the browser opens the sign-in), Claude with an API key (checked with Anthropic first),
+  Codex or GitHub Copilot with a device code (the page shows the link and the code), or no provider (OpenCode's free
+  models), without texts that explain them. Cursor and Antigravity sign in in the settings. The main process runs `../local/tools/ai-setup.mjs` for it with the backend's data folder, writes the
+  machine settings only after the backend's own first start (`backend.pid`), then restarts the backend, which reads
+  them at its start, and shows the web app. An engine ready already (Claude signed in on this computer before) skips the step. It has no
+  "Not now": whoever wants no sign-in chooses "No provider". Steps 1 and 2 stay open
+  meanwhile: another method closes step 3 (`ai-cancel` ends a sign-in under way), other folders and "Set up this
+  computer" again open it anew; after a sign-in step 2 is done, its invitation redeemed. "Invitation link" takes any link someone
+  sent; "URL and password" asks for the relay's URL and the password (the main process keeps the password in memory
+  for two minutes and hands it once to the app's own page for that relay, `take-password`, which signs in with it);
+  "QR code" shows a code for the known URL at once, which a signed-in phone scans (the URL field only while none is
+  known or after a failure); and, only here, "Without setup" for
+  someone without an invitation, which goes to step 2 at once. The URL way is chosen beforehand when the app is connected to a relay or a relay did
+  not answer, "Without setup" when its backend did not start. Which link it was the main process
+  decides (`join-server` in `main.js`): a setup link (this computer bound to an account) and a machine's invitation
+  go on to step 2, which joins with them; an invitation into an account (a pairing link) shows that relay's page
+  signed in, as the password way does, and step 2 follows from there.
+  - **Without setup** (step 2 "Set up this computer" right away): the app runs the backend (`../local/`) itself, with the relay embedded on 127.0.0.1, and
     signs its window in with a pairing link. Nothing to host; the only step left is signing in to Claude Code
-    (the first steps in the app show how; none when Claude Code is signed in on this computer already, and "Try it
+    (the app's start view shows how; none when Claude Code is signed in on this computer already, and "Try it
     without signing in" starts on OpenCode's free models instead). Data, keys and the backend's log (`local.log`) live in `data` in the
     profile folder (below); settings that `.env.sample` describes go into `.env` there. Quitting the app ends the
     backend once no bot is working, after asking if that takes a while. "Sign this window in again" (tray menu,
     on the Mac "Window") helps after logging the device out. This is the single-computer setup: your phone, or
     the browser on another device, needs a relay on a server (`../docs/running.md`, linked from the setup page).
-  - **The relay server and a password** (display only): the app points its web app at that relay and needs no backend
-    of its own; an invitation into an account in the field above ends the same way. To test against a local relay, `OPENFOLK_URL=http://localhost:8787` presets it for one start. The setup
-    page warns here that this app then starts no backend on this computer, and asks once more ("Yes, no bots run on
-    this computer") unless the app already uses this way; so does the invitation field while bots run here.
+  - **The relay server and a password:** the app points its web app at that relay; an invitation into an account in
+    the field above ends the same way. To test against a local relay, `OPENFOLK_URL=http://localhost:8787` presets it for one start. Before
+    that the setup page asks once whether this computer should turn to that relay ("Yes, connect"), unless the app
+    already uses this way; so does the invitation field while bots run here.
+  - **This computer after a sign-in:** a window signed in at a relay runs no bots. An invitation into an account or the
+    address with a password signs in out of sight (`signInAway` in `main.js`): the web app runs in a hidden window of
+    the same session while the setup page stays ("Signing in …"), so no web app shows in between; the window shows it
+    only when there is nothing to set up, a TOTP code is needed or nothing came within 45 seconds. A refused sign-in (a
+    used or expired link, a wrong password) goes back to step 1 with the reason under the field (`signInRefused`). Page changes decided before an await are dropped when a newer page came meanwhile (`shown`), and a
+    stopped backend ends before a new one starts (`stopBackend`). The web app, once signed in,
+    asks the app whether this computer still runs no backend at that relay (`machine-wanted`) and then the relay for
+    this computer's invitation (the request `machine_own`: for the main account a machine of the relay, for every
+    other account a machine bound to it, valid 15 minutes). The app shows step 2 with it; "Set up this computer"
+    writes the folders, redeems the invitation (`../local/tools/join.mjs`) and starts the backend against the relay.
+    The backend needs the end-to-end key the account's devices use: the app takes it from the invitation link, or
+    from the web app when the page takes one over (`machine-key`), and keeps it in memory only. Without a key the
+    invitation is asked for only while nothing at the relay is encrypted for this account yet (no key in the page,
+    no machine awake); the backend then makes a key and signs the window in anew with a pairing link. A window signed
+    in before this existed holds a key the app cannot read: it stays a window until someone signs in again with an
+    invitation link, or pastes the link from "Add machine". Step 2 has no "Not now": signed in at a relay, this
+    computer joins it, or step 1 goes another way.
   - **Several relays:** like the mobile apps, the desktop app can be signed in to further relays, for example one per
     customer (settings → Accounts → "Add" with a pairing link from there; switch at the top of the sidebar, the
     chat list shows the bots of all of them).
@@ -44,7 +77,7 @@ and Linux the app lives in the tray, on the Mac in the Dock and the menu bar; ev
 - **Disconnecting:** "Disconnect from …" (File menu, tray, macOS app menu) is offered while the backend talks to a
   relay it joined. It stops the backend, takes `RELAY_URL`, `AGENT_TOKEN`, `E2E_KEY` and `MACHINE_NAME` out of the
   profile's `.env` and starts "on this computer" again; the data folder stays as it is.
-- **Moving to a relay on a server:** "on this computer" can move later. The first steps or the settings claim a
+- **Moving to a relay on a server:** "on this computer" can move later. The settings claim a
   relay with the setup code from its log; the backend moves over at once and writes `RELAY_URL` into the profile's
   `.env`. The window takes the pairing link of the new relay and is signed in there from then on (`backend.js` reads
   `RELAY_URL` from the profile; `config.json` remembers the address the window is signed in at).

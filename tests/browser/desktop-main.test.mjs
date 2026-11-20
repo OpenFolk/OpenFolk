@@ -10,15 +10,23 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 
 /** Starts main.js against a profile folder; returns what the stand-in recorded. */
 function startApp(profile, config) {
-    const state = { handlers: {}, whenReady: null, win: null, tray: null, menu: null, restarts: 0, appEvents: {}, webEvents: {}, protocols: [], dialogs: [], answer: 0, scripts: [] };
+    const state = { handlers: {}, whenReady: null, win: null, tray: null, menu: null, restarts: 0, joined: [], ai: [], aiAnswers: {}, signIns: [], appEvents: {}, webEvents: {}, protocols: [], dialogs: [], answer: 0, scripts: [] };
     if (config) fs.writeFileSync(path.join(profile, 'config.json'), JSON.stringify(config));
     class Win {
-        constructor() {
+        constructor(o = {}) {
+            // The hidden window the app signs in with (signInAway): recorded apart, it is not the app's window
+            if (o.show === false && !o.width) {
+                this.loads = [];
+                this.destroyed = false;
+                this.webContents = { setUserAgent: () => undefined, setWindowOpenHandler: () => undefined };
+                state.signIns.push(this);
+                return;
+            }
             this.loads = [];
             this.events = {};
             this.hidden = false;
             this.agent = '';
-            this.webContents = { userAgent: 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', setUserAgent: (a) => { this.agent = a; }, setWindowOpenHandler: () => undefined, on: (name, fn) => { state.webEvents[name] = fn; }, executeJavaScript: (code) => { state.scripts.push(code); return Promise.resolve(); } };
+            this.webContents = { userAgent: 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', setUserAgent: (a) => { this.agent = a; }, setWindowOpenHandler: () => undefined, on: (name, fn) => { state.webEvents[name] = fn; }, executeJavaScript: (code) => { state.scripts.push(code); return Promise.resolve(/localStorage/.test(code) || undefined); }, getURL: () => 'file:///setup.html' };
             state.win = this;
         }
         once() {}
@@ -32,6 +40,8 @@ function startApp(profile, config) {
         isMaximized() { return false; }
         isFullScreen() { return false; }
         getBounds() { return {}; }
+        isDestroyed() { return this.destroyed === true; }
+        destroy() { this.destroyed = true; }
     }
     class Tray {
         constructor() { state.tray = this; this.events = {}; }
@@ -69,10 +79,20 @@ function startApp(profile, config) {
                 constructor(port) { this.port = port; this.url = `http://127.0.0.1:${port}/`; this.child = {}; }
                 start() {}
                 ready() { return Promise.resolve(true); }
+                settled() { return Promise.resolve(true); }
+                pairingUrl() { return Promise.resolve(`${this.url}#pair=fresh&e2e=${'k'.repeat(43)}`); }
                 restartWhenIdle() { state.restarts++; return Promise.resolve('restarted'); }
                 stop() { return Promise.resolve(); }
             }
-            return { ...real, Backend, freePort: async () => 4711 };
+            // Joining redeems the invitation at the relay: recorded here instead
+            // Step 3 runs local/tools/ai-setup.mjs: recorded here, with the answers the test sets
+            const aiSetup = (command, o = {}) => {
+                state.ai.push(o.input ? [command, o.input] : command);
+                const r = state.aiAnswers[command] ?? { ok: true };
+                for (const line of r.lines ?? []) o.onLine?.(line);
+                return { child: {}, stop: () => state.ai.push('kill'), done: Promise.resolve(r.last ?? r) };
+            };
+            return { ...real, Backend, aiSetup, freePort: async () => 4711, joinServer: async (link) => { state.joined.push(link); return { ok: true, machine: 'desk' }; } };
         }
         return load.call(this, request, ...rest);
     };
@@ -166,12 +186,136 @@ export default async function ({ check }) {
         await settle();
         check('main: a display-only window carries no mark', app.win.agent === 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', app.win.agent);
 
-        // The setup page's one field with an invitation into an account: the window signs in at that relay
+        // The setup page's one field with an invitation into an account: the app signs in at that relay out of sight,
+        // the setup page stays (no web app in between)
+        /** Waits until `test` holds (a relay's answer comes asynchronously), at most two seconds. */
+        const until = async (test) => { for (let i = 0; i < 40 && !test(); i++) await settle(); };
+        const beforeInvite = app.win.loads.length;
         const invited = await app.handlers['join-server'](fromSetup, 'https://other.example.test/#pair=tok&e2e=key');
-        await settle();
-        const page = app.win.loads.at(-1)?.url ?? '';
-        check('main: an invitation pasted on the setup page opens that relay with its sign-in, no join', !invited.error && page.startsWith('openfolk://app/#relay=') && page.includes(encodeURIComponent('https://other.example.test')) && page.includes('pair=tok'), { invited, page });
+        await until(() => app.signIns.at(-1)?.loads?.length);
+        const hidden = app.signIns.at(-1);
+        const page = hidden?.loads.at(-1)?.url ?? '';
+        check('main: an invitation pasted on the setup page signs in at that relay out of sight, no join', invited.signingIn === true && page.startsWith('openfolk://app/#relay=') && page.includes(encodeURIComponent('https://other.example.test')) && page.includes('pair=tok'), { invited, page });
+        check('main: … the window stays on the setup page meanwhile', app.win.loads.length === beforeInvite, app.win.loads.slice(beforeInvite));
         check('main: … and the app stays on that relay', JSON.parse(fs.readFileSync(path.join(profile, 'config.json'), 'utf8')).url === 'https://other.example.test/');
+        const fromHidden = { senderFrame: { url: `openfolk://app/#relay=${encodeURIComponent('https://other.example.test')}` }, sender: hidden.webContents };
+        await app.handlers['machine-wanted'](fromHidden, 'https://other.example.test');
+        await app.handlers['machine-none'](fromHidden);
+        await settle();
+        check('main: signed in, nothing to set up here: the hidden window goes, the window shows the web app, signed in (no pairing link again)', hidden.destroyed
+            && app.win.loads.at(-1)?.url === `openfolk://app/#relay=${encodeURIComponent('https://other.example.test')}`, app.win.loads.at(-1));
+
+        // Refused before it got in (a used link): back to step 1 of the setup with the reason, not the web app's sign-in
+        await app.handlers['join-server'](fromSetup, 'https://other.example.test/#pair=used&e2e=key');
+        await until(() => app.signIns.at(-1) !== hidden && app.signIns.at(-1)?.loads?.length);
+        const refusedIn = app.signIns.at(-1);
+        await app.handlers['sign-in-needed']({ ...fromHidden, sender: refusedIn.webContents }, 'This pairing link is no longer valid.', 'pairing_invalid');
+        await settle();
+        const back = app.win.loads.at(-1);
+        check('main: the hidden sign-in refused: the setup page again, step 1 with the way used and the reason', refusedIn.destroyed && back?.file === 'setup.html'
+            && back.query.method === 'invite' && back.query.refused === 'This pairing link is no longer valid.' && !String(back?.url ?? '').includes('pair=used'), back);
+        check('main: a request of the window itself does not end anything', !(await app.handlers['sign-in-needed'](fromSetup)));
+
+        // The address with a password: the same out of sight; the hidden web app takes the password once
+        const withPassword = await app.handlers['save-address'](fromSetup, 'other.example.test', 'secret');
+        await until(() => app.signIns.at(-1) !== refusedIn && app.signIns.at(-1)?.loads?.length);
+        const pwIn = app.signIns.at(-1);
+        const pwFrom = { ...fromHidden, sender: pwIn.webContents };
+        check('main: the address with a password signs in out of sight too', withPassword.signingIn === true && pwIn !== refusedIn && !pwIn.destroyed, withPassword);
+        check('main: … the hidden web app gets the password', (await app.handlers['take-password'](pwFrom, 'https://other.example.test')) === 'secret');
+        // Asked for a TOTP code: the user is needed, the window gets the password once more
+        await app.handlers['sign-in-needed'](pwFrom, 'Enter the code.', 'totp_required');
+        await settle();
+        check('main: … a code needed: the window takes over and gets the password again', pwIn.destroyed && (await app.handlers['take-password'](fromHidden, 'https://other.example.test')) === 'secret');
+        const noPassword = await app.handlers['save-address'](fromSetup, 'other.example.test', '');
+        check('main: without a password the web app asks for it in the window', !noPassword.signingIn, noPassword);
+        await settle();
+
+        // After that sign-in the web app asks for this computer: the second step of the setup
+        const KEY = 'k'.repeat(43);
+        const appPage = { senderFrame: { url: `openfolk://app/#relay=${encodeURIComponent('https://other.example.test')}` } };
+        const config = () => JSON.parse(fs.readFileSync(path.join(profile, 'config.json'), 'utf8'));
+        await app.handlers['join-server'](fromSetup, `https://other.example.test/#pair=tok2&e2e=${KEY}`);
+        const wanted = await app.handlers['machine-wanted'](appPage, 'https://other.example.test');
+        check('main: signed in as a window, this computer is still to be set up, the key of the invitation known', wanted.wanted === true && wanted.key === true, wanted);
+        check('main: … not for another relay, nor for a page that is not the app', (await app.handlers['machine-wanted'](appPage, 'https://evil.example.test')).wanted === false
+            && (await app.handlers['machine-wanted']({ senderFrame: { url: 'https://other.example.test/' } }, 'https://other.example.test')).wanted === false);
+        await app.handlers['machine-offer'](appPage, { relay: 'https://evil.example.test', kind: 'setup', token: 'x'.repeat(32) });
+        await app.handlers['machine-offer'](appPage, { relay: 'https://other.example.test', kind: 'pair', token: 'x'.repeat(32) });
+        check('main: an offer for another relay or of another kind is ignored', app.win.loads.at(-1)?.file !== 'setup.html');
+        await app.handlers['machine-offer'](appPage, { relay: 'https://other.example.test', kind: 'setup', token: 'x'.repeat(32) });
+        check('main: the invitation of the relay for this computer opens the second step, the hidden sign-in ends', app.signIns.every((w) => w.destroyed) && app.win.loads.at(-1)?.file === 'setup.html' && app.win.loads.at(-1).query.step === 'machine' && (await app.handlers.info(fromSetup)).step === 'machine', app.win.loads.at(-1));
+        check('main: … and is not asked for twice', (await app.handlers['machine-wanted'](appPage, 'https://other.example.test')).wanted === false);
+        check('main: step 2 has no "Not now"', !app.handlers['machine-skip']);
+        await app.handlers['join-server'](fromSetup, `https://other.example.test/#pair=tok3&e2e=${KEY}`);
+        check('main: a new sign-in offers the computer again', (await app.handlers['machine-wanted'](appPage, 'https://other.example.test')).wanted === true);
+        await app.handlers['machine-offer'](appPage, { relay: 'https://other.example.test', kind: 'setup', token: 'y'.repeat(32) });
+        const work = path.join(home, 'Work');
+        const beforeSetup = app.win.loads.length;
+        const set = await app.handlers['machine-setup'](fromSetup, [work]);
+        await settle();
+        check('main: "Set up this computer": the folders written, the invitation redeemed with the key', !set.error && fs.readFileSync(path.join(profile, '.env'), 'utf8').includes(`ALLOWED_ROOTS=${work}`)
+            && app.joined.at(-1) === `https://other.example.test/#setup=${'y'.repeat(32)}&e2e=${KEY}`, { set, joined: app.joined });
+        check('main: … and the backend runs here from now on', config().mode === 'local' && app.win.agent.endsWith('OpenFolkLocal') && (await app.handlers.info(fromSetup)).step === '', config());
+        // Pages of the relay asked for earlier (relayPage) may still arrive late here: only what came after an action counts
+        const loadedSince = (n, test) => app.win.loads.slice(n).some(test);
+        const appPageLoad = (l) => String(l.url || '').startsWith('openfolk://app/');
+        check('main: … and the setup page stays for step 3 below it, no page in between', !loadedSince(beforeSetup, (l) => l.file === 'setup.html' || l.url === 'about:blank'), app.win.loads.slice(beforeSetup));
+        check('main: step 3 asks the backend here for its engines', (await app.handlers['ai-status'](fromSetup)).ok === true && app.ai.at(-1) === 'status');
+        app.aiAnswers.key = { ok: false, error: 'invalid' };
+        const restartsAtKey = app.restarts;
+        const refused = await app.handlers['ai-key'](fromSetup, ' sk-ant-bad ');
+        await settle();
+        check('main: step 3: a refused key is said, nothing restarts', refused.error === 'Anthropic does not know this key.' && JSON.stringify(app.ai.at(-1)) === '["key","sk-ant-bad"]' && app.restarts === restartsAtKey && !app.ai.includes('kill'), { refused, ai: app.ai });
+        check('main: step 3: an empty key is not sent', (await app.handlers['ai-key'](fromSetup, '  ')).error === 'Paste the key first.' && JSON.stringify(app.ai.at(-1)) === '["key","sk-ant-bad"]');
+        const sent = [];
+        const restartsBefore = app.restarts;
+        app.aiAnswers.claude = { lines: [{ state: 'browser' }, { state: 'done' }], last: { state: 'done' } };
+        const beforeClaude = app.win.loads.length;
+        await app.handlers['ai-login']({ ...fromSetup, sender: { isDestroyed: () => false, send: (...a) => sent.push(a) } }, 'claude');
+        await settle();
+        check('main: step 3: the Claude sign-in tells the page, then the backend restarts and the web app comes', sent.some((a) => a[0] === 'ai-state' && a[1].state === 'browser')
+            && app.ai.includes('on claude') && app.restarts === restartsBefore + 1 && loadedSince(beforeClaude, appPageLoad)
+            && !loadedSince(beforeClaude, (l) => l.file === 'setup.html'), { sent, ai: app.ai, restarts: app.restarts, loads: app.win.loads.slice(beforeClaude) });
+        check('main: step 3 is done: its requests are refused now', (await app.handlers['ai-key'](fromSetup, 'sk-ant-x')).error === 'not allowed');
+        // "Change setup …", "Without setup" again: step 3 once more, and "Not now"
+        await app.handlers['choose-local'](fromSetup, []);
+        await settle();
+        const beforeSkip = app.win.loads.length;
+        const restartsAtSkip = app.restarts;
+        const codexSent = [];
+        const codexPage = { ...fromSetup, sender: { isDestroyed: () => false, send: (...x) => codexSent.push(x) } };
+        app.aiAnswers['device codex'] = { lines: [{ state: 'code', url: 'https://auth.example.test/device', code: 'ABCD-1234' }], last: { state: 'failed', message: 'expired' } };
+        await app.handlers['ai-login'](codexPage, 'codex');
+        await app.handlers['ai-login'](codexPage, 'cursor');
+        await settle();
+        check('main: step 3: Codex signs in with a device code; failed, nothing switched on and nothing restarts', app.ai.includes('device codex') && !app.ai.includes('on codex') && !app.ai.some((c) => String(c).includes('cursor'))
+            && codexSent.some((x) => x[1].state === 'code' && x[1].code === 'ABCD-1234') && codexSent.some((x) => x[1].state === 'failed' && x[1].message === 'expired') && app.restarts === restartsAtSkip, { ai: app.ai, codexSent });
+        await app.handlers['ai-skip'](fromSetup);
+        await settle();
+        check('main: step 3: "Not now" shows the web app without a restart', app.restarts === restartsAtSkip && loadedSince(beforeSkip, appPageLoad), app.win.loads.slice(beforeSkip));
+        await app.handlers['choose-local'](fromSetup, []);
+        await settle();
+        await app.handlers['ai-cancel'](fromSetup);
+        check('main: step 1 changed at step 3: it ends there, its requests are refused', (await app.handlers['ai-key'](fromSetup, 'sk-ant-x')).error === 'not allowed' && (await app.handlers['ai-status'](fromSetup)).ok === false);
+        check('main: step 3 is only for the setup page', (await app.handlers['ai-key']({ senderFrame: { url: 'https://evil.example.test/' } }, 'sk-ant-x')).error === 'not allowed');
+
+        // A machine's invitation pasted in the first step: the second step asks for the folders before it joins
+        app = startApp(profile, {});
+        app.whenReady();
+        await settle();
+        const before2 = app.joined.length;
+        const pastedJoin = await app.handlers['join-server'](fromSetup, 'npm run join -- "https://relay.example.test/#join=abc&e2e=key"');
+        check('main: the invitation of a machine waits for the second step, step 1 shown with its method', !pastedJoin.error && app.joined.length === before2 && app.win.loads.at(-1)?.query?.step === 'machine'
+            && app.win.loads.at(-1)?.query?.method === 'invite', app.win.loads.at(-1));
+        await app.handlers['machine-drop'](fromSetup);
+        check('main: step 1 changed then: the invitation is dropped', Boolean((await app.handlers['machine-setup'](fromSetup, [])).error) && app.joined.length === before2, app.joined);
+        await app.handlers['join-server'](fromSetup, 'npm run join -- "https://relay.example.test/#join=abc&e2e=key"');
+        await app.handlers['machine-setup'](fromSetup, []);
+        check('main: … which joins with it', app.joined.at(-1) === 'https://relay.example.test/#join=abc&e2e=key', app.joined);
+        app = startApp(profile, { mode: 'relay', url: 'https://other.example.test/' });
+        app.whenReady();
+        await settle();
 
         // The web app's keyboard shortcuts as a menu: shown with their keys, the keys themselves left to the page
         const go = app.menu?.find((m) => m.label === 'Go')?.submenu ?? [];

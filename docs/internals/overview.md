@@ -182,7 +182,7 @@ subscription login of their own.
 
 The sign-in to Claude with a subscription always completes in Anthropic's own flow, and OpenFolk never handles its
 codes or tokens: Anthropic does not let third-party apps offer the claude.ai login or collect, store or pass on its
-credentials (code.claude.com/docs/en/legal-and-compliance). So the first steps run `claude auth login` on the
+credentials (code.claude.com/docs/en/legal-and-compliance). So the app's sign-in runs `claude auth login` on the
 machine (`local/src/engine-login.ts`), which opens the browser there and waits on localhost for the redirect, and
 never the device-code style of Codex and Copilot: the CLI's fallback link ends in a code to paste, and relaying that
 from the phone, or a token from `claude setup-token`, is exactly what is not allowed. A machine nobody sits at signs
@@ -305,6 +305,13 @@ backend knows (`HANDOVER_IDES`), each with a command line in `handover.ts`: a pa
 a command of its own on the machine, so free commands stay in the `.env` (`HANDOVER_IDE`), which wins over the
 choice. The IDE default relies on VS Code routing a `vscode://` URI to its last active
 window, which is why it opens the folder with `code` first.
+
+Claude Code's IDE extension opens a session only if it is in its own list, and that list leaves out sessions a
+program started: those whose first `entrypoint` in the first 64 KB of the transcript (without one there, the last in
+the final 64 KB) is `sdk-ts`, `sdk-cli` or `sdk-py`, which is every session of a bot. Asked for such a session, the
+extension starts an empty one without a word. Before the IDE opens, the backend therefore turns that one entry into
+`ide-…` (`showSessionToIde` in `vscode.ts`): three bytes in place, so the session stays the same one for the chat.
+The terminal resumes by id and needs none of this. The entry point of the bots' own processes stays the SDK's.
 
 ## Versions move at different speeds
 

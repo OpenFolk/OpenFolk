@@ -36,6 +36,7 @@ export default async function ({ start, check }) {
 
     // ---- the login: the account field only on request
     const fresh = await start({ device: null });
+    await fresh.page.selectOption('#login-method', 'password');
     check('login: no account field at first, a link to it', await fresh.page.isHidden('#login-account') && await fresh.page.isVisible('#login-other-account'));
     await fresh.page.click('#login-other-account');
     check('… the link shows it', await fresh.page.isVisible('#login-account') && await fresh.page.isHidden('#login-other-account'));
@@ -113,7 +114,7 @@ export default async function ({ start, check }) {
     await a.fill('#accounts-link', 'http://test.local');
     await a.click('#accounts-link-go');
     await add.wait(200);
-    check('adding: the login with the account field and a way back', await a.isVisible('#login') && await a.isVisible('#login-account') && await a.isVisible('#login-cancel'));
+    check('adding: the login with the password method, the account field and a way back', await a.inputValue('#login-method') === 'password' && await a.isVisible('#login') && await a.isVisible('#login-account') && await a.isVisible('#login-cancel'));
     await a.fill('#login-account', 'Kunde');
     await a.fill('#login-token', 'kunde-password-123');
     signedInAs = 'kunde';

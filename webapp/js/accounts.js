@@ -13,6 +13,7 @@ import { accountsOf, openOtherChat, showAllAccounts } from './others.js';
 import { confirmDialog } from './dialogs.js';
 import { accountAvatarField, hasSetup, inviteWithSetup, machinePicker, openSetup, setupAccountsChanged, takeSetupLink } from './setups.js';
 import { approvalFor, approvalLink, scanForAccount } from './qr-login.js';
+import { chooseMethod, focusMethod } from './login-method.js';
 
 /** The machines ticked in the form for a new account (`value`: null = all of them). @type {{ box: HTMLElement, value: () => string[] | null } | null} */
 let newMachines = null;
@@ -119,7 +120,7 @@ export function renderChooser() {
     el.loginForm.classList.toggle('choosing', show);
     el.loginChooseBack.hidden = show || !formWanted || !deviceAccounts().length;
     if (!show) return;
-    el.loginIntro.textContent = t('login.chooseIntro');
+    el.loginIntro.textContent = '';
     const list = deviceAccounts();
     el.loginAccounts.replaceChildren(...list.map((a) => {
         const li = node('li');
@@ -175,6 +176,7 @@ function loginFor(a) {
     formWanted = true;
     renderChooser();
     el.loginIntro.textContent = t('login.chooseExpired', { name: a.name || 'Main' });
+    chooseMethod('password');
     if (a.id !== 'main') showAccountField();
     el.loginAccount.value = a.id === 'main' ? '' : a.name;
     el.loginToken.focus();
@@ -185,8 +187,8 @@ export function showLoginForm() {
     formWanted = true;
     el.loginAccount.value = '';
     renderChooser();
-    el.loginIntro.textContent = t(bundled ? 'login.introApp' : 'login.intro');
-    el.loginToken.focus();
+    el.loginIntro.textContent = '';
+    focusMethod();
 }
 
 /** "Back to the accounts" below the form. */
@@ -257,8 +259,9 @@ export function addAccount() {
     if (ws) ws.close();
     closeSettings();
     showLogin();
-    el.loginIntro.textContent = t('accounts.addIntro');
     el.loginCancel.hidden = false;
+    // An address alone: the account and its password
+    chooseMethod('password');
     showAccountField();
 }
 

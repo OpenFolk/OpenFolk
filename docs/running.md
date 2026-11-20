@@ -12,8 +12,9 @@ fails. The desktop app has no checkout and does each of those steps in its inter
 steps or under Settings → "Devices and security" → "Move to a relay on a server", pairing a device under "Pair another
 device", joining a further computer with the link from "Add machine" in the field "Invitation link" of the app's setup page, restart and "Run without signing in" in the tray menu. Its `.env` lives in the app's profile folder
 (Windows `%APPDATA%\OpenFolk`, macOS `~/Library/Application Support/OpenFolk`, Linux `~/.config/OpenFolk`), never in a
-checkout. Do not pick "Sign in with the relay server and a password" on the setup page to use a relay of your own
-with the bots on this computer: that way the app starts no backend here and the bots go offline.
+checkout. Signing in on the setup page (an invitation link, "URL and password") is followed by its second step, "Set up this
+computer", which joins this computer to that relay and runs the bots here; with "Not now" the app stays a window and
+starts no backend.
 
 ## Relay and backends
 
@@ -27,7 +28,7 @@ npm run claim -- https://relay.example.com ABCDE-FGHJK   # address of the relay,
 npm run restart                                         # or npm start, if the backend is not running
 ```
 
-The same from the app, without a terminal: while a backend runs the relay itself, the first steps and the settings
+The same from the app, without a terminal: while a backend runs the relay itself, the settings
 ("Devices and security", "Move to a relay on a server") ask for the relay's address and the setup code. The backend
 claims the relay, gets a pairing link there for the asking device, writes `RELAY_URL` into its `.env` and moves over
 without a restart; the page opens the link and is signed in at the new relay, end-to-end key included. A backend
@@ -140,7 +141,7 @@ In Coolify take `docker-compose.coolify.yml` instead, with the build pack *Docke
 port and has Coolify generate the setup code. Give the `relay` service your domain with port 8787
 (`https://bots.example.com:8787`) and set `APP_URL` to the same address without the port. Coolify hands every
 variable of the resource to both containers, so engine keys set there reach the relay too; enter them in the app's
-first steps or in the terminal of `local` instead.
+sign-in or in the terminal of `local` instead.
 
 **Updating, in this order:** the relay first, then the backends, the apps last (the desktop app updates itself,
 the mobile apps come through the stores). A newer relay serves older backends and apps; the other way round
@@ -153,12 +154,12 @@ signed in once by hand, with the relay password or a pairing link from a signed-
 security" → "Pair another device"; it brings the end-to-end key along). The storage survives later updates.
 
 The first device needs no terminal: the backend prints a code to its log on every start, and the relay's sign-in
-page offers "Code from the server log" while the main account has no device. The page sends only its key; the backend
+page offers the setup method "Device sign-in code from the backend log" while the main account has no device. The page sends only its key; the backend
 seals the pairing link with that key and the code, so the relay passes on a box it cannot open. Not the setup code:
 the relay knows that one. To hand the code to someone before the server runs, for example a person with nothing but
 a phone, set it yourself as `FIRST_DEVICE_CODE` on the backend (at least 16 letters and digits); the log then names the
 variable instead of the code. Either code opens the first device only: once a device of the main account has talked
-to the backend it is used up. Claude signs in with an Anthropic API key in the first steps, or with its subscription in
+to the backend it is used up. Claude signs in with an Anthropic API key in the app's sign-in, or with its subscription in
 the container (`docker compose -f docker-compose.server.yml exec -u node local claude`); `… exec -u node local npm
 run pair` makes a pairing link as before. The bots on that server see the connectors of the claude.ai account
 signed in there (Gmail, Drive …) only if the machine settings let them in; an account of its own for the server
@@ -283,7 +284,7 @@ without a prompt:
   The token travels to the machine end-to-end encrypted only and sits in the environment of the bots' sessions there,
   never in `.git/config`. "Open changes" warns while the host of a bot's repository has no access.
 - **SSH remotes** need a key that asks for no passphrase: an SSH agent in the backend's session. On a Mac the desktop
-  app ("Start on this computer") inherits the agent launchd provides, and a key in the keychain
+  app (its backend on this computer) inherits the agent launchd provides, and a key in the keychain
   (`ssh-add --apple-use-keychain ~/.ssh/id_ed25519`) loads without a prompt. On Windows the service "OpenSSH
   Authentication Agent" keeps the keys loaded with `ssh-add` for your user. Without a signed-in session (task,
   container, server) there usually is no agent: switch the remote to HTTPS and set a token, or put a key without a

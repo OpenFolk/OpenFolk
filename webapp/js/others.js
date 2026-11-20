@@ -3,7 +3,7 @@
    needs (bots, state, last message, unread); a tap opens the chat in that account, which loads the page again
    (accounts.js). The active account keeps its one full connection (connection.js), and nothing of another account goes
    beyond the list. */
-import { DEVICE_KEY, accountScopeOf, deviceAccounts, deviceRelays, expireAccounts, loadedAccount, relayScope, storage } from './core.js';
+import { DEVICE_KEY, accountScopeOf, deviceAccounts, deviceRelays, expireAccounts, loadedAccount, peopleWithPictures, relayScope, storage } from './core.js';
 import { botIdOf, decrypt, e2e, isGroup, loadKey, newChannel, sendOn } from './e2e.js';
 import { socketUrl } from './platform.js';
 import { preview } from './connection.js';
@@ -19,7 +19,7 @@ const RETRY_MS = 15_000;
  * `relay`: null for the page's own relay, otherwise the other relay with its end-to-end key (`key`, null without one).
  * @typedef {{ account: { id: string, name: string, device: string }, relay: { url: string, name: string, scope: string } | null, key: CryptoKey | null,
  *   ws: WebSocket | null, channel: ReturnType<typeof newChannel>,
- *   bots: any[], groups: any[], people: { id: string, name: string }[], personChats: { id: string, favorite?: boolean, muted?: boolean }[], perMachine: Record<string, { states: Record<string, string>, activity: Record<string, string>, activeChats: Record<string, string> }>,
+ *   bots: any[], groups: any[], people: { id: string, name: string }[], peopleByMachine: Record<string, any[]>, personChats: { id: string, favorite?: boolean, muted?: boolean }[], perMachine: Record<string, { states: Record<string, string>, activity: Record<string, string>, activeChats: Record<string, string> }>,
  *   approvals: Record<string, { chatId: string, machine?: string }>, last: Record<string, string>, lastTs: Record<string, string>, incoming: Record<string, string>,
  *   seen: Record<string, any>, online: string[], retry: any }} Other
  */
@@ -72,7 +72,7 @@ export function connectOthers() {
 function add(account, relay) {
     /** @type {Other} */
     const o = {
-        account, relay, key: null, ws: null, channel: newChannel(), bots: [], groups: [], people: [], personChats: [], perMachine: Object.create(null), approvals: {}, last: {}, lastTs: {},
+        account, relay, key: null, ws: null, channel: newChannel(), bots: [], groups: [], people: [], peopleByMachine: {}, personChats: [], perMachine: Object.create(null), approvals: {}, last: {}, lastTs: {},
         incoming: {}, seen: storedSeen(account.id, relay ? relay.scope : relayScope), online: [], retry: null,
     };
     if (others.has(idOf(o))) return;
@@ -199,7 +199,7 @@ async function receive(o, raw) {
             for (const id of chatIds(o)) if (!(id in o.last)) sendOn(o.ws, o.channel, { type: 'history', chatId: id, limit: 1 }, undefined, key);
             break;
         case 'people':
-            o.people = f.list || [];
+            o.people = peopleWithPictures(o.peopleByMachine, f);
             o.personChats = f.chats || [];
             for (const id of personIds(o)) if (!(id in o.last)) sendOn(o.ws, o.channel, { type: 'history', chatId: id, limit: 1 }, undefined, key);
             break;

@@ -42,7 +42,7 @@ Optional schränkt Tailscale die Verbindung des Backends weiter ein (`docs/tails
 > ein Mac braucht eine Anmeldung, und die automatische Anmeldung der Desktop-Sitzung gibt es nur unter Windows. Das
 > Relay läuft überall, wo Node 22 oder Docker läuft.
 
-**In zwei Minuten ausprobieren:** die Desktop-App installieren und unten auf der Startseite „Auf diesem Rechner starten“ wählen:
+**In zwei Minuten ausprobieren:** die Desktop-App installieren, auf der Startseite die Setupmethode „Ohne Setup“ wählen und „Rechner einrichten“:
 
 | System | Download | Hinweis |
 | --- | --- | --- |
@@ -121,8 +121,11 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   Routinen. Codex und die anderen Engines bekommen keine Liste.
 - **Gruppenchats** mit `@id` und `@all`; Bots können sich per @ weiterreichen.
 - **Ordner** in der Chatliste: „+“ → „Neuer Ordner“; ein Bot oder eine Gruppe kommt über das Menü („Ordner“) oder
-  die Einstellungen hinein. Ein Tipp auf die Überschrift klappt den Ordner ein, langes Drücken benennt ihn um oder
-  löscht ihn. Laufende Bots und ungelesene Antworten stehen derweil oben, egal in welchem Ordner.
+  die Einstellungen hinein. Ein Tipp auf die Überschrift klappt den Ordner ein, langes Drücken benennt ihn um, verschiebt ihn
+  (nach oben, nach unten) oder löscht ihn. Mit der Maus zieht man einen Bot oder eine Gruppe auf die Überschrift eines
+  Ordners (auf „Ohne Ordner“, um ihn herauszunehmen) und einen Ordner auf einen anderen, um seinen Platz zu tauschen. Laufende Bots und ungelesene Antworten stehen derweil oben, egal in welchem Ordner.
+  Auf Wunsch sortiert ein Bot die Liste selbst mit `set_folder` (Bots und Gruppen nach Id oder Name, ein neuer Ordner
+  wird angelegt) und zeigt sie mit `list_folders`; sein Chat sagt, was er verschoben hat.
 - **Bot an Bot** über die Werkzeuge `message_bot`, `list_bots` und `list_conversations`: Ein Bot gibt einem anderen
   Bot oder einer bestimmten Unterhaltung einen Auftrag (auch einer eigenen, etwa vom Brainstorming zum Coden), auch auf
   einem anderen Rechner. Das Ergebnis kommt von selbst in die auftraggebende Unterhaltung zurück, egal wie lange es
@@ -273,8 +276,8 @@ npm start
 
 Das ist die ganze Einrichtung auf einem Rechner. Ohne `.env` startet das Backend das Relay im eigenen Prozess auf
 `http://127.0.0.1:8787`, erzeugt beim ersten Start alle Schlüssel (`local/data/`) und öffnet die Web-App im Browser
-mit einem Pairing-Link, der den Browser anmeldet und ihm den Ende-zu-Ende-Schlüssel übergibt. Danach führt die App
-durch die ersten Schritte: Backend verbunden, KI-Anbieter wählen (eine neue Installation startet ohne, man hakt die
+mit einem Pairing-Link, der den Browser anmeldet und ihm den Ende-zu-Ende-Schlüssel übergibt. Solange kein KI-Anbieter bereit ist,
+zeigt die Startansicht neben der Liste (auf dem Handy oben in der Liste) die Anmeldung: KI-Anbieter wählen (eine neue Installation startet ohne, man hakt die
 eigenen an; ist Claude Code auf dem Rechner schon angemeldet, ist Claude gleich an und die Frage entfällt) und bei
 einem anmelden (Claude Code mit dem Abo im Browser, den die App auf dem Rechner öffnet, in einem Terminal dort, wenn
 das Backend ohne Desktop läuft, oder mit einem Anthropic-API-Schlüssel direkt im Schritt; Codex und Copilot mit einem Gerätecode, den man auf einem beliebigen Gerät
@@ -292,7 +295,7 @@ Terminal, nie in einer Logdatei; als Dienst oder Container gestartet nennt es st
 
 | Du willst | Weg |
 | --- | --- |
-| ausprobieren oder nur an diesem Rechner arbeiten | die Desktop-App („Auf diesem Rechner starten“) oder `npm start` |
+| ausprobieren oder nur an diesem Rechner arbeiten | die Desktop-App („Ohne Setup“) oder `npm start` |
 | Handy von überall, Push, schlafende Rechner wecken | eigenes Relay auf einem Server, Backend auf dem PC |
 | Bots, die laufen, während die PCs aus sind | Relay und Backend zusammen auf einem Server (`docker-compose.server.yml`) |
 
@@ -312,7 +315,7 @@ optionale npm-Abhängigkeiten (etwa 600 MB); wer nur Claude nutzt, installiert m
 **Desktop-App oder Quellcode?** Alle `npm`-Befehle in dieser Anleitung (`npm run claim`, `npm run pair`, `npm run join`,
 `npm run restart`, `npm run env`) gelten für einen Checkout des Quellcodes und laufen im Ordner `openfolk` nach
 `npm install`; in einer PowerShell ohne Checkout scheitern sie. Die Desktop-App hat keinen Checkout, bei ihr geht jeder
-dieser Schritte über die Oberfläche: das Relay übernehmen in den ersten Schritten oder unter Einstellungen → „Geräte und
+dieser Schritte über die Oberfläche: das Relay übernehmen unter Einstellungen → „Geräte und
 Sicherheit“ → „Auf ein Relay auf einem Server umziehen“; ein Gerät koppeln unter „Weiteres Gerät koppeln“; einen weiteren
 Rechner mit dem Link aus „Rechner hinzufügen“, den die Setup-Seite der App nimmt („Diesen Rechner an meinen Server
 anschließen“), oder per QR-Code auf der Setup-Seite, den ein angemeldetes Handy scannt; Neustart und „Auch ohne Anmeldung laufen“ im Tray-Menü. Ihre `.env` liegt im Profilordner der App
@@ -339,7 +342,7 @@ mit einem Volume; es speichert keine Nachrichten und sieht keine Zugangsdaten.
 3. **Relay übernehmen** von dem Rechner, auf dem dein Backend schon läuft. Desktop-App: Einstellungen → „Geräte und
    Sicherheit“ → „Auf ein Relay auf einem Server umziehen“, Adresse und Code eingeben; das Backend zieht ohne Neustart
    um, die Seite folgt und ist dort angemeldet. Quellcode: `npm run claim -- https://relay.example.com <Code>` und dann
-   `npm run restart`. Nicht „Mit Relay-Server und Passwort anmelden“ auf der Startseite der
+   `npm run restart`. Nicht die Setupmethode „URL und Passwort“ auf der Startseite der
    Desktop-App wählen: Das startet auf diesem Rechner kein Backend mehr, die Bots gehen offline.
 4. **Handy koppeln:** Einstellungen → „Geräte und Sicherheit“ → „Weiteres Gerät koppeln“, den QR-Code mit dem Handy
    scannen (Link einmalig, 15 Minuten). Im Browser die Adresse des Relays öffnen und als App zum Home-Bildschirm
@@ -368,11 +371,11 @@ Repo mit Build-Pack *Docker Compose* einbinden. Details in `docs/running.md` (en
 `APP_URL` (die öffentliche HTTPS-Adresse des Relays) und `RELAY_SETUP_CODE` (beliebige 10 oder mehr Buchstaben und
 Ziffern, etwa `openssl rand -hex 8`) setzen; das Backend beansprucht das Relay damit beim ersten Verbinden selbst.
 Das erste Gerät braucht kein Terminal: Das Backend schreibt bei jedem Start einen Code in sein Log
-(`docker compose -f docker-compose.server.yml logs local`), und die Anmeldeseite bietet „Code aus dem Server-Log“ an,
+(`docker compose -f docker-compose.server.yml logs local`), und die Anmeldeseite bietet die Setupmethode „Geräte-Anmeldecode aus dem Backend-Log“ an,
 solange der Hauptzugang kein Gerät hat. Das Relay sieht den Code nie. Wer den Code vorher weitergeben will (etwa an
 jemanden, der nur ein Handy hat), setzt ihn selbst als `FIRST_DEVICE_CODE` (mindestens 16 Buchstaben und Ziffern);
 dann bleibt er aus dem Log. Jeder Code gilt nur für das erste Gerät. Claude meldet sich mit einem
-Anthropic-API-Schlüssel direkt in den ersten Schritten an, oder mit Abo über
+Anthropic-API-Schlüssel direkt in der Anmeldung der Startansicht an, oder mit Abo über
 `docker compose -f docker-compose.server.yml exec -u node local claude`; `… exec -u node local npm run pair` liefert
 weiterhin einen Pairing-Link. In Coolify stattdessen `docker-compose.coolify.yml` nehmen (fertige Images, kein
 Host-Port, den Setup-Code erzeugt Coolify): dem Dienst `relay` die Domain mit Port 8787 geben und `APP_URL` auf
@@ -413,7 +416,7 @@ klonen und pushen können, braucht es Zugangsdaten, die ohne Nachfrage da sind:
   in der Umgebung der Bot-Sessions, nie in `.git/config`. „Offene Änderungen“ warnt, solange der Host eines Bot-Repos
   keinen Zugang hat.
 - **SSH-Remotes** brauchen einen Schlüssel ohne Passphrase-Abfrage: einen SSH-Agenten, der in der Sitzung des Backends
-  läuft. Auf dem Mac nimmt die Desktop-App („Auf diesem Rechner starten“) den Agenten von launchd mit; ein Schlüssel
+  läuft. Auf dem Mac nimmt die Desktop-App (Backend auf diesem Rechner) den Agenten von launchd mit; ein Schlüssel
   im Schlüsselbund (`ssh-add --apple-use-keychain ~/.ssh/id_ed25519`) lädt ohne Nachfrage. Unter Windows hält der Dienst
   „OpenSSH Authentication Agent“ die mit `ssh-add` geladenen Schlüssel für deinen Benutzer bereit. Ohne angemeldete
   Sitzung (Aufgabe, Container, Server) ist meist kein Agent da: dort das Remote auf HTTPS umstellen und ein Token hinterlegen, oder
@@ -510,8 +513,8 @@ eingerichtet hat, besitzt das Hauptkonto; solange es kein zweites gibt, ändert 
 - **Chats zwischen Konten:** Jedes Konto kann den anderen Konten auf seinem Relay schreiben („+“ → „Person“). Ein Kunde
   soll nur sein Team erreichen und keine anderen Kunden: Beim Anlegen das Häkchen „Kunde: chattet nur mit den Admins“
   setzen, oder später in der Liste „Nur Admins“ bzw. „Erreicht alle“ wählen. Admins erreichen jeden. Ein Konto, das nur
-  chatten soll, braucht keine Claude-Anmeldung; solange es keine Bots hat, zeigt die App ihm statt der Checkliste die
-  Personen, denen es schreiben kann. Die kennen die Rechner: Ist keiner davon an, sieht so ein Konto einen Hinweis darauf statt der ersten Schritte des Betreibers mit „npm start“. Jede Seite hat ihre eigene Kopie: Wer den Chat löscht, löscht nur seine.
+  chatten soll, braucht keine Claude-Anmeldung; solange es keine Bots hat, zeigt die App ihm statt einer leeren Liste die
+  Personen, denen es schreiben kann. Die kennen die Rechner: Ist keiner davon an, sieht so ein Konto einen Hinweis darauf. Jede Seite hat ihre eigene Kopie: Wer den Chat löscht, löscht nur seine.
   Der Supportbot eines Kunden übergibt an dich, wenn in seinen Einstellungen unter „Übergabe an“ dein Konto steht.
 
 ### Eine Person auf ihrem eigenen Computer einrichten
@@ -535,6 +538,11 @@ sich dort bei Claude an; du bereitest alles vor und schickst ihr einen Link.
    dann deinem Relay als Rechner bei, der an dieses Konto gebunden ist. Sie klont jedes Repository mit seinem Token in
    einen eigenen Ordner und legt die Bots an. Die Person sieht ihre Bots und die Personen, denen sie schreiben darf,
    sonst nichts.
+
+Auch ohne Einrichtung bringt die Desktop-App einer Person ihren eigenen Rechner mit: Nach der Anmeldung mit dem
+einfachen Einladungslink bindet der Schritt „Rechner einrichten“ den Computer an ihr Konto auf deinem Relay (das darf
+jedes Konto für sich selbst; es bekommt dann keine Bots von dir, und deine Rechner bleiben für das Konto angehakt wie
+zuvor).
 
 Was die Bindung bedeutet: Ein Rechner, der per Einrichtungslink beitritt, bedient nur sein Konto, und der erste
 Einrichtungslink nimmt deine Rechner für dieses Konto heraus (unter „Bearbeiten“ lassen sich wieder welche anhaken). Deine Bots, Chats und Rechner erreichen ihn nie, und seine Chats nicht deine Rechner:

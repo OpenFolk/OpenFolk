@@ -19,7 +19,9 @@ export default async function ({ start, check }) {
     });
     const p = h.page;
     await h.wait(300);
-    check('no device yet: the code field below the QR code', await p.isVisible('#login-first') && await p.isVisible('#login-qr svg'));
+    check('no device yet: the code from the log is a setup method of its own', await p.evaluate(() => [...document.querySelectorAll('#login-method option')].some((o) => o.value === 'first')));
+    await p.selectOption('#login-method', 'first');
+    check('… which shows its field and not the QR code', await p.isVisible('#login-first') && !(await p.isVisible('#login-qr')));
 
     await p.fill('#login-first-code', 'ABCD');
     await p.click('#login-first-send');
@@ -61,6 +63,7 @@ export default async function ({ start, check }) {
         },
     });
     await wrong.wait(300);
+    await wrong.page.selectOption('#login-method', 'first');
     await wrong.page.fill('#login-first-code', newFirstDeviceCode());
     await wrong.page.click('#login-first-send');
     await wrong.wait(100);
@@ -76,6 +79,8 @@ export default async function ({ start, check }) {
         onSend: (f, push, state, reply) => { if (f.type === 'pair_wait') return reply({ type: 'pair_wait', id: 'req-3', expiresAt: new Date(Date.now() + 600_000).toISOString() }); },
     });
     await later.wait(300);
-    check('with a device on the relay: no code field', await later.page.isVisible('#login-qr svg') && !(await later.page.isVisible('#login-first')));
+    check('with a device on the relay: no such method', !(await later.page.evaluate(() => [...document.querySelectorAll('#login-method option')].some((o) => o.value === 'first'))));
+    await later.page.selectOption('#login-method', 'qr');
+    check('… the QR code, no code field', await later.page.isVisible('#login-qr svg') && !(await later.page.isVisible('#login-first')));
     await later.close();
 }

@@ -7,8 +7,9 @@
 <link rel="stylesheet" href="folders-ui.css">
 <style>
     /* The same card as the sign-in of the web app (webapp/chat.css, .start-card): one way in at the top, the rest below */
-    :root { color-scheme: light dark; --bg: #111b21; --card: #202c33; --text: #e9edef; --muted: #8696a0; --border: #3b4a54; --field: #2a3942; --accent: #00a884; --error: #f15c6d; }
-    @media (prefers-color-scheme: light) { :root { --bg: #f0f2f5; --card: #fff; --text: #111b21; --muted: #667781; --border: #d1d7db; --field: #f0f2f5; } }
+    /* Colors of the web app (webapp/chat.css :root), so the window does not change color after the sign-in */
+    :root { color-scheme: light dark; --bg: #0b141a; --card: #111b21; --text: #e9edef; --muted: #8696a0; --border: #2a3942; --field: #202c33; --accent: #d97757; --error: #f15c6d; }
+    @media (prefers-color-scheme: light) { :root { --bg: #eef1f4; --card: #fff; --text: #111b21; --muted: #667781; --border: #e1e5e9; --field: #f6f8fa; } }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; display: flex; padding: 24px 16px; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
     main { margin: auto; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 28px 24px; }
@@ -20,22 +21,35 @@
     .intro { font-size: 13.5px; text-align: center; }
     label { display: block; font-size: 13px; color: var(--muted); }
     input { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--field); color: var(--text); font: inherit; font-size: 16px; }
-    input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    input:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    select { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--field); color: var(--text); font: inherit; font-size: 16px; }
+    /* The wizard: only the elements of the chosen setup method (data-for, setup.js) */
+    .method-off { display: none !important; }
     button { width: 100%; padding: 12px 18px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
     button:hover { filter: brightness(1.1); }
-    button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+    button.secondary { background: var(--field); color: var(--text); border: 1px solid var(--border); font-weight: 400; }
     .hint { font-size: 13px; }
     .hint a { color: var(--accent); }
     .or { margin-top: 6px; font-size: 13px; text-align: center; }
     .error { color: var(--error); font-size: 13px; overflow-wrap: anywhere; }
     .error:empty { display: none; }
     .warn { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--error); background: rgba(241, 92, 109, .12); color: var(--text); font-size: 13px; }
-    details.more { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
-    details.more > summary { cursor: pointer; font-size: 14px; font-weight: 600; }
-    details.more[open] > summary { margin-bottom: 10px; }
-    details.more > p { margin-bottom: 10px; }
-    details.folders-setup { font-size: 13px; }
-    details.folders-setup summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+    .folders-setup { font-size: 13px; }
+    /* The folder rows like the selects and fields of the page: same height, size and ground */
+    .folders-setup .folder-list li { min-height: 48px; padding: 5px 6px 5px 12px; background: var(--field); }
+    .folders-setup .folder-path { font-size: 16px; }
+    .folders-setup h2 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+    /* Steps 1 and 2 done, step 3 open below: they stay in sight, switched off */
+    #choice :disabled { opacity: .55; cursor: default; filter: none; }
+    #ai-way label a { color: var(--accent); margin-left: 6px; }
+    #ai-way .hint:empty { display: none; }
+    #ai-way .ai-off { display: none !important; }
+    #ai-code { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+    #ai-code a { color: var(--accent); }
+    #ai-code code { font-size: 20px; letter-spacing: 2px; padding: 6px 12px; border-radius: 8px; background: var(--field); border: 1px solid var(--border); user-select: all; }
+    .step-title { font-size: 17px; margin: 0; text-align: center; }
+    /* The list itself names the default folder ("default"), so the sentence about it is left out here */
+    .folders-setup .folder-default { display: none; }
     /* White behind the code in the dark theme too: scanners want dark modules on light ground */
     #qr-code { width: 220px; margin: 0 auto; padding: 6px; background: #fff; border-radius: 10px; }
     #qr-code svg { display: block; width: 100%; height: auto; }
@@ -51,57 +65,88 @@
     <p id="starting" class="intro" hidden data-i18n="setupStarting">OpenFolk is starting …</p>
     <p class="error" id="failed" hidden></p>
     <div id="choice">
+        <!-- A small wizard: the setup method first, then only its fields -->
+        <h2 id="method-title" class="step-title" data-i18n="setupStepTitle">Step 1: setup method</h2>
+        <select id="method">
+            <option value="" disabled selected data-i18n="setupMethod">Choose a setup method</option>
+            <option value="invite" data-i18n="setupMethodInvite">Invitation link</option>
+            <option value="password" data-i18n="setupMethodPassword">URL and password</option>
+            <option value="qr" data-i18n="setupMethodQr">QR code</option>
+            <option value="local" data-i18n="setupMethodLocal">Without setup</option>
+        </select>
         <!-- Any link someone sent: an invitation into an account, a setup link, a machine's invitation (main.js decides) -->
-        <p class="intro" data-i18n="setupIntro">Got an invitation link? Paste it here, it does the rest.</p>
-        <form id="join-form">
+        <form id="join-form" data-for="invite">
             <label for="join" data-i18n="setupInviteLabel">Invitation link</label>
-            <input id="join" type="text" placeholder="https://openfolk.example.com/#…" autocomplete="off" spellcheck="false">
+            <input id="join" type="text" placeholder="https://…/#…" autocomplete="off" spellcheck="false">
             <p class="error" id="join-error"></p>
             <button type="submit" data-i18n="setupInviteGo">Continue</button>
         </form>
-        <!-- Asked before this computer stops running bots of its own (a pairing link, or "server URL and password") -->
+        <!-- Asked before a computer with a backend of its own turns to a relay (a pairing link, or URL and password) -->
         <div id="relay-confirm" hidden>
-            <p class="warn" data-i18n="setupRelayConfirmText">Connect to this relay server? The app starts no backend here, so no bots run on this computer.</p>
-            <button type="button" id="relay-confirm-yes" data-i18n="setupRelayConfirmYes">Yes, no bots run on this computer</button>
+            <p class="warn" data-i18n="setupRelayConfirmText">Connect to this relay server? This computer then works for the account there; what its bots did here so far stays in the profile.</p>
+            <button type="button" id="relay-confirm-yes" data-i18n="setupRelayConfirmYes">Yes, connect</button>
             <button type="button" class="secondary" id="relay-confirm-no" data-i18n="setupRelayConfirmNo">Back</button>
         </div>
-        <p class="or" data-i18n="setupQrOr">Or by QR code.</p>
-        <form id="qr-form">
-            <label for="qr-relay" data-i18n="setupLabel">Relay server URL</label>
-            <input id="qr-relay" type="text" placeholder="https://openfolk.example.com" autocomplete="url" spellcheck="false">
-            <p class="error" id="qr-error"></p>
-            <button type="submit" class="secondary" data-i18n="setupQrShow">Show QR code</button>
+        <!-- The relay's address, for the password and for the QR code (there only while none is known or it failed) -->
+        <form id="form" data-for="password qr-url">
+            <label for="url" data-i18n="setupLabel">URL</label>
+            <input id="url" type="text" autocomplete="url" spellcheck="false">
+            <!-- Handed to the web app once (main.js take-password), which signs in with it -->
+            <label for="password" data-i18n="setupPassword" data-for="password">Password</label>
+            <input id="password" type="password" autocomplete="current-password" data-for="password">
+            <p class="error" id="error"></p>
+            <button type="submit" data-i18n="setupConnect" data-for="password">Connect</button>
         </form>
-        <div id="qr-box" hidden>
+        <form id="qr-form" data-for="qr">
+            <p class="error" id="qr-error"></p>
+            <button type="submit" data-i18n="setupQrShow">Show QR code</button>
+        </form>
+        <div id="qr-box" data-for="qr" hidden>
             <div id="qr-code"></div>
-            <p class="hint" id="qr-hint" data-i18n="setupQrHint">Have it scanned by a signed-in device.</p>
+            <p class="hint" id="qr-hint"></p>
             <button type="button" class="secondary" id="qr-cancel" data-i18n="setupQrCancel">Cancel</button>
         </div>
-        <details class="more" id="password-way">
-            <summary data-i18n="setupPasswordTitle">Sign in with the relay server and a password</summary>
-            <p class="hint" data-i18n="setupRelayHint">For a computer that only shows your bots.</p>
-            <p class="warn" data-i18n="setupRelayWarn">This app then starts no backend on this computer.</p>
-            <form id="form">
-                <label for="url" data-i18n="setupLabel">Relay server URL</label>
-                <input id="url" type="text" placeholder="https://openfolk.example.com" autocomplete="url" spellcheck="false">
-                <p class="error" id="error"></p>
-                <button type="submit" class="secondary" data-i18n="setupConnect">Connect</button>
-            </form>
-        </details>
-        <!-- Only in the desktop app: no invitation, so this computer runs backend and relay itself -->
-        <p class="or" data-i18n="setupLocalOr">No invitation? Start OpenFolk on this computer:</p>
-        <section id="local-way">
-            <p class="hint" data-i18n="setupLocalHint">The app runs a backend of its own.</p>
-            <p class="hint"><span data-i18n="setupPhoneHint">For your phone, OpenFolk needs a relay server of its own:</span>
-                <a href="https://github.com/OpenFolk/OpenFolk/blob/main/docs/running.md" target="_blank" rel="noopener" data-i18n="setupPhoneLink">how to set it up</a></p>
-            <details class="folders-setup">
-                <summary data-i18n="foldersSetupSummary">Folders the bots may work in (optional)</summary>
-                <p class="hint" data-i18n="foldersSetupHint">Without a choice the bots may work in your user folder.</p>
+        <!-- The second step, "Set up this computer": the folders, then the backend starts here. Right away for "Without
+             setup" (backend and relay on this computer), after a sign-in for the relay signed in at (?step=machine) -->
+        <section id="local-way" data-for="local">
+            <h2 id="machine-title" class="step-title" data-i18n="setupMachineTitle">Step 2: set up this computer</h2>
+            <div class="folders-setup">
+                <h2 data-i18n="foldersSetupSummary">Folders the bots may work in (optional)</h2>
                 <div id="setup-folders"></div>
-            </details>
-            <button type="button" class="secondary" id="local" data-i18n="setupLocal">Start on this computer</button>
+            </div>
+            <p class="error" id="machine-error"></p>
+            <button type="button" id="local" data-i18n="setupLocal">Set up this computer</button>
         </section>
     </div>
+    <!-- The third step, right below step 2 once "Set up this computer" worked, while the backend starts: the sign-in to
+         an AI provider for it (main.js ai-*, local/tools/ai-setup.mjs). Goes on by itself when an engine is ready. -->
+    <section id="ai-way" hidden>
+        <h2 class="step-title" data-i18n="setupAiTitle">Step 3: sign in to an AI provider</h2>
+        <!-- One provider: the choice first, then only its button or field (data-ai, setup.js) -->
+        <select id="ai-provider">
+            <option value="" disabled selected data-i18n="setupAiChoose">Choose a provider</option>
+            <option value="claude" data-i18n="setupAiClaude">Claude (subscription)</option>
+            <option value="claude-key" data-i18n="setupAiClaudeKey">Claude (API key)</option>
+            <option value="codex" data-i18n="setupAiCodex">Codex (ChatGPT account)</option>
+            <option value="copilot" data-i18n="setupAiCopilot">GitHub Copilot</option>
+            <option value="free" data-i18n="setupAiFree">No provider (free models)</option>
+        </select>
+        <button type="button" id="ai-login" data-ai="claude codex copilot">Sign in</button>
+        <p class="hint" id="ai-state" data-ai="claude codex copilot"></p>
+        <div id="ai-code" data-ai="codex copilot" hidden><p class="hint" id="ai-code-text"></p><code id="ai-code-value"></code></div>
+        <p class="error" id="ai-error" data-ai="claude codex copilot"></p>
+        <form id="ai-key-form" data-ai="claude-key">
+            <label for="ai-key"><span data-i18n="setupAiKeyLabel">Anthropic API key</span>
+                <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noreferrer" data-i18n="setupAiKeyLink">Create an API key</a></label>
+            <input id="ai-key" type="password" autocomplete="off" spellcheck="false">
+            <p class="error" id="ai-key-error"></p>
+            <button type="submit" data-i18n="setupAiKeySave">Save</button>
+        </form>
+        <button type="button" id="ai-try" data-ai="free" data-i18n="setupAiTry">Start for free</button>
+        <p class="error" id="ai-try-error" data-ai="free"></p>
+    </section>
+    <!-- An invitation into an account or the address with a password: the app signs in out of sight, step 2 follows -->
+    <p id="signing-in" class="intro" hidden data-i18n="setupSigningIn">Signing in …</p>
     <small id="info"></small>
 </main>
 <script src="folders-ui.js"></script>

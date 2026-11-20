@@ -104,6 +104,50 @@ export function transcriptPath(folder: string, sessionId: string): string {
     return path.join(projectDir(folder), `${sessionId}.jsonl`);
 }
 
+/** Claude Code reads this much from each end of a transcript to describe a session in its lists. */
+const LIST_BYTES = 65536;
+const ENTRYPOINT = '"entrypoint":"';
+
+/**
+ * Makes a bot's session one that Claude Code's IDE extension opens. The extension looks a session id up in its own
+ * list, and that list leaves out sessions a program started: those whose first `entrypoint` in the head of the
+ * transcript (or, without one there, the last in its tail) is `sdk-ts`, `sdk-cli` or `sdk-py`. Asked for such a
+ * session it silently starts an empty one. So the deciding entry becomes `ide-…`, three bytes written in place:
+ * nothing moves, and a line appended meanwhile is not lost. Later lines of the bot do not hide the session again
+ * unless its head has no entry at all. Returns whether the transcript was changed.
+ */
+export function showSessionToIde(folder: string, sessionId: string): boolean {
+    const file = transcriptPath(folder, sessionId);
+    let fd: number;
+    try {
+        fd = fs.openSync(file, 'r+');
+    } catch {
+        return false; // no transcript here: the IDE reports that itself
+    }
+    try {
+        const size = fs.fstatSync(fd).size;
+        const read = (from: number) => {
+            const buf = Buffer.alloc(Math.min(LIST_BYTES, size - from));
+            return buf.subarray(0, fs.readSync(fd, buf, 0, buf.length, from));
+        };
+        let from = 0;
+        let at = read(0).indexOf(ENTRYPOINT);
+        if (at < 0 && size > LIST_BYTES) {
+            from = size - LIST_BYTES;
+            at = read(from).lastIndexOf(ENTRYPOINT);
+        }
+        if (at < 0) return false;
+        const value = from + at + ENTRYPOINT.length;
+        const now = Buffer.alloc(8);
+        const text = now.subarray(0, fs.readSync(fd, now, 0, 8, value)).toString('latin1');
+        if (!/^sdk-(?:ts|cli|py)"/.test(text)) return false;
+        fs.writeSync(fd, 'ide', value);
+        return true;
+    } finally {
+        fs.closeSync(fd);
+    }
+}
+
 function readBytes(file: string, from: number, length: number): Buffer {
     const fd = fs.openSync(file, 'r');
     try {

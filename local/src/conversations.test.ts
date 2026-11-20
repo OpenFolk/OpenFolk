@@ -55,6 +55,13 @@ bots.setModel(chatId, 'haiku');
 check('conversation with its own model', sessionOf(chatId).model === 'haiku' && bots.findBot('test')!.model === 'fable');
 bots.setModel('test', 'default');
 check('default means: no setting for the CLI', sessionOf('test').model === undefined && sessionOf(chatId).model === 'haiku');
+// Claude switched off on this machine (the desktop setup's "start for free"): a chat set to Claude runs on the engine that is on
+const machine = await import('./machine-settings.ts');
+machine.saveMachineSettings({ disabledEngines: ['claude', 'codex', 'cursor', 'copilot', 'antigravity'] });
+check('Claude off: a chat on Claude runs on the engine that is on', sessionOf('test').engine === 'opencode' && sessionOf(chatId).engine === 'opencode');
+machine.saveMachineSettings({ disabledEngines: ['codex'] });
+check('Claude on: the chat keeps Claude', sessionOf('test').engine === 'claude' && sessionOf('test').model === undefined && sessionOf(chatId).model === 'haiku');
+machine.saveMachineSettings({ disabledEngines: [] });
 check('model switch keeps the sessions', bots.readSessionId('test') === 'main-1' && bots.readSessionId(chatId) === 'side-1');
 bots.saveBot({ ...bot, name: 'Test 2', model: 'opus' });
 check('changing the model in the editor keeps the sessions', bots.readSessionId('test') === 'main-1' && bots.readSessionId(chatId) === 'side-1');

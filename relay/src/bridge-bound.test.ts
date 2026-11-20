@@ -27,7 +27,7 @@ function fakeSocket<T>() {
 }
 
 const people: Person[] = [
-    { id: 'main', name: 'Marco', admin: true, reach: 'all' },
+    { id: 'main', name: 'Marco', admin: true, reach: 'all', avatar: 'data:image/webp;base64,AAAA' },
     { id: 'anna', name: 'Anna', admin: false, reach: 'all' },
     { id: 'kunde', name: 'Kunde', admin: false, reach: 'listed', contacts: ['main'] },
     { id: 'other', name: 'Other', admin: false, reach: 'all' },
@@ -59,6 +59,7 @@ const hello = of(laptop.received, 'relay_hello')[0];
 check('the bound machine serves its account only and knows its admin', hello?.accounts?.join() === 'kunde' && hello.bound === 'kunde' && hello.setupBy === 'main', hello);
 check('the bound machine hears only of the people its account reaches, without their contacts',
     hello?.people?.map((p) => p.id).sort().join() === 'kunde,main' && hello.people.every((p) => p.id === 'kunde' || !p.contacts), hello?.people);
+check('… with their pictures', hello?.people?.find((p) => p.id === 'main')?.avatar === 'data:image/webp;base64,AAAA', hello?.people);
 check('each machine sees only machines of its own kind',
     of(desk.received, 'agents').at(-1)?.online.join() === 'desk' && of(laptop.received, 'agents').at(-1)?.online.join() === 'laptop',
     [of(desk.received, 'agents').at(-1), of(laptop.received, 'agents').at(-1)]);

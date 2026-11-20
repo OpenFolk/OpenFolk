@@ -103,7 +103,7 @@ export default async function ({ check }) {
                 foldersTitle: 'Allowed folders', foldersIntro: 'Intro', foldersDefault: 'No folder chosen: the own folder {default}, not your whole user folder.', foldersDefaultTag: 'default',
                 foldersLastRemoved: 'The last folder stays: {default} applies.', foldersWide: '{folder} is very wide.', foldersAdd: 'Add folder …', foldersRemove: 'Remove',
                 foldersSave: 'Save', foldersClose: 'Close', foldersSaved: 'Saved.', foldersWaiting: 'Saved, waiting for the bot.', foldersEnvWarn: 'ALLOWED_ROOTS is set ({value}) and wins.',
-                foldersSetupSummary: 'Folders (optional)', foldersSetupHint: 'Hint {default}', setupHint: 'OpenFolk {version}',
+                foldersSetupSummary: 'Folders (optional)', setupHint: 'OpenFolk {version}',
             };
             const open = async (file, info, answers = {}) => {
                 const context = await browser.newContext({ bypassCSP: true });
@@ -118,6 +118,10 @@ export default async function ({ check }) {
                         chooseLocal: async (list) => { window.__calls.push(['local', list]); return window.__answers.local || {}; },
                         saveAddress: async () => ({}), joinServer: async () => ({}),
                         qrJoinStart: async () => ({}), qrJoinStop: async () => ({}), onQrJoin: () => {},
+                        // Step 3 (the AI sign-in) opens after "on this computer": an engine is known, nothing signs in
+                        aiStatus: async () => { window.__calls.push(['aiStatus']); return { ok: true, known: true, ready: false }; },
+                        aiLogin: async () => ({}), onAiState: () => {}, aiKey: async () => ({}), aiTry: async () => ({}),
+                        aiSkip: async () => undefined, aiCancel: async () => undefined,
                     };`);
                 const p = await context.newPage();
                 const errors = [];
@@ -179,12 +183,15 @@ export default async function ({ check }) {
             // The setup page
             s = await open('setup.html', { roots: [], home: 'C:/Users/sven', defaultRoot: 'C:/Users/sven/OpenFolk', envRoots: '' }, { pick: 'E:/Code' });
             p = s.p;
-            check('setup page: the way "on this computer" offers the folders, folded, with the default named', (await p.isVisible('details.folders-setup summary')) && !(await p.isVisible('#setup-folders')) && (await p.$eval('.folder-default', (n) => n.textContent)).includes('C:/Users/sven/OpenFolk') && (await p.textContent('[data-i18n="foldersSetupHint"]')).includes('C:/Users/sven/OpenFolk'));
-            await p.click('details.folders-setup summary');
+            await p.selectOption('#method', 'local');
+            check('setup page: the way "on this computer" shows the folders unfolded, the default in the list, no explaining text', (await p.isVisible('.folders-setup h2')) && !(await p.$('details.folders-setup')) && (await p.isVisible('#setup-folders .folder-add')) && (await p.textContent('#setup-folders .folder-standard')).includes('C:/Users/sven/OpenFolk') && !(await p.isVisible('#setup-folders .folder-default')) && !(await p.$('[data-i18n="foldersSetupHint"]')));
             await p.click('#setup-folders .folder-add');
             await p.click('#local');
             await p.waitForFunction(() => window.__calls.some((c) => c[0] === 'local'));
             check('setup page: starting on this computer hands over the chosen folders', JSON.stringify((await s.calls()).find((c) => c[0] === 'local')) === '["local",["E:/Code"]]', await s.calls());
+            // Step 3 asks the bridge right away; only after that are the errors complete (without the wait the check
+            // raced the call: on Windows it usually came first, on Linux CI after)
+            await p.waitForFunction(() => window.__calls.some((c) => c[0] === 'aiStatus'));
             check('setup page: no script errors', s.errors.length === 0, s.errors);
             await s.context.close();
         } finally {

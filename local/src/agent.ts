@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { forkSession, getSessionInfo, type McpServerConfig, type PermissionResult, type PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
-import { AVATAR_MAX, botToolServer, engineToolsFor, toolText, type BotProfile, type RoutineChange, type ToolHost, type ToolText } from './bot-tools.ts';
+import { AVATAR_MAX, botToolServer, engineToolsFor, foldersText, toolText, type BotProfile, type RoutineChange, type ToolHost, type ToolText } from './bot-tools.ts';
 import { e2eEnabled, e2eKeyForLink } from './e2e.ts';
 import { joinDone, joinPending } from './join.ts';
 import { appUrl, newMachineInvite, newPairingLink, newSetupLink, pairingSvg, pairingUrl } from './pairing.ts';
@@ -24,7 +24,7 @@ import type { PersonInbox } from './accounts.ts';
 import { allPeople, canReach, clearPersonChat, contactsOf, loadPersonChats, personName, setPersonFlag } from './people.ts';
 import {
     archiveConversation, botSessionIds, clearMainChat, createConversation, deleteBot, deleteGroup, findBot, findConversation, findGroup, isMuted, isUnder, loadBots, loadGroups, mayMessage,
-    readSessionId, refusalOf, removeConversation, renameConversation, roleLine, saveBot, duplicateBot, saveBots, saveGroup, saveCategory, deleteCategory, setCategory, loadCategories, allowTool, setFavorite, setModel, setMuted, setPlace, setSessionId, underAllowedRoot,
+    readSessionId, refusalOf, removeConversation, renameConversation, roleLine, saveBot, duplicateBot, saveBots, saveGroup, saveCategory, deleteCategory, setCategory, loadCategories, orderCategories, allowTool, setFavorite, setModel, setMuted, setPlace, setSessionId, underAllowedRoot,
 } from './bots.ts';
 import { autologon, canAutologon, type AutologonState } from './autologon.ts';
 import { BACKEND_VERSION, config } from './config.ts';
@@ -72,7 +72,7 @@ import { avatarDataUrl, suggest } from './suggestions.ts';
 import { synthesize } from './speech.ts';
 import { transcriber } from './voice.ts';
 import { setupVoice, voiceStatus } from './voice-setup.ts';
-import { isInside, MAX_ENTRIES, MAX_LIST, projectDir, listMachineSessions, listVscodeSessions, transcriptStoreError, transcriptPath, Watcher } from './vscode.ts';
+import { isInside, MAX_ENTRIES, MAX_LIST, projectDir, listMachineSessions, listVscodeSessions, showSessionToIde, transcriptStoreError, transcriptPath, Watcher } from './vscode.ts';
 import { availableTemplate, handOver, handoverIdeName, handoverTargets, hasDesktop, ideFromEnv, openSignInTerminal, signInCommand } from './handover.ts';
 import { claimRelay } from './relay-switch.ts';
 
@@ -1375,6 +1375,11 @@ export class BotManager implements SessionHooks {
                     this.sendBots();
                     this.shareConfig();
                     break;
+                case 'category_order':
+                    orderCategories(frame.ids);
+                    this.sendBots();
+                    this.shareConfig();
+                    break;
                 case 'history':
                     this.send({ type: 'history', chatId: frame.chatId, entries: withoutToolOutput(readVisible(frame.chatId, frame.limit)), live: this.live(frame.chatId) }, cid);
                     break;
@@ -2506,6 +2511,8 @@ export class BotManager implements SessionHooks {
         setAvatar: (s, avatar) => this.setOwnAvatar(s, avatar),
         setProfile: (s, profile) => this.setOwnProfile(s, profile),
         setRoutine: (s, change) => this.setOwnRoutine(s, change),
+        listFolders: () => toolText(foldersText()),
+        setFolder: (s, folder, chats) => this.setFolder(s, folder, chats),
         makeAvatar: (s, wish) => this.makeOwnAvatar(s, wish),
         knowledgeChanged: (locations, by) => this.knowledgeChanged(locations, by),
     };
@@ -2527,15 +2534,15 @@ export class BotManager implements SessionHooks {
     }
 
     /**
-     * make_avatar: the editor's generator for the bot itself. The suggestion runs on Claude, so a bot on another
-     * engine gets the default model; the picture is kept small because nothing shrinks it here.
+     * make_avatar: the editor's generator for the bot itself, on the engine suggestions run on (suggestionEngine); the
+     * picture is kept small because nothing shrinks it here.
      */
     private async makeOwnAvatar(s: BotSession, wish: string): Promise<ToolText> {
         const b = s.bot;
         try {
             const r = await suggest({
                 what: 'avatar', folder: b.folder, name: b.name, area: b.area, role: b.role, tone: b.tone,
-                model: engineOf(b.model) === 'claude' ? b.model : 'default', wish: wish.trim() || undefined,
+                model: b.model, wish: wish.trim() || undefined,
             }, true);
             const avatar = avatarDataUrl(r);
             if (avatar.length > AVATAR_MAX) return toolText(`The picture has ${Math.round(avatar.length / 1000)} KB, at most ${AVATAR_MAX / 1000} KB fit; it was not set.`, true);
@@ -2570,6 +2577,46 @@ export class BotManager implements SessionHooks {
         this.entry(s.currentTurn?.chatId ?? b.id, { role: 'event', text: t('events.profile', { name: b.name, what: set.join(', ') }), ts: now });
         this.botSaved(old, b);
         return toolText(`Your profile is set (${set.join(', ')}); the user sees it at once. It applies from the next message on.`);
+    }
+
+    /**
+     * set_folder: bots and groups of this account into a folder of the chat list, by id or name; a folder by its name
+     * (any case) or created. Every name is resolved first, so a typo changes nothing.
+     */
+    private setFolder(s: BotSession, folder: string, chats: string[]): ToolText {
+        const bots = loadBots();
+        const groups = loadGroups();
+        const ids: string[] = [];
+        const unknown: string[] = [];
+        for (const raw of chats) {
+            const n = raw.trim();
+            const lower = n.toLowerCase();
+            const b = bots.find((x) => x.id === n) ?? bots.find((x) => x.name.toLowerCase() === lower);
+            const g = n.startsWith('g:') ? groups.find((x) => x.id === n.slice(2)) : groups.find((x) => x.id === n || x.name.toLowerCase() === lower);
+            if (b) ids.push(b.id);
+            else if (g) ids.push(`g:${g.id}`);
+            else unknown.push(n);
+        }
+        if (unknown.length) return toolText(`Not found: ${unknown.join(', ')}. Use the ids or names from list_bots (groups by name or g:<id>); nothing was changed.`, true);
+        const name = folder.trim();
+        let target = '';
+        let created = false;
+        if (name) {
+            const existing = loadCategories().find((c) => c.name.toLowerCase() === name.toLowerCase());
+            target = existing ? existing.id : saveCategory({ id: '', name }).id;
+            created = !existing;
+        }
+        const unique = [...new Set(ids)];
+        for (const id of unique) setCategory(id, target);
+        this.sendBots();
+        this.shareConfig();
+        const names = unique.map((id) => (id.startsWith('g:') ? groups.find((g) => `g:${g.id}` === id)?.name : bots.find((b) => b.id === id)?.name) ?? id);
+        const shown = target ? loadCategories().find((c) => c.id === target)?.name ?? name : '';
+        this.entry(s.currentTurn?.chatId ?? s.bot.id, {
+            role: 'event', ts: new Date().toISOString(),
+            text: shown ? t('events.folderSet', { name: s.bot.name, chats: names.join(', '), folder: shown }) : t('events.folderCleared', { name: s.bot.name, chats: names.join(', ') }),
+        });
+        return toolText(shown ? `${names.join(', ')} now in the folder "${shown}"${created ? ' (new)' : ''}.` : `${names.join(', ')} now in no folder.`);
     }
 
     /**
@@ -3005,6 +3052,8 @@ export class BotManager implements SessionHooks {
         if (foreign) throw new Error(t('errors.handoverClaudeOnly', { engine: ENGINE_NAMES[foreign] }));
         if (!handoverTargets().includes(target)) throw new Error(t('handover.unavailable'));
         this.endSession(key);
+        // The IDE extension would open an empty session for one a program started (vscode.ts)
+        if (target === 'ide' && showSessionToIde(bot.folder, sessionId)) console.log(`handover: ${key} (${sessionId}) made visible to the IDE`);
         const message = await handOver(target, bot.folder, sessionId);
         console.log(`handover: ${key} (${sessionId}) opened at the machine (${target})`);
         return message;

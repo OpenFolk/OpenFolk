@@ -94,6 +94,7 @@ const SCHEMAS = {
     category_save: frame('category_save', { category: loose({ id: str.max(200), name: z.string().trim().min(1).max(40) }), chatId: id.optional() }),
     category_delete: frame('category_delete', { categoryId: id }),
     category_assign: frame('category_assign', { chatId: id, categoryId: z.string().max(200) }),
+    category_order: frame('category_order', { ids: z.array(id).max(500) }),
     favorite: frame('favorite', { chatId: id, on: z.boolean() }),
     mute: frame('mute', { chatId: id, on: z.boolean() }),
     push_settings: frame('push_settings', { kinds: z.partialRecord(pushKind, pushPriority) }),

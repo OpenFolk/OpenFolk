@@ -42,7 +42,7 @@ Tailscale restricts the backend connection further (`docs/tailscale.md`).
 > runs its bots without anyone signing in on Windows and Linux; a Mac needs a sign-in, and the automatic sign-in
 > of the desktop session is Windows-only. The relay runs anywhere Node 22 or Docker runs.
 
-**Try it in two minutes:** install the desktop app and choose "Start on this computer":
+**Try it in two minutes:** install the desktop app, choose the setup method "Without setup" and "Set up this computer":
 
 | System | Download | Note |
 | --- | --- | --- |
@@ -125,8 +125,12 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
 - **Group chats.** Several bots in one chat; `@id` addresses one bot, `@all` everyone. Bots can hand over to
   each other with @ (up to four hops per message).
 - **Folders.** "+" → "New folder" adds a folder to the chat list; a bot or group goes into one from its menu
-  ("Folder") or its settings. A tap on the heading folds the folder, a long press renames or deletes it. Running
+  ("Folder") or its settings. A tap on the heading folds the folder, a long press renames, moves (up, down) or deletes it.
+  With a mouse a bot or group is dragged onto a folder's heading (onto "In no folder" to take it out), and a folder
+  onto another to take its place; the order syncs like the folders. Running
   bots and unread answers sit at the top of the list meanwhile, whatever folder they are in; folders sync like bots.
+  Asked to, a bot sorts the list itself with `set_folder` (bots and groups by id or name, a new folder is created)
+  and shows it with `list_folders`; its chat says what it moved.
 - **Bot to bot.** With `message_bot`, `list_bots` and `list_conversations` a bot gives another bot a job, or a
   specific conversation (also another one of its own, say from brainstorming to coding), also on another machine.
   The call returns at once, and the result comes back into the conversation that gave the job by itself, however
@@ -287,7 +291,7 @@ check incoming frames with Zod (`local/src/frames.ts`) and answer malformed ones
   Antigravity. Keys from the environment (`OPENAI_API_KEY`, `GH_TOKEN`, `GEMINI_API_KEY`, …) are never passed to
   an engine. With its key Codex keeps a folder of its own in the data folder, so the ChatGPT login stays for
   switching back; Codex chats started before a switch begin a new thread. Providers switched off there are not
-  started on that machine; a new installation starts with all of them off until you pick yours in the first steps,
+  started on that machine; a new installation starts with all of them off until you pick yours in the sign-in of the start view,
   except Claude when Claude Code is signed in on that computer already.
 - Claude can also run on both: "Subscription and API key, by rules" uses the subscription until it reports its limit
   (or already Anthropic's warning before it), then the API key until the limit resets, at most up to a daily cap in
@@ -307,7 +311,7 @@ check incoming frames with Zod (`local/src/frames.ts`) and answer malformed ones
 
 ## Getting started
 
-The desktop apps for Windows, Linux (AppImage, .deb) and macOS bring the backend along: choose "Start on this computer" on
+The desktop apps for Windows, Linux (AppImage, .deb) and macOS bring the backend along: choose "Without setup" and "Set up this computer" on
 their first start, sign in to Claude Code when the app asks, and that is all (`desktop/README.md`). They come from
 the [releases](https://github.com/OpenFolk/OpenFolk/releases) (direct links [above](#openfolk)) and update themselves
 from there. Their first update check
@@ -323,8 +327,8 @@ npm start
 
 That is the whole setup on one computer. Without a `.env` the backend runs the relay inside its own process on
 `http://127.0.0.1:8787`, generates every key on its first start (`local/data/`) and opens the web app in the browser
-with a pairing link, which signs the browser in and hands it the end-to-end key. The app then walks you through the
-first steps: whether a backend is connected, which AI providers it runs (a new installation starts with none, you
+with a pairing link, which signs the browser in and hands it the end-to-end key. Until an AI provider is ready, the
+start view next to the list (on a phone the top of the list) asks which AI providers it runs (a new installation starts with none, you
 tick your own; with Claude Code signed in on that computer already, Claude is on and the question skipped) and
 whether it is signed in to one (Claude Code with your subscription in the browser the app opens on that computer, a
 terminal there when the backend runs without a desktop, or with an Anthropic API key typed into the step; Codex and
@@ -349,7 +353,7 @@ log file; started as a service or container it prints how to get one instead.
 
 | You want | Setup | Section |
 | --- | --- | --- |
-| to try it, or work at this computer only | the desktop app ("Start on this computer") or `npm start` | above |
+| to try it, or work at this computer only | the desktop app ("Without setup") or `npm start` | above |
 | your phone from anywhere, push, waking sleeping machines | a relay of your own on a server, the backend on your PC | `docs/running.md` |
 | bots that run while your PCs are off | relay and backend together on a server (`docker-compose.server.yml`) | `docs/running.md` |
 
@@ -360,7 +364,7 @@ of the AI providers stay on the machines that run the backend.
 
 For your phone from anywhere, push and machines that wake for their routines, run a relay of your own on a server
 (`ghcr.io/openfolk/openfolk`, Docker Compose, Coolify, Unraid) and claim it with the setup code from its log: in the
-app (first steps, or settings → "Devices and security" → "Move to a relay on a server"), where the backend moves over
+app (settings → "Devices and security" → "Move to a relay on a server"), where the backend moves over
 and the page follows it, signed in there; or in the terminal with `npm run claim`. The desktop app joins a computer to
 that relay with the link from "Add machine" (the field "Invitation link" on its setup page), or by a QR code on its
 setup page that a signed-in phone scans, and, on Windows and Linux, runs its backend
@@ -435,7 +439,7 @@ main account; nothing changes until a second one exists.
 - **Chats between accounts:** every account can write to the other accounts on its relay ("+" → "Person"). A customer
   should reach their team and no other customer: tick "Customer: chats with the admins only" when creating the account,
   or choose "Admins only" or "Reaches everyone" in the list later. Admins reach everyone. An account that only chats needs
-  no Claude sign-in; while it has no bots, the app shows it the people it can write to instead of the checklist. The people come from the machines: while none of them is awake, such an account sees a note saying so, not the owner's first steps with "npm start". Each
+  no Claude sign-in; while it has no bots, the app shows it the people it can write to instead of an empty list. The people come from the machines: while none of them is awake, such an account sees a note saying so. Each
   side keeps its own copy: deleting the chat deletes one's own. A customer's support bot hands over to you when your
   account is set under "Hand over to" in its settings.
 
@@ -456,6 +460,10 @@ prepare everything and send them one link.
 3. **The person opens it:** the relay's page has "Open in OpenFolk"; the desktop app asks once and then joins your
    relay as a machine bound to that account. It clones each repository into a folder of its own with its token and
    makes the bots. The person sees their bots and the people they may write to, nothing else.
+
+Without a setup, too, a person's desktop app brings their own computer in: after signing in with the plain invitation
+link, its step "Set up this computer" joins the computer to your relay, bound to their account (every account may do
+that for itself; it gets no bots from you then, and your machines stay ticked for it as they were).
 
 What the binding means: a machine joined by a setup link serves only its account, and the first setup link unticks
 your machines for that account (you can tick some again under "Edit"). Your bots, chats and machines never reach it, and its chats do not reach your machines: person chats and

@@ -1,5 +1,5 @@
 /* OpenFolk web app: open a chat in a pane, header, status line. */
-import { t } from './i18n.js';
+import { t, tn } from './i18n.js';
 import { $, el, node, state, closest } from './core.js';
 import { activePane, capacity, closeSettings, createPane, isWide, layoutPanes, paneFor, panes, removePane, savePanes, setActivePane } from './panes.js';
 import { bot, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, modelsOfChat, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
@@ -7,7 +7,7 @@ import { backgroundOf, backgroundText, chatStatus, closeChatSearch, renderChatLi
 import { renderMembers } from './machines.js';
 import { closeMention, markSeen, renderHistory, renderPinned, setReply } from './chat-features.js';
 import { rec, renderUploads, stopRecording } from './voice.js';
-import { closeGitPage, gitPageFromChat, modelDisplay, renderInfoChat, tokensShort } from './menus.js';
+import { closeGitPage, gitOpenOf, gitPageFromChat, modelDisplay, renderInfoChat, tokensShort } from './menus.js';
 import { allChats } from './connection.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
@@ -328,6 +328,14 @@ export function renderChatHeader(p) {
     const home = b ? b.machine || where : '';
     p.el.chatMachine.hidden = !home;
     p.el.chatMachine.textContent = upper(home || '');
+    // open changes of the bot's repos, as the list shows them
+    const git = b ? gitOpenOf(b) : [];
+    p.el.chatGit.hidden = !git.length;
+    if (git.length) {
+        p.el.chatGit.title = tn('git.reposWithChanges', git.length);
+        p.el.chatGit.setAttribute('aria-label', p.el.chatGit.title);
+        /** @type {HTMLElement} */ (p.el.chatGit.querySelector('span')).textContent = String(git.length);
+    }
     p.el.btnStop.hidden = st !== 'thinking' && st !== 'waiting';
     p.el.text.placeholder = g ? t('composer.placeholderGroup') : t('composer.placeholder');
     renderSleepHint(p);
@@ -343,6 +351,7 @@ function renderPersonHeader(p) {
     p.el.chatSub.textContent = who.gone ? t('people.unreachableShort') : t('people.badge');
     p.el.chatModel.hidden = true;
     p.el.chatMachine.hidden = true;
+    p.el.chatGit.hidden = true;
     // a person has no settings page: their menu sits behind the name
     p.el.chatSettings.hidden = true;
     p.el.btnStop.hidden = true;

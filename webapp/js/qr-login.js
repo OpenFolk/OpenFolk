@@ -12,6 +12,7 @@ import { connect, showLogin } from './connection.js';
 import { bundled, canScanQr, parsePairingLink, relayAddress, scanQrCode, socketUrl } from './platform.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
 import { hasSetup, takeSetupLink } from './setups.js';
+import { setOffers } from './login-method.js';
 
 const textEnc = new TextEncoder();
 const SEAL_INFO = textEnc.encode('openfolk:pair-qr');
@@ -112,6 +113,7 @@ function renderCode(link) {
 function hideCode() {
     el.loginQr.hidden = true;
     el.loginFirst.hidden = true;
+    setOffers({ first: false });
     el.loginQrCode.replaceChildren();
     delete el.loginQrCode.dataset.link;
 }
@@ -131,6 +133,7 @@ export async function startQrLogin() {
         // without ECDH (very old browser) the page keeps password and pairing link
         waiting = null;
         unsupported = true;
+        setOffers({ qr: false });
         return;
     }
     if (waiting !== me) return;
@@ -146,6 +149,7 @@ export async function startQrLogin() {
             renderCode(`${relayAddress()}/#approve=${f.id}&pk=${pk}`);
             // No device of the main account yet: a backend may sign this one in with the code from its log
             el.loginFirst.hidden = !f.first;
+            setOffers({ first: !!f.first });
             el.loginFirstSend.disabled = false;
             const ask = () => {
                 const code = el.loginFirstCode.value;
@@ -169,6 +173,7 @@ export async function startQrLogin() {
             showLogin(t(`first.${['not_first', 'no_backend', 'off', 'busy'].includes(f.reason) ? f.reason : 'off'}`));
         } else if (f.type === 'auth' && !f.ok) {
             unsupported = true;
+            setOffers({ qr: false, first: false });
         }
     };
     ws.onclose = (ev) => {

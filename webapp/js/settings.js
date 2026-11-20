@@ -188,21 +188,25 @@ export function renderAbout() {
 
 const RELEASES_URL = 'https://github.com/OpenFolk/OpenFolk/releases';
 
-/** The notes of this version from the CHANGELOG (English only), the older ones folded below it. */
+/** The notes of this version from the CHANGELOG in the app's language where there are any, the older ones folded below it. */
 export function openReleaseNotes() {
     const box = el.releaseNotes;
     const current = RELEASES.find((r) => r.version === VERSION);
     const older = RELEASES.filter((r) => r !== current);
     /** @param {string} date */
     const day = (date) => new Date(`${date}T12:00:00Z`).toLocaleDateString(locale());
-    /** @param {{ version: string, date: string, notes: string }} r @param {HTMLElement} into */
+    // German from docs/CHANGELOG.de.md; a version without it shows the English notes, and the page says so once
+    const german = locale().startsWith('de');
+    /** @param {{ version: string, date: string, notes: string, notesDe?: string }} r */
+    const textOf = (r) => (german && r.notesDe) || r.notes;
+    /** @param {{ version: string, date: string, notes: string, notesDe?: string }} r @param {HTMLElement} into */
     const notes = (r, into) => {
         const text = node('div', 'release-notes-text');
-        text.innerHTML = md(r.notes);
+        text.innerHTML = md(textOf(r));
         into.append(text);
     };
     const parts = [];
-    if (t('about.notesLanguage')) parts.push(node('p', 'hint', t('about.notesLanguage')));
+    if (german && RELEASES.some((r) => !r.notesDe) && t('about.notesLanguage')) parts.push(node('p', 'hint', t('about.notesLanguage')));
     if (current) {
         if (current.date) parts.push(node('p', 'hint', t('about.released', { date: day(current.date) })));
         const now = node('div', 'release-notes-current');

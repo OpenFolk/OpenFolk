@@ -1,5 +1,6 @@
 // Suggestions for the bot editor: name with field of work, role and a profile picture, made by Claude in a short session without
-// tools. As context Claude gets README.md and CLAUDE.md of the folder and its entries.
+// tools. As context Claude gets README.md and CLAUDE.md of the folder and its entries. With Claude switched off on this
+// machine another engine that is on answers instead (suggestionEngine), asked for the same JSON in plain words.
 // Profile picture: with the key of the image model in the shared settings (Gemini for Nano Banana, OpenAI for gpt-image)
 // Claude describes the person and the image model turns that into a photo (data URL); without a key Claude
 // draws an SVG that the browser turns into an image. A bot making its own picture (make_avatar) gets the same, only
@@ -8,12 +9,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { claudeEnv, claudeSettings } from './engine-home.ts';
+import { ACP_AGENTS, AcpRun } from './acp.ts';
+import { CodexRun, type EngineTarget } from './codex.ts';
+import { claudeEnv, claudeSettings, engineAvailable } from './engine-home.ts';
+import { engineEnabled } from './machine-settings.ts';
 import { underAllowedRoot } from './bots.ts';
 import { projectRoot } from './config.ts';
 import { language, t } from './i18n.ts';
 import { apiKey, avatarModel } from './settings.ts';
-import type { BotVoice, Language, SuggestionRequest, SuggestionResult } from '../../shared/protocol.ts';
+import { OTHER_ENGINES, engineModelId, engineOf, type BotVoice, type Engine, type Language, type SuggestionRequest, type SuggestionResult } from '../../shared/protocol.ts';
 
 const MAX_CONTEXT = 2500;
 // Realistic portraits need many gradients and strands, hence more room than a flat drawing.
@@ -194,10 +198,74 @@ export function photoPrompt(description: string): string {
 export async function suggest(a: SuggestionRequest, small = false): Promise<SuggestionResult> {
     const context = folderContext(a.folder);
     if (a.what === 'avatar' && photoPossible()) {
-        const description = descriptionFrom(await askClaude(a, context, 'photo'));
+        const description = descriptionFrom(await ask(a, context, 'photo'));
         return { what: 'avatar', image: await createPhoto(photoPrompt(description), small) };
     }
-    return resultFrom(a.what, await askClaude(a, context, a.what));
+    return resultFrom(a.what, await ask(a, context, a.what));
+}
+
+/**
+ * The engine a suggestion runs on: Claude as long as it is on (its structured output is the most reliable), otherwise
+ * the bot's own engine, otherwise the first one that is on. With none on it stays Claude, whose error says so.
+ */
+export function suggestionEngine(model: string | undefined, on: (e: Engine) => boolean = (e) => engineEnabled(e) && engineAvailable(e)): Engine {
+    if (on('claude')) return 'claude';
+    const own = engineOf(model);
+    return own !== 'claude' && on(own) ? own : OTHER_ENGINES.find(on) ?? 'claude';
+}
+
+function ask(a: SuggestionRequest, context: string, task: Task): Promise<unknown> {
+    const engine = suggestionEngine(a.model);
+    // A model of another engine means nothing to Claude: then its default
+    return engine === 'claude' ? askClaude({ ...a, model: engineOf(a.model) === 'claude' ? a.model : 'default' }, context, task) : askEngine(engine, a, context, task);
+}
+
+/** The answer's shape in words, for the engines without structured output. */
+const SHAPES: Record<Task, string> = {
+    name: '{"suggestions":[{"name":"…","area":"…","voice":"female" or "male"}, … three of them]}',
+    role: '{"role":"…"}',
+    avatar: '{"svg":"…"}',
+    photo: '{"description":"…"}',
+};
+
+/** The JSON object in an answer that may come in a code fence or with words around it. */
+export function jsonIn(text: string): unknown {
+    const from = text.indexOf('{');
+    const to = text.lastIndexOf('}');
+    if (from < 0 || to < from) return undefined;
+    try { return JSON.parse(text.slice(from, to + 1)); } catch { return undefined; }
+}
+
+/** One question to another engine (Codex, ACP) in a session of its own: no tools, every approval refused. */
+function askEngine(engine: Exclude<Engine, 'claude'>, a: SuggestionRequest, context: string, task: Task): Promise<unknown> {
+    const folder = context ? path.resolve(a.folder) : projectRoot;
+    return new Promise((resolve, reject) => {
+        let text = '';
+        let settled = false;
+        const end = (error?: string) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            run.close();
+            if (error) reject(new Error(t('suggest.failed', { error })));
+            else resolve(jsonIn(text));
+        };
+        const nothing = () => undefined;
+        const target: EngineTarget = {
+            threadId: nothing, account: nothing, limits: nothing, notice: nothing, textStarts: nothing, tool: nothing, toolResult: nothing, context: nothing,
+            delta: (part) => { text += part; },
+            done: (error) => end(error),
+            approval: async () => ({ behavior: 'deny', message: 'No tools here: answer with the JSON only.' }),
+        };
+        const run = engine === 'codex' ? new CodexRun(target) : new AcpRun(ACP_AGENTS[engine], target);
+        const timer = setTimeout(() => end('timeout'), TIMEOUT_MS);
+        void run.send(`${prompt(a, context, task)}\nAnswer with one JSON object of this shape and nothing else: ${SHAPES[task]}`, {
+            folder,
+            model: engineOf(a.model) === engine ? engineModelId(a.model) : undefined,
+            instructions: 'You help set up bots. Use no tools and change no files. Answer only with the requested JSON.',
+            tools: [],
+        });
+    });
 }
 
 async function askClaude(a: SuggestionRequest, context: string, task: Task): Promise<unknown> {

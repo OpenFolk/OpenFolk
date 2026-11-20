@@ -31,7 +31,7 @@ export const el = {
     settingsAllAccounts: /** @type {HTMLInputElement} */ ($('settings-all-accounts')), settingsAllAccountsField: $('settings-all-accounts-field'),
     e2eEnter: /** @type {HTMLButtonElement} */ ($('e2e-enter')), e2eDelete: /** @type {HTMLButtonElement} */ ($('e2e-delete')),
     pairCreate: /** @type {HTMLButtonElement} */ ($('pair-create')), pairBox: $('pair-box'), totpTitle: $('totp-title'), totpBox: $('totp-box'),
-    loginInvite: /** @type {HTMLInputElement} */ ($('login-invite-link')), loginInviteGo: $('login-invite-go'),
+    loginMethod: /** @type {HTMLSelectElement} */ ($('login-method')), loginInvite: /** @type {HTMLInputElement} */ ($('login-invite-link')), loginInviteGo: $('login-invite-go'),
     loginQr: $('login-qr'), loginQrCode: $('login-qr-code'), loginQrRenew: $('login-qr-renew'), loginFirst: $('login-first'),
     loginFirstCode: /** @type {HTMLInputElement} */ ($('login-first-code')), loginFirstSend: /** @type {HTMLButtonElement} */ ($('login-first-send')), loginScan: /** @type {HTMLButtonElement} */ ($('login-scan')),
     devicesScan: /** @type {HTMLButtonElement} */ ($('devices-scan')),
@@ -53,7 +53,7 @@ export const el = {
     btnNew: /** @type {HTMLButtonElement} */ ($('btn-new')), newMenu: $('new-menu'), searchBox: $('search-box'), search: /** @type {HTMLInputElement} */ ($('search')), searchResults: $('search-results'),
     searchFilters: $('search-filters'), palette: $('palette'), paletteInput: /** @type {HTMLInputElement} */ ($('palette-input')), paletteList: $('palette-list'), paletteHint: $('palette-hint'),
     shortcuts: $('shortcuts'), shortcutsList: $('shortcuts-list'), shortcutsNote: $('shortcuts-note'),
-    chatEmpty: $('chat-empty'), panes: $('panes'), paneAdd: /** @type {HTMLButtonElement} */ ($('pane-add')), sidebarResize: $('sidebar-resize'),
+    chatEmpty: $('chat-empty'), chatSetup: $('chat-setup'), panes: $('panes'), paneAdd: /** @type {HTMLButtonElement} */ ($('pane-add')), sidebarResize: $('sidebar-resize'),
     messageMenu: $('message-menu'),
     speechBar: $('speech-bar'), speechBarAuto: /** @type {HTMLButtonElement} */ ($('speech-bar-auto')), speechBarOpen: $('speech-bar-open'), speechBarWho: $('speech-bar-who'), speechBarText: $('speech-bar-text'), speechBarStop: $('speech-bar-stop'),
     speechBarPlay: $('speech-bar-play'), speechBarSeek: /** @type {HTMLInputElement} */ ($('speech-bar-seek')), speechBarElapsed: $('speech-bar-elapsed'), speechBarTotal: $('speech-bar-total'),
@@ -84,7 +84,7 @@ export const el = {
     kEditor: $('knowledge-editor'), kForm: /** @type {HTMLFormElement} */ ($('knowledge-form')), kTitle: $('knowledge-title'), kLocation: $('knowledge-location'), kName: /** @type {HTMLInputElement} */ ($('knowledge-name')),
     kType: /** @type {HTMLSelectElement} */ ($('knowledge-type')), kDescription: /** @type {HTMLInputElement} */ ($('knowledge-description')), kText: /** @type {HTMLTextAreaElement} */ ($('knowledge-text')), kError: $('knowledge-error'), kDelete: /** @type {HTMLButtonElement} */ ($('knowledge-delete')),
     machines: $('machines'), machinesNone: $('machines-none'), usageNone: $('usage-none'), machinesPage: $('machines-page'),
-    tabBar: $('tab-bar'), tabRepos: $('tab-repos'), tabReposBadge: $('tab-repos-badge'),
+    tabBar: $('tab-bar'), tabRepos: $('tab-repos'), tabReposBadge: $('tab-repos-badge'), tabStatusBadge: $('tab-status-badge'), machinesSignin: $('machines-signin'),
     gitPage: $('git-page'), gitPageContent: $('git-page-content'), gitBack: /** @type {HTMLButtonElement} */ ($('git-back')), gitTitle: $('git-title'), gitSub: $('git-sub'),
     archive: $('archive'), archiveSub: $('archive-sub'), archiveList: $('archive-list'),
     forward: $('forward'), forwardSub: $('forward-sub'), forwardSearch: /** @type {HTMLInputElement} */ ($('forward-search')), forwardList: $('forward-list'),
@@ -151,6 +151,7 @@ export const state = {
     bots: [], groups: [], categories: [], states: {}, activity: {}, activeChats: {}, approvals: {}, routines: [],
     jobs: {},                // host -> the open jobs its bots gave other bots (Job in shared/protocol.ts)
     people: [],              // whom this account can chat with [{ id, name, admin, reach }], from the backends
+    peopleByMachine: {},     // machine → its last 'people' list; a picture counts if any backend knows it
     personChats: [],         // favorite, mute and deletion of the person chats [{ id, favorite, muted, cleared, updatedAt }]
     usage: null, pushKey: '',
     models: [],              // models of the CLI [{ value, resolvedModel, displayName }], 'default' points to the real one; the last machine's
@@ -198,6 +199,20 @@ export const md = (text) => DOMPurify.sanitize(marked.parse(text || ''), PURIFY)
 // Finished answers cached per text: marked and DOMPurify are the biggest cost when rendering a history
 // (on the iPad every chat switch stalled). Not for running answers, their text grows with every chunk.
 const mdCache = new Map();
+/**
+ * The people of a 'people' frame, with the pictures any backend knows: a backend from before profile pictures sends the
+ * people without them, so the backend that answered last must not wipe a picture (removed, it is gone everywhere).
+ * @param {Record<string, any[]>} byMachine each machine's last list, updated here
+ * @param {{ machine?: string, list?: any[] }} f
+ */
+export function peopleWithPictures(byMachine, f) {
+    const list = f.list || [];
+    if (f.machine) byMachine[f.machine] = list;
+    const pictures = new Map();
+    for (const l of Object.values(byMachine)) for (const p of l) if (p.avatar && !pictures.has(p.id)) pictures.set(p.id, p.avatar);
+    return list.map((p) => (p.avatar || !pictures.has(p.id) ? p : { ...p, avatar: pictures.get(p.id) }));
+}
+
 export function mdCached(text) {
     let html = mdCache.get(text);
     if (html === undefined) {

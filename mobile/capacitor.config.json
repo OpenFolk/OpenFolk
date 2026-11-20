@@ -6,7 +6,8 @@
     "allowMixedContent": false
   },
   "ios": {
-    "contentInset": "never"
+    "contentInset": "never",
+    "allowsLinkPreview": false
   },
   "plugins": {
     "PushNotifications": {

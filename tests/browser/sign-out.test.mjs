@@ -46,7 +46,9 @@ export default async function ({ start, check }) {
     await afterReload(h);
     check('reloaded: still signed out, no sign-in sent', await p.isVisible('#login-choose') && authsAfter() === before);
     await p.click('#login-choose-other');
-    check('"another account": the form, and the way back', await p.isVisible('#login-token') && await p.isHidden('#login-choose') && await p.isVisible('#login-choose-back'));
+    check('"another account": the choice of the method, and the way back', await p.isVisible('#login-method') && await p.isHidden('#login-choose') && await p.isVisible('#login-choose-back'));
+    await p.selectOption('#login-method', 'password');
+    check('… the password method: the form', await p.isVisible('#login-token'));
     await p.click('#login-choose-back');
     check('back: the choice again', await p.isVisible('#login-choose'));
     await p.click('#login-accounts .login-pick[data-account="work"]');
@@ -73,7 +75,7 @@ export default async function ({ start, check }) {
     check('… the choice, the account marked "password needed"', await o.isVisible('#login-choose')
         && (await o.textContent('#login-accounts .login-pick[data-account="work"]')).includes('Password needed'));
     await o.click('#login-accounts .login-pick[data-account="work"]');
-    check('a tap: the form with the account filled in', await o.isVisible('#login-token') && await o.inputValue('#login-account') === 'Work'
+    check('a tap: the password form with the account filled in', await o.inputValue('#login-method') === 'password' && await o.isVisible('#login-token') && await o.inputValue('#login-account') === 'Work'
         && (await o.textContent('#login-intro')).includes('30 days'));
     await o.fill('#login-token', 'work-password-1234');
     await o.click('#login-form button[type="submit"]');

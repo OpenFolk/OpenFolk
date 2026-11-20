@@ -1,6 +1,6 @@
 /* OpenFolk web app: @ mentions, / commands, history rendering, unread, pinned messages, replies (quote). */
 import { t } from './i18n.js';
-import { SEEN_KEY, el, mdCached, node, state, storage, closest } from './core.js';
+import { SEEN_KEY, el, mdCached, node, state, storage, closest, toast } from './core.js';
 import { codeBlocks } from './code-blocks.js';
 import { paneFor, paneOf, panes, visibleChats } from './panes.js';
 import { bot, botIdOf, clockTime, colorOf, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, person, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
@@ -656,6 +656,9 @@ function openMessageMenu(p, bubble, x, y) {
     }, !pinned));
     if (e.text) item(isReading(e.id) ? 'stop' : 'speaker', isReading(e.id) ? t('message.stopReading') : t('message.readAloud'), () => readAloud(e, chatId));
     if (e.text) item('copy', t('message.copy'), () => { if (navigator.clipboard) navigator.clipboard.writeText(e.text).catch(() => undefined); });
+    // The links of the message: the system's long press on a link is off (chat.css), copying them goes from here
+    const links = [...new Set([...bubble.querySelectorAll('.content a[href]')].map((x) => /** @type {HTMLAnchorElement} */ (x).href).filter((h) => /^https?:/.test(h)))];
+    if (links.length) item('link', t(links.length > 1 ? 'message.copyLinks' : 'message.copyLink'), () => { if (navigator.clipboard) navigator.clipboard.writeText(links.join('\n')).then(() => toast(t('message.linkCopied')), () => undefined); });
     item('forward', t('message.forward'), () => openForward(chatId, e, from));
     m.hidden = false;
     fx.openSince = Date.now();

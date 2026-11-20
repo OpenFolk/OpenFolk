@@ -106,4 +106,18 @@ export default async function ({ start, check }) {
         return [...shown, back];
     });
     check('a new bot on laptop: no Cursor, no Codex; back on desk: Cursor', JSON.stringify(await onLaptop()) === '[false,false,true]', await onLaptop());
+
+    // ---- Claude switched off on the machine: a bot set to Claude ("default") runs on the engine that is on, and says so
+    const g = await start({ bots: [bot('anna', 'Anna')] });
+    await g.push({ type: 'models', machine: 'desk', models: [{ value: 'opencode', resolvedModel: 'opencode:opencode/big-pickle', displayName: 'OpenCode' }] });
+    await g.push({
+        type: 'machine_settings', machine: 'desk', anthropicKey: false, gitPushToken: false, engineKeys: {}, shutdownMethod: 'script',
+        settings: { disabledEngines: ['claude', 'codex', 'cursor', 'copilot', 'antigravity'] },
+    });
+    await g.openChat('Anna');
+    await g.page.click('[data-el=chat-title]');
+    await g.wait(150);
+    const on = await g.page.locator('#info-switches .model-switch .chip').allTextContents();
+    const picked = await g.page.locator('#info-switches .model-switch .chip.on').allTextContents();
+    check('Claude off: the switch shows the engine that runs, not "Default"', on.join('|') === 'OpenCode' && picked.join() === 'OpenCode', { on, picked });
 }

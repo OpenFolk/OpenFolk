@@ -5,6 +5,8 @@
 export default async function ({ start, check }) {
     const h = await start({ device: null });
     const p = h.page;
+    // The longest method: the password with its fields
+    await p.selectOption('#login-method', 'password');
     const card = () => p.evaluate(() => {
         const s = document.getElementById('login');
         const c = s.querySelector('.start-card').getBoundingClientRect();

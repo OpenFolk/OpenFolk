@@ -2,7 +2,7 @@
 import { locale, t } from './i18n.js';
 import { COLORS, E2E_SLOT, el, node, startParams, state } from './core.js';
 import { connect } from './connection.js';
-import { secureStore } from './platform.js';
+import { desktopMachine, relayAddress, secureStore } from './platform.js';
 import { startApproval, takeApproval } from './qr-login.js';
 import { alertDialog } from './dialogs.js';
 
@@ -14,7 +14,7 @@ import { alertDialog } from './dialogs.js';
  * in IndexedDB; the apps keep it in the Keychain/Keystore (platform.js). The relay then only sees routing information.
  */
 export const e2e = { key: null, seenActive: false };
-const RELAY_TYPES = new Set(['wake_status', 'wake', 'devices', 'device_logout', 'accounts', 'account_create', 'account_update', 'account_delete', 'account_invite', 'pair_request', 'pair_approve', 'totp_status', 'totp_begin', 'totp_confirm', 'totp_off', 'machine_tokens', 'machine_token_remove']);
+const RELAY_TYPES = new Set(['wake_status', 'wake', 'devices', 'device_logout', 'accounts', 'account_create', 'account_update', 'account_delete', 'account_invite', 'pair_request', 'pair_approve', 'totp_status', 'totp_begin', 'totp_confirm', 'totp_off', 'machine_tokens', 'machine_token_remove', 'machine_own']);
 const textEnc = new TextEncoder();
 /**
  * Additional authenticated data that binds a frame to its direction (client to backend, backend to client). Browsers
@@ -76,6 +76,8 @@ export async function adoptKey(text) {
     const raw = unb64(link ? link[1] : text);
     if (raw.length !== 32) throw new Error(t('e2e.keyLength'));
     const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+    // The desktop app keeps it for the backend it starts on this computer; the page itself cannot read it back later
+    if (desktopMachine) desktopMachine.key(relayAddress(), b64(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''));
     if (secureStore) await secureStore.set(E2E_SLOT, b64(raw));
     else {
         try { await idbSet(E2E_SLOT, key); } catch { /* without IndexedDB only for this session */ }
@@ -195,8 +197,19 @@ export const conversation = (chatId) => {
     return b && (b.conversations || []).find((c) => `${b.id}~${c.id}` === chatId);
 };
 export const conversationTitle = (chatId) => (conversation(chatId) || {}).title || t('conversation.new');
-/** Model of a chat: the conversation's, otherwise the bot's ('default' = default of the CLI). */
-export const modelOf = (chatId) => (conversation(chatId) || {}).model || (bot(chatId) || {}).model || 'default';
+const OTHER_ENGINES = ['codex', 'cursor', 'copilot', 'antigravity', 'opencode'];
+/**
+ * Model of a chat: the conversation's, otherwise the bot's ('default' = default of the CLI). With Claude switched off
+ * on the bot's machine a chat set to Claude runs on the first engine that is on (BotSession.modelChoice): that one.
+ */
+export function modelOf(chatId) {
+    const b = bot(chatId);
+    const model = (conversation(chatId) || {}).model || (b || {}).model || 'default';
+    if (OTHER_ENGINES.some((e) => model === e || model.startsWith(e + ':'))) return model;
+    const machine = b && responsibleMachine(b);
+    const off = (machine && state.machineSettings[machine]?.settings?.disabledEngines) || [];
+    return (off.includes('claude') && OTHER_ENGINES.find((e) => !off.includes(e))) || model;
+}
 export const group = (chatId) => state.groups.find((g) => 'g:' + g.id === chatId);
 /** A chat with another person on the relay: `p:<their account id>`. */
 export const isPerson = (chatId) => typeof chatId === 'string' && chatId.startsWith('p:');

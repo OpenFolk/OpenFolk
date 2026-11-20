@@ -11,7 +11,7 @@ const DIR = path.dirname(fileURLToPath(import.meta.url));
 // Contract between web app and backend: every frame the app sends in the tests must pass the backend's check
 // (local/src/frames.ts; Node runs the TypeScript file directly). Frames for the relay itself are not checked there.
 const { checkClientFrame } = await import(pathToFileURL(path.join(DIR, '..', '..', 'local', 'src', 'frames.ts')).href);
-const RELAY_FRAMES = new Set(['auth', 'wake_status', 'wake', 'devices', 'device_logout', 'accounts', 'account_create', 'account_update', 'account_delete', 'account_invite', 'pair_wait', 'pair_first', 'pair_request', 'pair_approve', 'totp_status', 'totp_begin', 'totp_confirm', 'totp_off', 'machine_tokens', 'machine_token_remove', 'e2e']);
+const RELAY_FRAMES = new Set(['auth', 'wake_status', 'wake', 'devices', 'device_logout', 'accounts', 'account_create', 'account_update', 'account_delete', 'account_invite', 'pair_wait', 'pair_first', 'pair_request', 'pair_approve', 'totp_status', 'totp_begin', 'totp_confirm', 'totp_off', 'machine_tokens', 'machine_token_remove', 'machine_own', 'e2e']);
 const filter = process.argv[2] ?? '';
 const files = fs.readdirSync(DIR).filter((n) => n.endsWith('.test.mjs') && n.includes(filter)).sort();
 const TIME_LIMIT_MS = 60_000;

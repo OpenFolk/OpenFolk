@@ -225,6 +225,13 @@ check('… the account\'s browsers see desk only', !!(await guest.next((m) => m.
 guest.got.length = 0;
 guest.send({ type: 'e2e', iv: 'x', data: 'y', machine: 'server' });
 check('… and reach server no more', !!(await guest.next((m) => m.type === 'error' && m.code === 'machine_not_connected')) && await none(server, (m) => m.cid === guestCid));
+guest.got.length = 0;
+guest.send({ type: 'wake', host: 'server' });
+check('… nor wake it (a machine not its own is unknown to it)', !!(await guest.next((m) => m.type === 'wake_result' && m.host === 'server' && m.code === 'unknown_machine')));
+guest.send({ type: 'wake', host: 'DESK' });
+check('… while waking desk goes on to the wake service', !!(await guest.next((m) => m.type === 'wake_result' && m.host === 'DESK' && m.code === 'wake_not_configured')));
+owner.send({ type: 'wake', host: 'server' });
+check('… the owner may wake every machine', !!(await owner.next((m) => m.type === 'wake_result' && m.host === 'server' && m.code === 'wake_not_configured')));
 owner.send({ type: 'account_update', id, machines: [] });
 await desk.next((m) => m.type === 'account_released' && m.account === id);
 check('on none of the relay\'s machines: no pairing links from them', (await fetch(`${origin}/pair`, { method: 'POST', headers: { authorization: `Bearer ${AGENT}` }, body: JSON.stringify({ account: id }) })).status === 403);

@@ -80,7 +80,7 @@ export default async function ({ start, check }) {
 
     // rename and delete by a long press (with the mouse: right click) on the heading
     await openMenu('#chat-list li.section[data-category="kunden"]');
-    check('the heading\'s menu: rename, delete', (await menuItems()).join('|') === 'Rename folder|Delete folder', await menuItems());
+    check('the heading\'s menu: move (here only up, it is the last folder), rename, delete', (await menuItems()).join('|') === 'Move up|Rename folder|Delete folder', await menuItems());
     await p.locator('#row-menu button', { hasText: 'Rename folder' }).click();
     await h.wait(100);
     check('the dialog with the name', (await p.inputValue('#text-input')) === 'Kunden');

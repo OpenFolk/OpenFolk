@@ -21,11 +21,11 @@ export default async function ({ start, check }) {
     check('header shows title and bot', (await head()).startsWith('Webstore release / Skool Sven'), await head());
     await p.click('[data-el=chat-title]');
     await h.wait(200);
-    const top = await p.locator('#info-switches > button').allTextContents();
-    check('the conversation\'s page: "New conversation", then "Rename conversation" at the very top', JSON.stringify(top) === '["New conversation","Rename conversation"]', top);
+    const top = (await p.locator('#info-actions > button').allTextContents()).slice(0, 2);
+    check('the conversation\'s page: "New conversation", then "Rename conversation" at the top of the entries below the switches', JSON.stringify(top) === '["New conversation","Rename conversation"]', top);
     const items = await p.locator('#info-actions button').allTextContents();
     check('the conversation\'s page: its title and entries', (await p.locator('#info-switches .menu-info strong').first().textContent()) === 'Webstore release' && ['To the main chat of Skool Sven', 'New session (clear context)', 'Archive', 'Delete permanently'].every((x) => items.includes(x)), items);
-    await p.click('#info-switches button[data-action="conversation_new"]');
+    await p.click('#info-actions button[data-action="conversation_new"]');
     await h.wait(300);
     check('new conversation created and opened, the page left', (await head()).startsWith('New conversation') && await p.isHidden('#info'), await head());
     check('request to the bot\'s machine', h.sent.some((f) => f.type === 'conversation_new' && f.botId === 'skool' && f.machine === 'desk'));

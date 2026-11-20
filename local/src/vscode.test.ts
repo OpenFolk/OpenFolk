@@ -7,7 +7,7 @@ import { removeTree } from './remove-tree.ts';
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-vscode-'));
 // The Claude folder depends on the current account; the real local/data may hold several
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'openfolk-vscode-data-'));
-const { Watcher, Transcript, workingFrom, clean, originFrom, projectDir, projectName, listMachineSessions, listVscodeSessions, transcriptStoreError, transcriptPath } = await import('./vscode.ts');
+const { Watcher, Transcript, workingFrom, clean, originFrom, projectDir, projectName, listMachineSessions, listVscodeSessions, showSessionToIde, transcriptStoreError, transcriptPath } = await import('./vscode.ts');
 type HistoryPart = import('./vscode.ts').HistoryPart;
 
 let failures = 0;
@@ -190,6 +190,29 @@ removeTree(target);
 check('store: dangling link is reported', transcriptStoreError()?.includes('not reachable') === true);
 process.env.CLAUDE_CONFIG_DIR = realStore;
 removeTree(home2);
+
+// ---- A bot's session for the IDE: the extension lists none whose deciding `entrypoint` is one of the SDK's
+const { listSessions } = await import('@anthropic-ai/claude-agent-sdk');
+const listed = async (id: string) => (await listSessions({ dir: folder, includeWorktrees: false, includeProgrammatic: false })).some((x) => x.sessionId === id);
+const ID_HAND = '88888888-8888-4888-8888-888888888888';
+const botLines = withId(ID_HAND, [user('Bot job', { entrypoint: 'sdk-ts', turnOrigin: 'sdk', promptSource: 'sdk' }), answer([{ type: 'text', text: 'Done.' }], 'end_turn', { entrypoint: 'sdk-ts' })]);
+fs.writeFileSync(transcriptPath(folder, ID_HAND), jsonl(botLines));
+const sizeBefore = fs.statSync(transcriptPath(folder, ID_HAND)).size;
+check('ide: a bot\'s session is not in the extension\'s list', !(await listed(ID_HAND)));
+check('ide: made visible', showSessionToIde(folder, ID_HAND));
+const marked = fs.readFileSync(transcriptPath(folder, ID_HAND), 'utf8');
+check('ide: only the first entry changed, in place', marked.length === sizeBefore && marked.split('"entrypoint":"ide-ts"').length === 2 && marked.split('"entrypoint":"sdk-ts"').length === 2
+    && marked.split('\n').filter(Boolean).every((l) => { try { JSON.parse(l); return true; } catch { return false; } }));
+check('ide: now in the extension\'s list', await listed(ID_HAND));
+check('ide: a second time changes nothing', !showSessionToIde(folder, ID_HAND) && fs.readFileSync(transcriptPath(folder, ID_HAND), 'utf8') === marked);
+check('ide: a session from VS Code stays as it is', !showSessionToIde(folder, ID_VS));
+check('ide: no transcript, no error', !showSessionToIde(folder, '55555555-5555-4555-8555-555555555555'));
+// A head without any entry (one huge first line): the last entry of the tail decides
+const ID_HEADLESS = '99999999-9999-4999-8999-999999999999';
+fs.writeFileSync(transcriptPath(folder, ID_HEADLESS), jsonl(withId(ID_HEADLESS, [{ type: 'queue-operation', content: 'x'.repeat(70000) }, ...botLines.map((l) => ({ ...l, sessionId: ID_HEADLESS })), { type: 'last-prompt', lastPrompt: 'Bot job' }, { type: 'custom-title', customTitle: 'Bot job' }])));
+const hiddenBefore = !(await listed(ID_HEADLESS));
+check('ide: without an entry in the head the last one of the tail', hiddenBefore && showSessionToIde(folder, ID_HEADLESS)
+    && /"entrypoint":"sdk-ts".*\n.*"entrypoint":"ide-ts"/.test(fs.readFileSync(transcriptPath(folder, ID_HEADLESS), 'utf8')) && await listed(ID_HEADLESS));
 
 removeTree(process.env.CLAUDE_CONFIG_DIR!);
 // A junction on Windows goes with rmdir, a symlink elsewhere only with unlink

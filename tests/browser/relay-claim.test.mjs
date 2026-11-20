@@ -1,4 +1,4 @@
-// Moving from the relay embedded in a backend to a relay on a server: the form in the first steps and in the settings
+// Moving from the relay embedded in a backend to a relay on a server: the form in the settings (devices block)
 // sends address and setup code to that machine, shows why a claim failed and, once claimed, opens the pairing link
 // the backend answered with.
 const SETTINGS = {
@@ -9,16 +9,18 @@ const SETTINGS = {
 export default async function ({ start, check }) {
     const h = await start({ bots: [], online: ['desk'], device: 'test' });
     const p = h.page;
-    const step4 = '.welcome-steps li:nth-child(4)';
+    const step4 = '#relay-claim-box';
 
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'remote', container: false, engines: { claude: 'ready' } });
     await h.push(SETTINGS);
     await h.wait(200);
-    check('relay on a server: no form, the devices button', !(await p.isVisible(`${step4} .relay-claim`)) && await p.isVisible(`${step4} button`));
+    await p.evaluate(() => openSettings());
+    await h.wait(300);
+    check('relay on a server: no form', !(await p.isVisible(`${step4} .relay-claim`)));
 
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'embedded', container: false, engines: { claude: 'ready' } });
     await h.wait(200);
-    check('embedded relay: the form instead of the devices button', await p.isVisible(`${step4} .relay-claim`)
+    check('embedded relay: the form in the devices block', await p.isVisible(`${step4} .relay-claim`)
         && (await p.evaluate((sel) => [...document.querySelectorAll(`${sel} button`)].map((b) => b.textContent).join('|'), step4)) === 'Claim and move');
 
     await p.fill(`${step4} input[name="address"]`, 'relay.example.com');
@@ -39,14 +41,10 @@ export default async function ({ start, check }) {
     check('refused: the reason in the form, the button free again', (await p.textContent(`${step4} .relay-claim .error`)) === 'Wrong setup code.'
         && !(await p.isDisabled(`${step4} .relay-claim button`)));
 
-    // The settings show the same form in the devices block; this time the relay typed in is the page's own host
+    // This time the relay typed in is the page's own host
     const target = new URL(p.url());
     await p.fill(`${step4} input[name="address"]`, `http://${target.host}`);
     await p.click(`${step4} .relay-claim button`);
-    await p.evaluate(() => openSettings());
-    await h.wait(300);
-    check('settings: the form in the devices block', await p.isVisible('#relay-claim-box .relay-claim'));
-    await p.evaluate(() => closeDialog(document.getElementById('settings')));
 
     // Only a link to the relay typed in: one to another host or with another scheme is not followed
     await h.push({ type: 'relay_claimed', machine: 'desk', url: 'https://elsewhere.example/#pair=x' });
@@ -68,6 +66,8 @@ export default async function ({ start, check }) {
     await g.push({ type: 'setup_status', machine: 'desk', relay: 'embedded', container: false, engines: { claude: 'ready' } });
     await g.push(SETTINGS);
     await g.wait(200);
+    await q.evaluate(() => openSettings());
+    await g.wait(300);
     await q.fill(`${step4} input[name="address"]`, 'second.local');
     await q.fill(`${step4} input[name="code"]`, 'ABCDE-FGHJK');
     await q.click(`${step4} .relay-claim button`);

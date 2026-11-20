@@ -448,9 +448,15 @@ export class BotSession {
         return m === 'default' ? undefined : m;
     }
 
+    /**
+     * What the chat is set to; with Claude switched off on this machine, a chat set to Claude (a new bot's 'default')
+     * runs on the first engine that is on instead of starting a CLI nobody signed in to ("Not logged in").
+     */
     private get modelChoice(): string {
         const c = this.key === this.bot.id ? undefined : this.bot.conversations?.find((x) => `${this.bot.id}~${x.id}` === this.key);
-        return c?.model ?? this.bot.model;
+        const choice = c?.model ?? this.bot.model;
+        if (engineOf(choice) !== 'claude' || engineEnabled('claude')) return choice;
+        return OTHER_ENGINES.find((e) => engineEnabled(e)) ?? choice;
     }
 
     get engine(): Engine {
@@ -946,6 +952,8 @@ export function toolSummary(name: string, input: unknown): string {
             return shorten(s('summary'));
         case 'mcp__openfolk__set_routine':
             return shorten(s('name'));
+        case 'mcp__openfolk__set_folder':
+            return shorten(`${s('folder') || '–'}: ${Array.isArray(i.chats) ? (i.chats as unknown[]).join(', ') : ''}`);
         default:
             return shorten(JSON.stringify(i));
     }

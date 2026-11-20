@@ -6,6 +6,26 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 ## [Unreleased]
 
 ### Added
+- Release notes in German too: "What's new?" shows the notes in the app's language; the German ones come from the new
+  `docs/CHANGELOG.de.md`, which holds every version, and a version without them shows the English ones with a hint.
+- The desktop app's setup is a wizard in three steps (setup method, this computer, AI provider; the third, right
+  below the second on the same page, is the choice of one provider: Claude with the subscription or with an API key,
+  Codex, GitHub Copilot, or none with OpenCode's free models; skipped when an engine is ready already): after every sign-in at a relay (invitation link, URL and
+  password, QR code) "Set up this computer" follows, which asks for the folders and starts the backend on this
+  computer for the signed-in account, so a person invited with a plain link no longer ends with "no machine
+  reachable". For that every account may bring its own computer in: a signed-in device asks the relay for an
+  invitation (new request `machine_own`; the main account gets a machine of the relay, every other account a machine
+  bound to it, valid 15 minutes). "Not now" leaves the app a window. The setup method "On this computer" is now
+  "Without setup" and goes to the second step at once; a machine's invitation and a setup link ask for the folders
+  there before they join.
+- Folders of the chat list keep an order of their own: with a mouse a folder is dragged onto another, on the phone its
+  menu has "Move up" and "Move down" (new frame `category_order`, optional `order` on the folder, synced with it).
+  A bot or group dragged onto a folder's heading goes into it, onto "In no folder" out of it.
+- The open changes of a bot's repos show in its chat's header as in the list (the git symbol with the number of
+  repos); a tap opens them, and back from there leads to the chat.
+- Bots sort the chat list into folders on request: the new tools `set_folder` (bots and groups by id or name into a
+  folder, created when new; an empty folder takes them out; an unknown name changes nothing) and `list_folders`, on
+  every engine, with a line in the chat.
 - Pictures and videos in the chat: a picture a bot sends with `send_file` (no preview) loads from its machine into
   the message once it scrolls into view and opens large without a second fetch; videos (MP4, WebM, MOV) play in a
   player over the page instead of downloading, fetched once per page.
@@ -20,6 +40,47 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
   and the accounts list show it instead of the initials.
 
 ### Changed
+- An invited account lists everyone it may write to in its chat list from the start, not only once a message was
+  exchanged (the main account, which reaches every account, keeps listing only the people it writes with).
+- Right after the app starts, an empty list of machines shows the loading bar for up to 45 seconds instead of "No
+  machine reachable yet": the desktop app's own backend connects some seconds after its setup.
+- The provider chosen in the desktop setup's third step becomes the only one switched on; one left on from before
+  started new bots without a sign-in ("Not logged in").
+- With Claude switched off on a machine, a chat set to Claude (a new bot's "default" model) runs on the first engine
+  that is on instead of answering "Not logged in · Please run /login"; the editor preselects that engine for a new bot,
+  and the model switch shows it instead of "Default".
+- The editor's suggestions (name, role, profile picture) and a bot's own picture no longer need Claude: with Claude
+  switched off on the machine, an engine that is on answers them.
+- Signing in on the desktop setup page (an invitation link, URL and password) no longer shows the web app in between:
+  it signs in out of sight and the page goes on to step 2, with all steps in sight.
+- A sign-in refused on the desktop setup page (a used or expired invitation link, a wrong password) goes back to step 1
+  with the reason under the field, instead of to the web app's own sign-in page; a TOTP code is still asked there.
+- Step 2 of the desktop setup after a sign-in has no "Not now" any more: this computer joins the relay, or step 1 goes
+  another way.
+- A machine that runs bots and lost its sign-in is named on the status page, with its bots and how to sign in there,
+  and the status tab carries a "!" meanwhile; the chat list keeps only the first steps of a new installation.
+- A machine that runs bots and lost its sign-in (an expired Claude login) is named at the top of the phone's list
+  ("Sign in on OFFICE-PC again", with its bots and the way to sign in there), also while another machine is signed
+  in. Before, the card only came while no machine at all was ready, and then as the first steps.
+- A bot's menu and page show the switches (context, model, machine) first; "New conversation" and "Move to a
+  conversation" (in a conversation "Rename") lead the entries below them instead of standing above the switches.
+- The sign-in and the desktop app's setup page drop their explanations (the intro line, the hints under the password,
+  the QR code and the folders, the links for newcomers, the warning on the password way, which the question before
+  connecting repeats) and keep only fields, buttons, short separators, the question and errors. The fields read
+  "Password" and "URL" (no example address in it) instead of "Relay password" and "Server URL".
+- The sign-in (browser, apps) and the desktop app's setup page are a small wizard: first "Choose a setup method",
+  then only the fields of that method. In the sign-in: invitation link, URL and password (in the browser just the
+  password), show a QR code, scan a QR code (where there is a camera), and the device sign-in code from the backend
+  log while the main account has no device. On the setup page: invitation link, URL and password (the password
+  typed there signs in, the relay's page no longer asks for it), QR code (shown at once when the URL is known; the
+  apps' sign-in does the same), and on this computer, with the folders the bots may work in no longer folded away and without the sentence about the
+  default folder (the list names it).
+- The four first steps (machine, AI provider, first bot, devices) left the list. The sign-in to an AI provider is the
+  one left: while a machine is connected and none of its providers is ready, it stands in the start view next to the
+  list, on a phone at the top of the list. A new bot comes from "+", the phone from the settings' devices, the move
+  to a relay on a server from there too.
+- The desktop app's setup page and its folder window use the web app's colors: orange instead of green for the main
+  button, the same background, card and fields, so the window no longer changes color after the sign-in.
 - The choice of accounts after signing out no longer offers "Create a new account": a new account comes from the
   account menu or the settings of an admin who is signed in.
 - A tap on a favorite at the top of the list opens the chat that waits for you: one with an open question, else the
@@ -51,9 +112,33 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
   is set up without a link; an account without a stored setup says so. No new frame.
 
 ### Fixed
+- A redeployed backend container was away for five minutes: the relay rejected its sign-in while the old container
+  was still connected, and it waited five minutes for the next try. Right after a start it now tries again every
+  20 seconds (up to nine times); once it was in, a rejection still means a second backend and the long wait.
+- Cards and hints in the chat list (sign-in, loading, first steps) no longer take the grid of a chat row, which put
+  their text into the 48 px picture column; only the rows of chats have it now.
+- Phone: the card "Sign in to an AI provider" at the top of the chat list squeezed its text into a column of 48 px,
+  a word a line; it took the grid of a chat row. Seen when only a machine without a sign-in was awake.
+- The first voice message after a machine woke up was often not transcribed: loading Whisper (Python, the CUDA
+  libraries, 1.6 GB of model from a cold disk) took longer than the three minutes allowed, the start was given up and
+  not tried again. It may now take ten minutes, and with "Keep the model loaded" a failed start is tried again three
+  times, 90 seconds apart, with the reason in the backend's log.
+- "Open this chat in the IDE" opens the chat's session again instead of an empty one: Claude Code's extension leaves
+  sessions started by a program out of its list and then starts a new one, so the backend marks the transcript as one
+  to show before it opens the IDE.
+- A long press on a link in a message no longer opens the system's link preview, which loaded the target page and
+  could take the iOS app and home screen app down (a card scanner link, for one); the message's ⋯ menu has "Copy
+  link" instead. The iOS app turns the preview off as well (`allowsLinkPreview: false`).
 - A setup link pasted where an invitation goes ("Add" under accounts, the address field of the sign-in, the scanner)
   was cut down to the relay's address and ended at the password form. The desktop app now takes it over and asks
   whether to set this computer up, a browser shows the link's page, and a phone says the link belongs on the computer.
+- A person's profile picture no longer disappears when a backend from before profile pictures answers last: the app
+  keeps the picture any backend of the account knows, and drops it once none does.
+
+### Security
+- "Status" of an account other than the owner's lists only the machines that serve it (its own computer, the relay's
+  machines it runs on), no longer all of the owner's, and such an account can wake only those: waking another machine
+  is answered as an unknown one. The owner's account sees and wakes every machine as before.
 
 ## [0.6.0] - 2026-11-15
 

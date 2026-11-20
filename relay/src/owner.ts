@@ -135,6 +135,8 @@ export class MachineTokens {
     private list: MachineToken[] = [];
     private invites = new Map<string, number>();
     private setupInvites: { hash: string; account: string; until: number }[] = [];
+    /** Invitations an account asked for itself ("machine_own"): hash -> account; short-lived, in memory, one per account. */
+    private ownInvites = new Map<string, { account: string; until: number }>();
 
     constructor(dataDir: string) {
         this.file = path.join(dataDir, MACHINE_TOKENS_FILE);
@@ -171,6 +173,17 @@ export class MachineTokens {
         return { token, expiresAt: new Date(now + SETUP_INVITE_MS).toISOString() };
     }
 
+    /**
+     * An invitation for the account's own computer, asked for by one of its signed-in devices: redeemed like a setup
+     * link (the machine is bound to the account), but short-lived, and it leaves an admin's open setup link alone.
+     */
+    ownInvite(account: string, now = Date.now()): { token: string; expiresAt: string } {
+        for (const [h, i] of this.ownInvites) if (i.until < now || i.account === account) this.ownInvites.delete(h);
+        const token = randomBytes(24).toString('base64url');
+        this.ownInvites.set(hashToken(token), { account, until: now + INVITE_MS });
+        return { token, expiresAt: new Date(now + INVITE_MS).toISOString() };
+    }
+
     /** The open setup link of the account stops working; true if there was one. */
     revokeSetup(account: string): boolean {
         const before = this.setupInvites.length;
@@ -186,12 +199,16 @@ export class MachineTokens {
      */
     joinSetup(invite: string, machine: string, taken: (name: string) => boolean, now = Date.now()): { token: string; machine: string; account: string } | 'invalid' {
         const h = hashToken(invite);
-        const found = this.setupInvites.find((i) => tokenEquals(i.hash, h) && i.until > now);
+        const own = this.ownInvites.get(h);
+        const found = own && own.until > now ? own : this.setupInvites.find((i) => tokenEquals(i.hash, h) && i.until > now);
         if (!found || !/^[a-z0-9-]{1,32}$/.test(machine)) return 'invalid';
         let name = machine;
         for (let i = 2; this.list.some((t) => t.machine === name) || taken(name); i++) name = `${machine.slice(0, 28)}-${i}`;
-        this.setupInvites = this.setupInvites.filter((i) => i !== found);
-        this.saveSetupInvites(now);
+        if (found === own) this.ownInvites.delete(h);
+        else {
+            this.setupInvites = this.setupInvites.filter((i) => i !== found);
+            this.saveSetupInvites(now);
+        }
         const token = randomBytes(32).toString('hex');
         this.list.push({ machine: name, hash: hashToken(token), created: new Date(now).toISOString(), account: found.account });
         this.save();
@@ -216,6 +233,7 @@ export class MachineTokens {
             this.save();
         }
         this.revokeSetup(account);
+        for (const [h, i] of this.ownInvites) if (i.account === account) this.ownInvites.delete(h);
         return gone;
     }
 

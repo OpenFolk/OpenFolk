@@ -6,8 +6,8 @@
 <title data-i18n="foldersTitle">Allowed folders</title>
 <link rel="stylesheet" href="folders-ui.css">
 <style>
-    :root { color-scheme: light dark; --bg: #111b21; --card: #202c33; --text: #e9edef; --muted: #8696a0; --border: #3b4a54; --accent: #00a884; --error: #f15c6d; }
-    @media (prefers-color-scheme: light) { :root { --bg: #f0f2f5; --card: #fff; --text: #111b21; --muted: #667781; --border: #d1d7db; } }
+    :root { color-scheme: light dark; --bg: #0b141a; --card: #111b21; --text: #e9edef; --muted: #8696a0; --border: #2a3942; --field: #202c33; --accent: #d97757; --error: #f15c6d; }
+    @media (prefers-color-scheme: light) { :root { --bg: #eef1f4; --card: #fff; --text: #111b21; --muted: #667781; --border: #e1e5e9; --field: #f6f8fa; } }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
     main { padding: 22px; }
@@ -16,7 +16,7 @@
     button { padding: 10px 16px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
     button:hover { filter: brightness(1.1); }
     button:disabled { opacity: .6; cursor: default; }
-    button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+    button.secondary { background: var(--field); color: var(--text); border: 1px solid var(--border); font-weight: 400; }
     .warn { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--error); background: rgba(241, 92, 109, .12); color: var(--text); font-size: 13px; }
     .error { color: var(--error); min-height: 1.5em; margin: 8px 0 0; overflow-wrap: anywhere; }
     .actions { display: flex; gap: 10px; margin-top: 18px; }

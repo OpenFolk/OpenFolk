@@ -12,7 +12,11 @@ export default async function ({ start, check }) {
         return !l.hidden && l.classList.contains('start') && !l.classList.contains('overlay') && getComputedStyle(l).backgroundColor !== 'rgba(0, 0, 0, 0.45)';
     }));
     check('German device: German texts and html lang', (await dp.textContent('#login-form button[type="submit"]')) === 'Anmelden' && (await dp.getAttribute('html', 'lang')) === 'de');
-    check('fields carry labels', await dp.evaluate(() => [...document.querySelectorAll('#login-form label')].filter((l) => l.offsetParent !== null).map((l) => l.querySelector('span').textContent).join('|')) === 'Einladungslink|Server-URL|Relay-Passwort|Name dieses Geräts (optional)');
+    check('a small wizard: first the choice of the setup method, focused, nothing else', await dp.evaluate(() => document.activeElement?.id === 'login-method' && document.getElementById('login-method').selectedOptions[0].textContent === 'Setupmethode wählen'
+        && [...document.querySelectorAll('#login-form label')].every((l) => l.offsetParent === null)));
+    check('the methods in the browser (no QR code without a secure page)', await dp.evaluate(() => [...document.querySelectorAll('#login-method option')].map((o) => o.textContent).join('|')) === 'Setupmethode wählen|Einladungslink|Passwort');
+    await dp.selectOption('#login-method', 'password');
+    check('fields carry labels', await dp.evaluate(() => [...document.querySelectorAll('#login-form label')].filter((l) => l.offsetParent !== null).map((l) => l.querySelector('span').textContent).join('|')) === 'URL|Passwort|Name dieses Geräts (optional)');
     check('server URL not editable in the browser', await dp.isVisible('#login-relay') && !(await dp.isEditable('#login-relay')));
     check('password field has the focus', await dp.evaluate(() => document.activeElement?.id === 'login-token'));
     check('no code field while the relay asks for none', !(await dp.isVisible('#login-totp')));
@@ -21,59 +25,71 @@ export default async function ({ start, check }) {
     // ---- a relay with a second factor: its /health says so, the code field shows without a refused sign-in first
     const tw = await start({ device: null, language: null, locale: 'de-DE', health: { ok: true, totp: true } });
     await tw.wait(200);
+    await tw.page.selectOption('#login-method', 'password');
     check('relay with TOTP: code field shown, without "(falls eingerichtet)"', await tw.page.isVisible('#login-totp')
         && (await tw.page.textContent('#login-totp-field span')) === 'Code aus der Authenticator-App');
     await tw.close();
 
     const en = await start({ device: null, language: null, locale: 'fr-FR' });
     check('other languages: English', (await en.page.textContent('#login-form button[type="submit"]')) === 'Sign in' && (await en.page.getAttribute('html', 'lang')) === 'en');
-    check('help link for newcomers', (await en.page.textContent('.start-help[data-i18n-html="login.help"]')).includes('set it up'));
     await en.close();
 
-    // ---- loading: the first steps do not flash up while the machines and their bots are on their way
+    // ---- loading: nothing flashes up in the list while the machines and their bots are on their way
     const ld = await start({ bots: [], agentsLater: true, botsLater: true, device: 'test' });
     await ld.wait(200);
-    const loading = () => ld.page.evaluate(() => !!document.querySelector('#chat-list .list-loading') && !document.querySelector('#chat-list .welcome'));
-    check('before the machine list: loading, no first steps', await loading());
+    const loading = () => ld.page.evaluate(() => !!document.querySelector('#chat-list .list-loading'));
+    check('before the machine list: loading', await loading());
     await ld.push({ type: 'agents', online: ['desk'] });
     await ld.wait(100);
     check('machine there, its bots not yet: still loading', await loading());
     await ld.push({ type: 'bots', machine: 'desk', bots: [], groups: [], categories: [], states: {}, activity: {}, activeChats: {}, approvals: [] });
     await ld.wait(100);
-    check('bots there, none yet: the first steps', await ld.page.evaluate(() => !!document.querySelector('#chat-list .welcome') && !document.querySelector('#chat-list .list-loading')));
+    check('bots there, none yet: an empty list, no first steps in it', await ld.page.evaluate(() => !document.querySelector('#chat-list .list-loading') && !document.querySelector('#chat-list .welcome-steps') && document.querySelectorAll('#chat-list > *').length === 0));
     await ld.close();
 
-    // ---- another account (an invitation) while none of its machines is awake: no "npm start", a note instead
+    // ---- another account (an invitation) while none of its machines is awake: a note in the list
     const inv = await start({ bots: [], online: [], device: 'test', auth: () => ({ type: 'auth', ok: true, account: { id: 'erik', name: 'Erik', admin: false } }) });
     await inv.wait(200);
-    check('invited account, no machine: a note, not the first steps', await inv.page.evaluate(() => !!document.querySelector('#chat-list .welcome h2') && !document.querySelector('.welcome-steps')),
-        await inv.page.textContent('#chat-list'));
-    check('… which says that no machine is reachable', (await inv.page.textContent('#chat-list .welcome h2')) === 'No machine reachable yet');
+    // Right after the start a machine may still be on its way (the desktop app's own backend after its setup)
+    check('invited account, no machine yet right after the start: the loading bar, not "no machine"', await inv.page.evaluate(() => !!document.querySelector('#chat-list .list-loading') && !document.querySelector('#chat-list .welcome')));
+    await inv.page.evaluate(() => { const real = Date.now; Date.now = () => real() + 60_000; });
+    await inv.push({ type: 'agents', online: [] });
+    await inv.wait(100);
+    check('invited account, still no machine after a while: a note that no machine is reachable', (await inv.page.textContent('#chat-list .welcome h2')) === 'No machine reachable yet', await inv.page.textContent('#chat-list'));
     await inv.push({ type: 'agents', online: ['desk'] });
     await inv.push({ type: 'bots', machine: 'desk', bots: [], groups: [], categories: [], states: {}, activity: {}, activeChats: {}, approvals: [] });
     await inv.wait(100);
-    check('machine awake: the first steps of the account', await inv.page.evaluate(() => !!document.querySelector('.welcome-steps')));
+    check('machine awake: the note goes, no steps instead', await inv.page.evaluate(() => !document.querySelector('#chat-list .welcome')));
     await inv.close();
 
-    // ---- first steps: no machine, no bot
-    const h =await start({ bots: [], online: [], device: 'test' });
+    // ---- the start view: the sign-in to an AI provider while no engine of a connected machine is ready
+    const h = await start({ bots: [], online: [], device: 'test' });
     const p = h.page;
-    const steps = () => p.evaluate(() => [...document.querySelectorAll('.welcome-steps li')].map((li) => `${li.classList.contains('done') ? '✓' : '·'} ${li.querySelector('strong').textContent}`).join('|'));
-    check('welcome instead of an empty list', await p.evaluate(() => !!document.querySelector('#chat-list .welcome h2')));
-    check('no machine: all steps open, the backend command shown', (await steps()) === '· Connect a machine|· Sign in to an AI provider|· Create your first bot|· Add your phone and notifications' && (await p.textContent('.welcome-steps code')) === 'npm start', await steps());
-    check('no bot button while no machine is connected', !(await p.isVisible('.welcome-steps button')));
-
+    // A phone (the harness' size) shows it at the top of the list, a wide window in the start view
+    const step2 = '#chat-list .start-setup';
+    const setupShown = () => p.isVisible(step2);
+    check('no machine: no sign-in in the start view, no steps in the list', !(await setupShown()) && !(await p.evaluate(() => !!document.querySelector('.welcome-steps'))));
     await h.push({ type: 'agents', online: ['desk'] });
     await h.wait(100);
-    check('machine connected: first step done; a backend without setup_status counts as signed in', (await steps()).startsWith('✓ Connect a machine|✓ Sign in to an AI provider|· Create your first bot') && (await p.textContent('.welcome-steps li:nth-child(1) .welcome-body span')).includes('DESK'), await steps());
+    check('machine connected, a backend without setup_status: counts as signed in, nothing shown', !(await setupShown()));
 
-    // ---- the sign-in step from setup_status: Claude missing on this computer, Codex installed but not signed in
-    const step2 = '.welcome-steps li:nth-child(2)';
+    // ---- the sign-in from setup_status: Claude missing on this computer, Codex installed but not signed in
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'embedded', container: false, engines: { claude: 'sign_in', codex: 'sign_in', copilot: 'missing' } });
     await h.wait(100);
-    check('not signed in: step open with the command for a terminal', (await steps()).startsWith('✓ Connect a machine|· Sign in to an AI provider') && (await p.textContent(`${step2} code`)) === 'claude', await steps());
+    check('not signed in: the start view shows the sign-in with the command for a terminal', await setupShown() && (await p.textContent(`${step2} strong`)) === 'Sign in to an AI provider' && (await p.textContent(`${step2} code`)) === 'claude');
+    check('… on a phone the only card at the top of the list, no steps', await p.evaluate(() => document.querySelector('#chat-list > li')?.classList.contains('start-setup') && !document.querySelector('.welcome-steps')));
+    const widths = await p.evaluate(() => {
+        const card = document.querySelector('#chat-list .start-setup');
+        return { card: card.getBoundingClientRect().width, body: card.querySelector('.welcome-body').getBoundingClientRect().width };
+    });
+    check('… its text runs across the card, not a word a line in a narrow column', widths.body > widths.card * 0.8, widths);
+    await p.setViewportSize({ width: 1280, height: 800 });
+    await h.wait(100);
+    check('… in a wide window in the start view next to the list, not in the list', await p.isVisible('#chat-empty #chat-setup') && !(await p.isVisible(step2))
+        && (await p.textContent('#chat-setup code')) === 'claude');
+    await p.setViewportSize({ width: 400, height: 860 });
+    await h.wait(100);
     check('device code offered only for an installed engine', (await p.evaluate((sel) => [...document.querySelectorAll(sel)].map((x) => x.textContent).join('|'), `${step2} button`)) === 'Use Codex instead');
-    check('embedded relay: the devices step names a relay on a server', (await p.textContent('.welcome-steps li:nth-child(4) .welcome-body span')).includes('relay of your own on a server'));
     h.sent.length = 0;
     await p.click(`${step2} button`);
     await h.wait(100);
@@ -171,35 +187,25 @@ export default async function ({ start, check }) {
     check('Claude not signed in: trying without signing in adds OpenCode to what is on', added?.machine === 'desk'
         && JSON.stringify(added.settings.disabledEngines) === '["claude","codex","cursor","copilot","antigravity"]', added);
 
-    // ---- OpenCode ready, Claude not: the step is done and a new bot starts on OpenCode
+    // ---- OpenCode ready, Claude not: the sign-in goes and a new bot starts on OpenCode
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'remote', container: false, engines: { claude: 'sign_in', opencode: 'ready' } });
     await h.wait(500);
-    check('OpenCode ready: sign-in step done', (await steps()).startsWith('✓ Connect a machine|✓ Sign in to an AI provider|· Create your first bot'), await steps());
-    await p.click('.welcome-steps li:nth-child(3) button');
+    check('OpenCode ready: the sign-in leaves the start view', !(await setupShown()));
+    await p.evaluate(() => openEditor(null));
     await h.wait(100);
     check('… and a new bot starts on OpenCode', (await p.inputValue('#editor-model')) === 'opencode', await p.inputValue('#editor-model'));
     await p.evaluate(() => closeDialog(document.getElementById('editor')));
 
     await h.push({ type: 'setup_status', machine: 'desk', relay: 'remote', container: false, engines: { claude: 'ready', codex: 'sign_in' } });
     await h.wait(500);
-    check('signed in: step done, no command, no relay hint', (await steps()).startsWith('✓ Connect a machine|✓ Sign in to an AI provider|· Create your first bot') && !(await p.isVisible(`${step2} code`))
-        && !(await p.textContent('.welcome-steps li:nth-child(4) .welcome-body span')).includes('relay of your own'), await steps());
-
-    await p.click('.welcome-steps li:nth-child(3) button');
+    check('signed in: nothing in the start view', !(await setupShown()));
+    await p.evaluate(() => openEditor(null));
     await h.wait(100);
-    check('bot button opens the editor for a new bot, on Claude', await p.isVisible('#editor') && (await p.textContent('#editor-title')) === 'New bot'
-        && (await p.inputValue('#editor-model')) === 'default');
+    check('a new bot starts on Claude', await p.isVisible('#editor') && (await p.inputValue('#editor-model')) === 'default');
     await p.evaluate(() => closeDialog(document.getElementById('editor')));
-
-    await p.click('.welcome-steps li:nth-child(4) button');
-    await h.wait(100);
-    check('devices button opens the settings at the devices block', await p.isVisible('#settings-devices')
-        && await p.evaluate(() => { const r = document.getElementById('settings-devices').getBoundingClientRect(); return r.top >= 0 && r.top < window.innerHeight; }));
-    await p.evaluate(() => closeDialog(document.getElementById('settings')));
 
     h.state.bots = [BOT];
     await h.sendBots();
-    // the list re-renders only once the tap lock of the last click has released (350 ms)
     await h.wait(600);
-    check('first bot: the list replaces the welcome', !(await p.evaluate(() => !!document.querySelector('#chat-list .welcome'))) && (await p.textContent('#chat-list')).includes('PDF-Reader'));
+    check('first bot: in the list', (await p.textContent('#chat-list')).includes('PDF-Reader'));
 }

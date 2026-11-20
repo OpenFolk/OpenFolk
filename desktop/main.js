@@ -14,7 +14,7 @@ const http = require('node:http');
 const https = require('node:https');
 const os = require('node:os');
 const path = require('node:path');
-const { Backend, dataDir, freePort, guardQuit, joinServer, profileRoots, remoteUrl, root, setProfileEnv } = require('./backend.js');
+const { Backend, aiSetup, dataDir, freePort, guardQuit, joinServer, profileRoots, remoteUrl, root, setProfileEnv } = require('./backend.js');
 const task = require('./task.js');
 const { watchHandovers } = require('./handover.js');
 const { startQrJoin, stopQrJoin } = require('./qr-join.js');
@@ -32,6 +32,8 @@ const DEFAULT_ROOT = () => path.join(os.homedir(), 'OpenFolk');
  * origin (storage, crypto, IndexedDB) and the relays can allow exactly it (relay/src/auth.ts, originAllowed).
  */
 const APP = 'openfolk://app/';
+/** The password typed on the setup page, until the web app takes it (take-password). */
+let pendingPassword = null;
 protocol.registerSchemesAsPrivileged([{ scheme: 'openfolk', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 
 const WEBAPP = () => path.join(root(), 'webapp');
@@ -153,20 +155,33 @@ const TEXTS = {
         foldersNotFolder: '{folder} is not a folder that exists.',
         foldersBadChars: '{folder} cannot be used: a folder name must not contain “;”.',
         foldersSetupSummary: 'Folders the bots may work in (optional)',
-        foldersSetupHint: 'Without a choice the bots get their own folder {default}, not your whole user folder. You can change this later in the menu under “Allowed folders …”.',
         pairAgain: 'Sign this window in again',
-        setupRelayHint: 'For a computer that only shows your bots, like your phone or browser does: this window is just the interface to a relay server you already have.',
-        setupRelayWarn: 'This app then starts no backend on this computer, so bots that run here through the app are offline.',
-        setupRelayConfirmText: 'Connect to this relay server? The app starts no backend here, so no bots run on this computer.',
-        setupRelayConfirmYes: 'Yes, no bots run on this computer',
+        setupRelayConfirmText: 'Connect to this relay server? This computer then works for the account there; what its bots did here so far stays in the profile.',
+        setupRelayConfirmYes: 'Yes, connect',
         setupRelayConfirmNo: 'Back',
-        setupLocalHint: 'The way if you are new to OpenFolk: backend and relay run on this computer, inside the app, with your Claude Code sign-in. The bots stop when you quit the app. Moving to a relay server of your own works later in the settings (“Move to a relay on a server”). If OpenFolk already runs on this computer, use C instead.',
-        setupPhoneHint: 'For your phone, or the browser on another device, OpenFolk needs a relay server of its own:',
-        setupPhoneLink: 'how to set it up',
-        setupLocal: 'Start on this computer',
-        setupQrOr: 'Or by QR code: enter the address of the relay server, show the code and have it scanned by a signed-in device.',
+        setupLocal: 'Set up this computer',
+        setupStepTitle: 'Step 1: setup method',
+        setupMachineTitle: 'Step 2: set up this computer',
+        setupSigningIn: 'Signing in …',
+        setupAiTitle: 'Step 3: sign in to an AI provider',
+        setupAiChoose: 'Choose a provider',
+        setupAiClaude: 'Claude (subscription)',
+        setupAiClaudeKey: 'Claude (API key)',
+        setupAiCodex: 'Codex (ChatGPT account)',
+        setupAiCopilot: 'GitHub Copilot',
+        setupAiFree: 'No provider (free models)',
+        setupAiSignIn: { claude: 'Sign in to Claude', codex: 'Sign in to Codex', copilot: 'Sign in to Copilot' },
+        setupAiCode: 'Enter the code at {url}:',
+        setupAiBrowser: 'Sign-in opened in the browser …',
+        setupAiFailed: 'The sign-in did not work: {message}',
+        setupAiKeyLink: 'Create an API key',
+        setupAiKeyLabel: 'Anthropic API key',
+        setupAiKeySave: 'Save',
+        setupAiTry: 'Start for free',
+        aiKeyEmpty: 'Paste the key first.',
+        aiKeyInvalid: 'Anthropic does not know this key.',
+        aiKeyForbidden: 'This key may not use the API (check its permissions in the Console).',
         setupQrShow: 'Show QR code',
-        setupQrHint: 'Whoever invited you scans it in the row of your account (Settings, Accounts, “Scan QR code”); your own computer you approve yourself on a signed-in device (Settings, Devices, “Scan QR code”). The code is renewed when it expires.',
         setupQrCancel: 'Cancel',
         setupQrJoining: 'Approved, connecting this computer …',
         setupQrFailed: {
@@ -201,12 +216,15 @@ const TEXTS = {
         disconnectYes: 'Disconnect',
         setupStarting: 'OpenFolk is starting …',
         setupTagline: 'Your coding agents, as colleagues in a chat.',
-        setupIntro: 'Got an invitation link? Paste it here, it does the rest.',
         setupInviteLabel: 'Invitation link',
         setupInviteGo: 'Continue',
         setupInviteEmpty: 'Paste the link you were sent.',
-        setupPasswordTitle: 'Sign in with the relay server and a password',
-        setupLocalOr: 'No invitation? Start OpenFolk on this computer:',
+        setupMethod: 'Choose a setup method',
+        setupMethodInvite: 'Invitation link',
+        setupMethodPassword: 'URL and password',
+        setupMethodQr: 'QR code',
+        setupMethodLocal: 'Without setup',
+        setupPassword: 'Password',
         setupFailed: 'The backend does not start ({error}). Its log: {log}',
         quitWaitTitle: 'A bot is still working',
         quitWaitText: 'OpenFolk quits as soon as the bots are done.',
@@ -262,12 +280,12 @@ const TEXTS = {
         about: 'About OpenFolk',
         aboutProfile: 'Profile folder',
         notSetUp: 'not set up',
-        invalidAddress: 'Please enter a server URL like https://openfolk.example.com.',
+        invalidAddress: 'Please enter a URL like https://openfolk.example.com.',
         setupTitle: 'Set up OpenFolk',
-        setupLabel: 'Relay server URL',
+        setupLabel: 'URL',
         setupConnect: 'Connect',
         setupNoAnswer: 'The relay server does not answer: {error}',
-        setupHint: 'OpenFolk {version} · You can change this later in the menu under “Change setup”.',
+        setupHint: 'OpenFolk {version}',
         checkUpdates: 'Check for updates …',
         autoUpdate: 'Check for updates automatically',
         autoUpdateEnv: 'Check for updates automatically (off: OPENFOLK_NO_UPDATE is set)',
@@ -305,20 +323,33 @@ const TEXTS = {
         foldersNotFolder: '{folder} ist kein vorhandener Ordner.',
         foldersBadChars: '{folder} geht nicht: Ein Ordnername darf kein „;“ enthalten.',
         foldersSetupSummary: 'Ordner, in denen Bots arbeiten dürfen (optional)',
-        foldersSetupHint: 'Ohne Auswahl bekommen die Bots einen eigenen Ordner {default}, nicht deinen ganzen Benutzerordner. Das lässt sich später im Menü unter „Freigegebene Ordner …“ ändern.',
         pairAgain: 'Dieses Fenster neu anmelden',
-        setupRelayHint: 'Für einen Rechner, der deine Bots nur anzeigt, wie Handy oder Browser: Dieses Fenster ist nur die Oberfläche zu einem Relay-Server, den du schon hast.',
-        setupRelayWarn: 'Die App startet dann kein Backend auf diesem Rechner, Bots, die hier über die App liefen, sind offline.',
-        setupRelayConfirmText: 'Mit diesem Relay-Server verbinden? Die App startet hier kein Backend, auf diesem Rechner laufen dann keine Bots.',
-        setupRelayConfirmYes: 'Ja, auf diesem Rechner laufen keine Bots',
+        setupRelayConfirmText: 'Mit diesem Relay-Server verbinden? Dieser Rechner arbeitet dann für das Konto dort; was seine Bots hier bisher getan haben, bleibt im Profil.',
+        setupRelayConfirmYes: 'Ja, verbinden',
         setupRelayConfirmNo: 'Zurück',
-        setupLocalHint: 'Der Weg, wenn du neu bei OpenFolk bist: Backend und Relay laufen auf diesem Rechner in der App, mit deiner Claude-Code-Anmeldung. Die Bots stoppen, wenn du die App beendest. Der Umzug auf einen eigenen Relay-Server geht später in den Einstellungen („Auf ein Relay auf einem Server umziehen“). Läuft OpenFolk auf diesem Rechner schon, nimm stattdessen C.',
-        setupPhoneHint: 'Für das Handy oder den Browser auf einem anderen Gerät braucht OpenFolk einen eigenen Relay-Server:',
-        setupPhoneLink: 'Anleitung zur Einrichtung',
-        setupLocal: 'Auf diesem Rechner starten',
-        setupQrOr: 'Oder per QR-Code: Adresse des Relay-Servers eingeben, Code anzeigen und von einem angemeldeten Gerät scannen lassen.',
+        setupLocal: 'Rechner einrichten',
+        setupStepTitle: 'Schritt 1: Setupmethode',
+        setupMachineTitle: 'Schritt 2: Rechner einrichten',
+        setupSigningIn: 'Anmeldung läuft …',
+        setupAiTitle: 'Schritt 3: Bei einem KI-Anbieter anmelden',
+        setupAiChoose: 'Anbieter wählen',
+        setupAiClaude: 'Claude (Abo)',
+        setupAiClaudeKey: 'Claude (API-Schlüssel)',
+        setupAiCodex: 'Codex (ChatGPT-Konto)',
+        setupAiCopilot: 'GitHub Copilot',
+        setupAiFree: 'Ohne Anbieter (kostenlose Modelle)',
+        setupAiSignIn: { claude: 'Bei Claude anmelden', codex: 'Bei Codex anmelden', copilot: 'Bei Copilot anmelden' },
+        setupAiCode: 'Den Code eingeben unter {url}:',
+        setupAiBrowser: 'Anmeldung im Browser geöffnet …',
+        setupAiFailed: 'Die Anmeldung hat nicht geklappt: {message}',
+        setupAiKeyLink: 'API-Schlüssel erstellen',
+        setupAiKeyLabel: 'Anthropic-API-Schlüssel',
+        setupAiKeySave: 'Speichern',
+        setupAiTry: 'Kostenlos starten',
+        aiKeyEmpty: 'Bitte zuerst den Schlüssel einfügen.',
+        aiKeyInvalid: 'Anthropic kennt diesen Schlüssel nicht.',
+        aiKeyForbidden: 'Dieser Schlüssel darf die API nicht nutzen (Berechtigungen in der Console prüfen).',
         setupQrShow: 'QR-Code anzeigen',
-        setupQrHint: 'Wer dich eingeladen hat, scannt ihn in der Zeile deines Kontos (Einstellungen, Konten, „QR-Code scannen“); einen eigenen Rechner gibst du selbst auf einem angemeldeten Gerät frei (Einstellungen, Geräte, „QR-Code scannen“). Läuft der Code ab, kommt ein neuer.',
         setupQrCancel: 'Abbrechen',
         setupQrJoining: 'Freigegeben, der Rechner wird angeschlossen …',
         setupQrFailed: {
@@ -353,12 +384,15 @@ const TEXTS = {
         disconnectYes: 'Trennen',
         setupStarting: 'OpenFolk startet …',
         setupTagline: 'Deine Coding-Agenten, als Kollegen im Chat.',
-        setupIntro: 'Du hast einen Einladungslink bekommen? Füge ihn hier ein, er erledigt den Rest.',
         setupInviteLabel: 'Einladungslink',
         setupInviteGo: 'Weiter',
         setupInviteEmpty: 'Füge den Link ein, den du bekommen hast.',
-        setupPasswordTitle: 'Mit Relay-Server und Passwort anmelden',
-        setupLocalOr: 'Keine Einladung? OpenFolk auf diesem Computer starten:',
+        setupMethod: 'Setupmethode wählen',
+        setupMethodInvite: 'Einladungslink',
+        setupMethodPassword: 'URL und Passwort',
+        setupMethodQr: 'QR-Code',
+        setupMethodLocal: 'Ohne Setup',
+        setupPassword: 'Passwort',
         setupFailed: 'Das Backend startet nicht ({error}). Sein Log: {log}',
         quitWaitTitle: 'Ein Bot arbeitet noch',
         quitWaitText: 'OpenFolk beendet sich, sobald die Bots fertig sind.',
@@ -414,12 +448,12 @@ const TEXTS = {
         about: 'Über OpenFolk',
         aboutProfile: 'Profilordner',
         notSetUp: 'nicht eingerichtet',
-        invalidAddress: 'Bitte eine Server-URL wie https://openfolk.example.com eingeben.',
+        invalidAddress: 'Bitte eine URL wie https://openfolk.example.com eingeben.',
         setupTitle: 'OpenFolk einrichten',
-        setupLabel: 'Relay-Server-URL',
+        setupLabel: 'URL',
         setupConnect: 'Verbinden',
         setupNoAnswer: 'Der Relay-Server antwortet nicht: {error}',
-        setupHint: 'OpenFolk {version} · Das lässt sich später im Menü unter „Einrichtung ändern“ anpassen.',
+        setupHint: 'OpenFolk {version}',
         checkUpdates: 'Nach Updates suchen …',
         autoUpdate: 'Automatisch nach Updates suchen',
         autoUpdateEnv: 'Automatisch nach Updates suchen (aus: OPENFOLK_NO_UPDATE ist gesetzt)',
@@ -446,9 +480,38 @@ const t = (key) => TEXTS[language()][key] ?? TEXTS.en[key];
 let config = {};
 /** The backend of "on this computer"; null in relay mode. */
 let backend = null;
+/** The stops of backends that ran here: a new one starts only after the last ended, never two on the same data folder. */
+let backendStopped = Promise.resolve();
+
+/**
+ * Stops the backend of this computer. It is gone from `backend` at once, so nothing reuses one that is ending; a new
+ * one waits for `backendStopped` (startLocal).
+ */
+function stopBackend() {
+    if (backend) {
+        const old = backend;
+        backend = null;
+        backendStopped = backendStopped.then(() => old.stop()).catch(() => undefined);
+    }
+    return backendStopped;
+}
 let win = null;
 /** The setup page is open on top of a working setup ("Change setup"): closing the window without a choice brings the app back. */
 let choosing = false;
+/**
+ * The invitation the setup page's second step ("Set up this computer") joins with, a link with `#join=` or `#setup=`:
+ * pasted or scanned in the first step, or asked from the relay by the web app after its sign-in ("machine_own").
+ * `signedIn`: the window is signed in at that relay with the right end-to-end key and needs no new pairing link.
+ * @type {{ link: string, signedIn: boolean } | null}
+ */
+let pendingMachine = null;
+/** Step 2 just set this computer up: step 3, the sign-in to an AI provider, follows once its backend runs. */
+let aiPending = false;
+/** The sign-in step 3 runs (local/tools/ai-setup.mjs claude or device), so another tap, step 1 or quitting ends it. */
+let aiLogin = null;
+/** End-to-end keys learned at a sign-in (an invitation's link, the web app's key dialog), by the relay's origin: for the backend of the second step. Memory only. */
+const machineKeys = new Map();
+const originOf = (u) => { try { return new URL(u).origin; } catch { return ''; } };
 /** The window's user agent as Electron made it, without our mark. */
 let baseAgent = '';
 let tray = null;
@@ -500,23 +563,107 @@ function normalizeAddress(input) {
     } catch { return null; }
 }
 
+/**
+ * Counts the window's page changes. A page decided before an await (a relay's answer, the backend's start) is shown
+ * only with the count of that moment, so it never replaces a newer one, e.g. a setup step the user went on to.
+ */
+let shown = 0;
+
+/** The setup page (with `query`), unless another page came since `since`. */
+function showSetup(query = undefined, since = shown) {
+    if (!win || since !== shown) return false;
+    shown++;
+    win.loadFile(SETUP, query ? { query } : undefined);
+    return true;
+}
+
+/** A page of the web app, unless another page came since `since`; null then, else the load's promise. */
+function showPage(url, since = shown) {
+    if (!win || since !== shown) return null;
+    shown++;
+    return Promise.resolve(win.loadURL(url));
+}
+
 function loadWebApp() {
     choosing = false;
     stopQrJoin();
     // The web app tells "on this computer" (it has the menu "Allowed folders …") from a display-only window by this mark
     win.webContents.setUserAgent(config.mode === 'local' ? `${baseAgent} OpenFolkLocal` : baseAgent);
     if (config.mode === 'local') void startLocal();
-    else if (config.mode === 'relay' && config.url) void relayPage(config.url).then((page) => win.loadURL(page), () => win.loadURL(appLink(config.url)));
-    else win.loadFile(SETUP);
+    else if (config.mode === 'relay' && config.url) {
+        const since = shown;
+        void relayPage(config.url).then((page) => showPage(page, since), () => showPage(appLink(config.url), since));
+    } else showSetup();
 }
+
+/**
+ * The web app signing in at a relay out of sight while the setup page stays (signInAway): its hidden window, the page
+ * it loaded, whether it got signed in, the password typed, and the page count when it began.
+ */
+let signIn = null;
+
+/**
+ * Signs the app in at a relay without leaving the setup page (an invitation into an account, or the address with a
+ * password): the web app runs in a hidden window of the same session, so its keys land where the window's web app
+ * finds them, and asks the relay for this computer's invitation; the setup page then goes on to step 2. The window
+ * shows the web app itself when there is nothing to set up, the user is needed (a refused password, a TOTP code) or
+ * the hidden one does not get on (signInDone).
+ */
+function signInAway(page, since = shown) {
+    if (since !== shown) return;
+    endSignIn();
+    // A relay older than 0.2.0 shows its own page, which knows nothing of the desktop app: in the window as before
+    if (!page.startsWith(APP)) return void showPage(page, since);
+    const hidden = new BrowserWindow({ show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    hidden.webContents.setUserAgent(baseAgent);
+    hidden.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    signIn = { win: hidden, page, authed: false, password: pendingPassword, since: shown, timer: setTimeout(() => signInDone(true), 45_000) };
+    void Promise.resolve(hidden.loadURL(page)).catch(() => signInDone(true));
+}
+
+/** Ends the hidden sign-in, if one runs. */
+function endSignIn() {
+    if (!signIn) return;
+    clearTimeout(signIn.timer);
+    const w = signIn.win;
+    signIn = null;
+    if (!w.isDestroyed()) w.destroy();
+}
+
+/** The hidden sign-in is over; `show`: the window shows the web app (signed in by now, or with the page it began with). */
+function signInDone(show) {
+    if (!signIn) return;
+    const { page, authed, password, since } = signIn;
+    endSignIn();
+    if (!show) return;
+    // The password once more for the window's web app, which asks for it as the hidden one did
+    if (password && !pendingPassword) pendingPassword = { ...password, until: Date.now() + 120_000 };
+    void showPage(authed ? appLink(originOf(config.url)) : page, since);
+}
+
+/** The hidden sign-in was refused: the setup page again, step 1 with the method used and the reason below it. */
+function signInRefused(message) {
+    if (!signIn) return;
+    const { since } = signIn;
+    endSignIn();
+    showSetup({ url: config.url || '', method: signedInWith || 'password', refused: message }, since);
+}
+
+/** Whether a request comes from the web app signing in out of sight. */
+const fromSignIn = (e) => Boolean(signIn) && e.sender === signIn.win.webContents;
 
 /** Starts the backend (once) and shows the web app for its relay; the first time with a pairing link. */
 async function startLocal() {
-    win.loadFile(SETUP, { query: { starting: '1' } });
+    // Right after step 2 the setup page stays, its step 3 is open: no page in between; step 3 opens the app (finishAi)
+    const forAi = aiPending;
+    if (!forAi) showSetup({ starting: '1' });
+    const since = shown;
     if (!config.localPort) {
         config.localPort = await freePort();
         saveConfig();
     }
+    // One that was stopped a moment ago (another way chosen and back) ends first
+    await backendStopped;
     if (!backend) {
         if (!profileRoots().length) {
             // A profile that ran before the folder list let its bots work in the whole user folder (the backend's default
@@ -530,19 +677,48 @@ async function startLocal() {
         backend.start();
     }
     if (!(await backend.ready())) {
-        win.loadFile(SETUP, { query: { error: backend.failure || 'no answer', log: backend.log } });
+        showSetup({ error: backend.failure || 'no answer', log: backend.log }, since);
         return;
     }
+    if (forAi || since !== shown) return;
+    await openApp(since);
+}
+
+/**
+ * The end of step 3: a sign-in, a key or OpenCode changed the machine settings, which the backend reads at its start,
+ * so it restarts first (nothing works yet this early); then the web app.
+ */
+async function finishAi(changed) {
+    if (aiLogin) aiLogin.stop();
+    aiLogin = null;
+    if (!aiPending) return;
+    aiPending = false;
+    if (!backend) return loadWebApp();
+    const since = shown;
+    // Still starting from step 2, or started again for the new settings: the setup page stays until it answers
+    if (!(await backend.ready()) || (changed && (await backend.restartWhenIdle(12_000, 'desktop app: AI provider set up')) === 'restarted' && !(await backend.ready()))) {
+        showSetup({ error: backend.failure || 'no answer', log: backend.log }, since);
+        return;
+    }
+    await openApp(since);
+}
+
+/** Shows the web app of the backend's relay, signed in; the first time with a pairing link. */
+async function openApp(since = shown) {
+    if (!backend) return loadWebApp();
     // Signed in at this relay already; a relay claimed from the app or joined by invitation needs a new sign-in
     if (config.paired === backend.url) {
-        try { await win.loadURL(await relayPage(backend.url)); } catch { /* the page reports it */ }
+        const loading = showPage(await relayPage(backend.url), since);
+        if (!loading) return;
+        try { await loading; } catch { /* the page reports it */ }
         // The page may have lost its sign-in, though: up to 0.1.2 it ran at the relay's address, since 0.2.0 at
         // openfolk://app with a storage of its own. Without a device key it would show the sign-in page; a fresh
         // pairing link signs it in again, as on the first start.
-        if (!(await pageSignedIn(backend.url))) await pairAgain();
+        const now = shown;
+        if (!(await pageSignedIn(backend.url))) await pairAgain(now);
         return;
     }
-    await pairAgain();
+    await pairAgain(since);
 }
 
 /**
@@ -571,18 +747,23 @@ async function pageSignedIn(relay) {
 }
 
 /** Loads the web app with a fresh pairing link, which signs this window in and hands it the end-to-end key. */
-async function pairAgain() {
+async function pairAgain(since = shown) {
     if (!backend) return;
     try {
         const link = await relayPage(await backend.pairingUrl());
         // Already on that page, the link would only change what follows '#', and the web app reads the pairing link
         // when it starts: through a blank page it loads anew
-        if (!win.webContents.getURL().startsWith('file:')) await win.loadURL('about:blank').catch(() => undefined);
-        win.loadURL(link);
+        if (!win.webContents.getURL().startsWith('file:')) {
+            const blank = showPage('about:blank', since);
+            if (!blank) return;
+            await blank.catch(() => undefined);
+            since = shown;
+        }
+        if (!showPage(link, since)) return;
         config.paired = backend.url;
         saveConfig();
     } catch (e) {
-        win.loadFile(SETUP, { query: { error: e.message, log: backend.log } });
+        showSetup({ error: e.message, log: backend.log }, since);
     }
 }
 
@@ -590,7 +771,7 @@ async function pairAgain() {
  * Joins this computer to a relay with the invitation from "Add machine" (pasted or received by QR code) and starts the
  * backend against it; the window then signs itself in with a pairing link from that backend (startLocal).
  */
-async function joinWith(link) {
+async function joinWith(link, signedIn = false) {
     stopQrJoin();
     const r = await joinServer(link);
     if (!r.ok) {
@@ -598,16 +779,35 @@ async function joinWith(link) {
         return { error: text ? text.replace('{message}', r.message || '') : r.message || r.error };
     }
     // A backend of "on this computer" still runs against the embedded relay: start it anew with the new .env
-    if (backend) {
-        await backend.stop();
-        backend = null;
-    }
+    await stopBackend();
     config.mode = 'local';
-    config.paired = '';
+    // A window signed in at that relay already keeps its sign-in; otherwise the backend's pairing link signs it in
+    config.paired = signedIn ? remoteUrl() : '';
     saveConfig();
     createMenu();
     loadWebApp();
     return { machine: r.machine };
+}
+
+/** A link that joins a computer (`#join=` from "Add machine", `#setup=` from a setup link), also inside a pasted command; '' otherwise. */
+function machineLinkOf(text) {
+    try {
+        const u = new URL(String(text || '').match(/https?:\/\/[^\s"'“”]+/)?.[0] ?? '');
+        const p = new URLSearchParams(u.hash.slice(1));
+        if (p.get('join') || p.get('setup')) return u.href;
+    } catch { /* not an address */ }
+    return '';
+}
+
+/** The second step of the setup: the page asks for the folders, then joins with `link`. */
+/** How the window signed in last (the setup page shows it as step 1 above step 2): invite, password or qr. */
+let signedInWith = '';
+
+function offerMachine(link, signedIn) {
+    pendingMachine = { link, signedIn };
+    stopQrJoin();
+    endSignIn();
+    showSetup({ step: 'machine', method: signedInWith });
 }
 
 /**
@@ -686,10 +886,7 @@ async function disconnectRelay() {
         buttons: [t('disconnectYes'), t('setupLinkNo')], defaultId: 1, cancelId: 1,
     });
     if (response !== 0) return;
-    if (backend) {
-        await backend.stop();
-        backend = null;
-    }
+    await stopBackend();
     // The embedded relay takes its own token and key from the data folder again
     for (const key of ['RELAY_URL', 'AGENT_TOKEN', 'E2E_KEY', 'MACHINE_NAME']) setProfileEnv(key, '');
     config.mode = 'local';
@@ -776,7 +973,7 @@ function createWindow() {
     win.webContents.on('did-navigate-in-page', (e, url) => notePairing(url));
     win.webContents.on('did-fail-load', (e, code, text, url) => {
         if (code === -3 || !url || url.startsWith('file://')) return; // -3 = aborted (own navigation)
-        win.loadFile(SETUP, { query: { error: `${text} (${code})`, url: config.url || '', ...(backend ? { log: backend.log } : {}) } });
+        showSetup({ error: `${text} (${code})`, url: config.url || '', ...(backend ? { log: backend.log } : {}) });
     });
 
     loadWebApp();
@@ -884,7 +1081,9 @@ function writeRoots(roots) {
 function changeAddress() {
     show();
     choosing = Boolean(config.mode);
-    win.loadFile(SETUP, { query: { url: config.url || '', choose: '1' } });
+    pendingMachine = null;
+    endSignIn();
+    showSetup({ url: config.url || '', choose: '1' });
 }
 
 function quit() {
@@ -1149,21 +1348,99 @@ if (!app.requestSingleInstanceLock()) {
 
     // Only the setup page (file://) may change the address, not the web app loaded from the relay
     const fromSetup = (e) => String(e.senderFrame?.url || '').startsWith('file://');
-    ipcMain.handle('save-address', (e, input) => {
+    // The web app asks once for the password typed on the setup page; only the app's own page, only for that relay
+    ipcMain.handle('take-password', (e, relay) => {
+        const p = pendingPassword;
+        pendingPassword = null;
+        const origin = (u) => { try { return new URL(u).origin; } catch { return ''; } };
+        if (!p || Date.now() > p.until || !String(e.senderFrame?.url || '').startsWith(APP) || !relay || origin(relay) !== origin(p.url)) {
+            // The hidden sign-in at its sign-in form without a password: the user is needed, in the window
+            if (fromSignIn(e)) signInDone(true);
+            return '';
+        }
+        return p.password;
+    });
+    // The hidden sign-in's web app needs the user (a refused password, a code) or has nothing to set up here
+    // Refused (a used link, a wrong password): back to step 1 with the reason; asked for a TOTP code: the user is needed
+    // in the window, which has the field for it
+    ipcMain.handle('sign-in-needed', (e, message, code) => {
+        if (!fromSignIn(e)) return;
+        if (!message || /^totp_/.test(String(code))) return void signInDone(true);
+        signInRefused(String(message).slice(0, 300));
+    });
+    ipcMain.handle('machine-none', (e) => { if (fromSignIn(e)) signInDone(true); });
+    const fromApp = (e) => String(e.senderFrame?.url || '').startsWith(APP);
+    /** The relay this window is signed in at as a mere window: the one a computer can be set up for. */
+    const windowRelay = (relay) => (config.mode === 'relay' && relay && originOf(relay) === originOf(config.url) ? originOf(relay) : '');
+    // The web app, signed in: is this computer still to be set up at its relay, and do we know the end-to-end key?
+    ipcMain.handle('machine-wanted', (e, relay) => {
+        // Asked once the web app is signed in
+        if (fromSignIn(e)) signIn.authed = true;
+        const origin = fromApp(e) ? windowRelay(relay) : '';
+        return { wanted: Boolean(origin) && !pendingMachine, key: machineKeys.has(origin) };
+    });
+    ipcMain.handle('machine-key', (e, relay, key) => {
+        const origin = fromApp(e) ? originOf(relay) : '';
+        if (origin && typeof key === 'string' && /^[\w-]{43}$/.test(key)) machineKeys.set(origin, key);
+    });
+    // The relay's invitation for this computer, asked by the web app ("machine_own"): on to the second step
+    ipcMain.handle('machine-offer', (e, o) => {
+        const origin = fromApp(e) ? windowRelay(o?.relay) : '';
+        if (!origin || pendingMachine || !['join', 'setup'].includes(o?.kind) || !/^[\w-]{16,128}$/.test(String(o?.token))) {
+            if (fromSignIn(e)) signInDone(true);
+            return;
+        }
+        const key = machineKeys.get(origin);
+        offerMachine(`${origin}/#${o.kind}=${o.token}${key ? `&e2e=${key}` : ''}`, Boolean(key));
+    });
+    // The second step: the folders, then this computer joins the relay and its backend starts
+    ipcMain.handle('machine-setup', async (e, folders) => {
+        if (!fromSetup(e)) return { error: 'not allowed' };
+        if (!pendingMachine) return { error: t('invalidAddress') };
+        if (Array.isArray(folders)) {
+            const checked = checkRoots(folders);
+            if (checked.error) return { error: checked.error };
+            writeRoots(checked.roots);
+        }
+        aiPending = true;
+        const r = await joinWith(pendingMachine.link, pendingMachine.signedIn);
+        if (!r.error) pendingMachine = null;
+        else aiPending = false;
+        return r;
+    });
+    // Step 1 changed after a sign-in: this computer's invitation is dropped, the page goes the other way
+    ipcMain.handle('machine-drop', (e) => {
+        if (fromSetup(e)) pendingMachine = null;
+    });
+    ipcMain.handle('save-address', (e, input, password) => {
         if (!fromSetup(e)) return { error: 'not allowed' };
         const url = normalizeAddress(input);
         if (!url) return { error: t('invalidAddress') };
+        // Only in memory, for the web app's sign-in at this relay right after; gone after two minutes
+        pendingPassword = typeof password === 'string' && password ? { url, password, until: Date.now() + 120_000 } : null;
+        signedInWith = 'password';
         config.url = url;
         config.mode = 'relay';
+        pendingMachine = null;
         saveConfig();
         createMenu();
         // The bots of "on this computer" stop with the switch; their data stays in the profile
-        if (backend) void backend.stop().then(() => { backend = null; });
-        loadWebApp();
-        return { url };
+        void stopBackend();
+        // With a password the web app signs in out of sight and the setup page goes on to step 2; without, it asks
+        if (!pendingPassword) {
+            loadWebApp();
+            return { url };
+        }
+        choosing = false;
+        stopQrJoin();
+        win.webContents.setUserAgent(baseAgent);
+        const since = shown;
+        void relayPage(url).then((page) => signInAway(page, since), () => signInAway(appLink(originOf(url)), since));
+        return { url, signingIn: true };
     });
     ipcMain.handle('choose-local', (e, folders) => {
         if (!fromSetup(e)) return { error: 'not allowed' };
+        endSignIn();
         // The folders chosen on the setup page go into the profile's .env before the backend starts
         if (Array.isArray(folders)) {
             const checked = checkRoots(folders);
@@ -1175,8 +1452,62 @@ if (!app.requestSingleInstanceLock()) {
         config.mode = 'local';
         saveConfig();
         createMenu();
+        // Again from an open step 3 (other folders): a sign-in under way there ends, step 3 opens anew
+        if (aiLogin) aiLogin.stop();
+        aiLogin = null;
+        aiPending = true;
         loadWebApp();
         return {};
+    });
+    // Step 3: the sign-in to an AI provider for the backend on this computer (local/tools/ai-setup.mjs)
+    // The machine settings only after the backend wrote its own on its first start, which would replace them otherwise
+    const aiWrite = async (command, input = '') => {
+        if (backend) await backend.settled();
+        return aiSetup(command, { input }).done;
+    };
+    ipcMain.handle('ai-status', (e) => (fromSetup(e) && aiPending ? aiSetup('status').done : { ok: false }));
+    // Claude with the subscription in the browser, Codex and Copilot with a device code (link and code on the page)
+    ipcMain.handle('ai-login', (e, engine) => {
+        if (!fromSetup(e) || !aiPending || !['claude', 'codex', 'copilot'].includes(engine)) return;
+        if (aiLogin) aiLogin.stop();
+        const sender = e.sender;
+        const run = aiSetup(engine === 'claude' ? 'claude' : `device ${engine}`, { onLine: (r) => { if (!sender.isDestroyed()) sender.send('ai-state', r); } });
+        aiLogin = run;
+        void run.done.then(async (r) => {
+            if (aiLogin !== run) return;
+            aiLogin = null;
+            if (r.state === 'done') {
+                const on = await aiWrite(`on ${engine}`);
+                if (on.ok) void finishAi(true);
+                else if (!sender.isDestroyed()) sender.send('ai-state', { state: 'failed', message: on.message || on.error || '' });
+            } else if (!sender.isDestroyed()) sender.send('ai-state', r.state === 'failed' ? r : { state: 'failed', message: r.message || '' });
+        });
+    });
+    ipcMain.handle('ai-key', async (e, key) => {
+        if (!fromSetup(e) || !aiPending) return { error: 'not allowed' };
+        if (typeof key !== 'string' || !key.trim() || key.length > 500) return { error: t('aiKeyEmpty') };
+        const r = await aiWrite('key', key.trim());
+        if (!r.ok) return { error: r.error === 'invalid' || r.error === 'forbidden' ? t(r.error === 'invalid' ? 'aiKeyInvalid' : 'aiKeyForbidden') : r.message || r.error || 'error' };
+        void finishAi(true);
+        return {};
+    });
+    ipcMain.handle('ai-try', async (e) => {
+        if (!fromSetup(e) || !aiPending) return { error: 'not allowed' };
+        const r = await aiWrite('on opencode');
+        if (!r.ok) return { error: r.message || r.error || 'error' };
+        void finishAi(true);
+        return {};
+    });
+    // Step 1 changed while step 3 was open: a sign-in under way ends, nothing goes on to the app from here
+    ipcMain.handle('ai-cancel', (e) => {
+        if (!fromSetup(e)) return;
+        if (aiLogin) aiLogin.stop();
+        aiLogin = null;
+        aiPending = false;
+    });
+    // An engine was ready already (signed in on this computer before): on to the web app without a step 3
+    ipcMain.handle('ai-skip', (e) => {
+        if (fromSetup(e)) void finishAi(false);
     });
     // The one field of the setup page takes every link someone sends: a setup link, an invitation into an account (a
     // pairing link: this window signs in at that relay, as with its address and a password) or a machine's invitation
@@ -1189,13 +1520,26 @@ if (!app.requestSingleInstanceLock()) {
         if (pairing) {
             config.url = normalizeAddress(new URL(pairing).origin);
             config.mode = 'relay';
+            pendingMachine = null;
+            // The key of the invitation: the backend this computer gets in the second step reads with the same one
+            const key = new URLSearchParams(new URL(pairing).hash.slice(1)).get('e2e');
+            if (key && /^[\w-]{43}$/.test(key)) machineKeys.set(new URL(pairing).origin, key);
             saveConfig();
             createMenu();
-            if (backend) void backend.stop().then(() => { backend = null; });
+            void stopBackend();
             choosing = false;
             stopQrJoin();
             win.webContents.setUserAgent(baseAgent);
-            void relayPage(pairing).then((page) => win.loadURL(page), () => win.loadURL(appLinkFromPairing(pairing)));
+            signedInWith = 'invite';
+            const since = shown;
+            void relayPage(pairing).then((page) => signInAway(page, since), () => signInAway(appLinkFromPairing(pairing), since));
+            return { signingIn: true };
+        }
+        // A machine's invitation or a setup link: the second step asks for the folders, then joins
+        const machine = machineLinkOf(link);
+        if (machine) {
+            signedInWith = 'invite';
+            offerMachine(machine, false);
             return {};
         }
         return joinWith(link);
@@ -1211,7 +1555,14 @@ if (!app.requestSingleInstanceLock()) {
                 relay: url, root: root(),
                 emit: (state) => { if (!sender.isDestroyed()) sender.send('qr-join', state); },
                 // An admin approving from the row of an account sends its setup link: the same checks as a pasted one
-                onLink: async (link) => (setupLinkOf(link) && setupBlocked(setupLinkOf(link))) || (await joinWith(link)).error || '',
+                onLink: async (link) => {
+                    const blocked = setupLinkOf(link) && setupBlocked(setupLinkOf(link));
+                    if (blocked) return blocked;
+                    if (!machineLinkOf(link)) return (await joinWith(link)).error || '';
+                    signedInWith = 'qr';
+                    offerMachine(machineLinkOf(link), false);
+                    return '';
+                },
             });
         } catch (err) {
             return { error: err.message };
@@ -1236,11 +1587,17 @@ if (!app.requestSingleInstanceLock()) {
         writeRoots(checked.roots);
         return { state: config.mode === 'local' && backend ? await backend.restartWhenIdle() : 'saved' };
     });
-    ipcMain.handle('info', (e) => (!fromSetup(e) ? {} : { mode: config.mode || '', url: config.url || '', roots: profileRoots(), home: os.homedir(), defaultRoot: DEFAULT_ROOT(), envRoots: process.env.ALLOWED_ROOTS || '', version: app.getVersion(), platform: process.platform, language: language(), texts: TEXTS[language()] }));
+    ipcMain.handle('info', (e) => (!fromSetup(e) ? {} : { step: pendingMachine ? 'machine' : '', mode: config.mode || '', url: config.url || '', roots: profileRoots(), home: os.homedir(), defaultRoot: DEFAULT_ROOT(), envRoots: process.env.ALLOWED_ROOTS || '', version: app.getVersion(), platform: process.platform, language: language(), texts: TEXTS[language()] }));
 
     // A click on the Dock icon brings the hidden window back (macOS only)
     app.on('activate', show);
-    app.on('before-quit', () => { quitting = true; });
+    app.on('before-quit', () => {
+        quitting = true;
+        // A sign-in of step 3 still running (a CLI waiting for the browser) and the hidden sign-in end with the app
+        if (aiLogin) aiLogin.stop();
+        aiLogin = null;
+        endSignIn();
+    });
     guardQuit(() => backend, async () => {
         const { response } = await dialog.showMessageBox({
             type: 'info', title: 'OpenFolk', message: t('quitWaitTitle'), detail: t('quitWaitText'), buttons: [t('quitWait'), t('quitNow')], defaultId: 0, cancelId: 0,

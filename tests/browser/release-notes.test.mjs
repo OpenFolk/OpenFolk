@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bot } from './harness.mjs';
-import { parseChangelog, unwrap } from '../../scripts/release-notes.mjs';
+import { parseChangelog, unwrap, withGerman } from '../../scripts/release-notes.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -28,6 +28,13 @@ export default async function ({ start, check }) {
         [`${fence}sh\nnpm a\nnpm b\n${fence}\nafter`, `${fence}sh\nnpm a\nnpm b\n${fence}\nafter`],
         ['para one\ngoes on\n\n1. x\n   y', 'para one goes on\n\n1. x y'],
     ]) check(`changelog: unwrapped ${JSON.stringify(text)}`, unwrap(text) === want, unwrap(text));
+
+    // German notes next to the English ones, by version; a version without them keeps only the English
+    const both = withGerman(parsed, [{ version: '1.1.0', date: '2026-12-01', notes: '### Behoben\n- a' }]);
+    check('german notes join their version only', both[0].notesDe === '### Behoben\n- a' && !('notesDe' in both[1]), both);
+    const english = parseChangelog(fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8')).map((r) => r.version);
+    const germanVersions = parseChangelog(fs.readFileSync(path.join(ROOT, 'docs', 'CHANGELOG.de.md'), 'utf8')).map((r) => r.version);
+    check('every released version has its German notes (docs/CHANGELOG.de.md)', english.every((v) => germanVersions.includes(v)), english.filter((v) => !germanVersions.includes(v)));
 
     const web = await start({ bots: [bot('pdf', 'PDF-Reader')], online: ['desk'] });
     const p = web.page;
@@ -75,7 +82,19 @@ export default async function ({ start, check }) {
     await german.wait(200);
     await german.page.click('#about-list .about-version');
     await german.wait(200);
-    check('German: title, and the notes are said to be in English', (await german.page.textContent('#settings-dialog-title')) === `Neu in OpenFolk ${VERSION}`
-        && (await german.page.textContent('#settings-dialog-body')).includes('nur auf Englisch'));
+    const de = await german.page.evaluate(() => ({
+        headings: [...document.querySelectorAll('#settings-dialog .release-notes-current h3')].map((h) => h.textContent),
+        body: document.getElementById('settings-dialog-body').textContent,
+    }));
+    check('German: the title and the German notes of this version, no hint about English', (await german.page.textContent('#settings-dialog-title')) === `Neu in OpenFolk ${VERSION}`
+        && de.headings.includes('Neu') && !de.headings.includes('Added') && !de.body.includes('nur auf Englisch'), de.headings);
     await german.close();
+    const englishPage = await start({ bots: [bot('pdf', 'PDF-Reader')], online: [] });
+    await englishPage.page.click('[data-tab=settings]');
+    await englishPage.wait(200);
+    await englishPage.page.click('#about-list .about-version');
+    await englishPage.wait(200);
+    const en = await englishPage.page.evaluate(() => [...document.querySelectorAll('#settings-dialog .release-notes-current h3')].map((h) => h.textContent));
+    check('English: the English notes', en.includes('Added') && !en.includes('Neu'), en);
+    await englishPage.close();
 }
