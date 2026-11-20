@@ -5,6 +5,8 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-20
+
 ### Added
 - Release notes in German too: "What's new?" shows the notes in the app's language; the German ones come from the new
   `docs/CHANGELOG.de.md`, which holds every version, and a version without them shows the English ones with a hint.
@@ -15,7 +17,7 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
   computer for the signed-in account, so a person invited with a plain link no longer ends with "no machine
   reachable". For that every account may bring its own computer in: a signed-in device asks the relay for an
   invitation (new request `machine_own`; the main account gets a machine of the relay, every other account a machine
-  bound to it, valid 15 minutes). "Not now" leaves the app a window. The setup method "On this computer" is now
+  bound to it, valid 15 minutes). The setup method "On this computer" is now
   "Without setup" and goes to the second step at once; a machine's invitation and a setup link ask for the folders
   there before they join.
 - Folders of the chat list keep an order of their own: with a mouse a folder is dragged onto another, on the phone its
@@ -679,7 +681,8 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.3.0...v0.4.0

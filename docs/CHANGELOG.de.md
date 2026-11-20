@@ -5,6 +5,8 @@ dieselben.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-20
+
 ### Neu
 - Release-Notes auch auf Deutsch: „Was ist neu?“ zeigt die Notes in der Sprache der App; die deutschen kommen aus der
   neuen `docs/CHANGELOG.de.md`, die jede Version enthält, und eine Version ohne sie zeigt die englischen mit Hinweis.
@@ -16,7 +18,7 @@ dieselben.
   angemeldete Konto startet. Wer nur mit einem Link eingeladen wurde, landet so nicht mehr bei „kein Rechner
   erreichbar“. Dafür darf jedes Konto einen eigenen Rechner einbringen: Ein angemeldetes Gerät bittet das Relay um eine
   Einladung (neue Anfrage `machine_own`; das Hauptkonto bekommt einen Rechner des Relays, jedes andere Konto einen an
-  sich gebundenen Rechner, 15 Minuten gültig). „Nicht jetzt“ lässt die App ein Fenster bleiben. Der Einrichtungsweg
+  sich gebundenen Rechner, 15 Minuten gültig). Der Einrichtungsweg
   „Auf diesem Rechner“ heißt jetzt „Ohne Einrichtung“ und springt sofort zum zweiten Schritt; die Einladung eines
   Rechners und ein Einrichtungslink fragen dort nach den Ordnern, bevor sie beitreten.
 - Die Ordner der Chatliste haben eine eigene Reihenfolge: Mit der Maus ziehst du einen Ordner auf einen anderen, auf
@@ -755,7 +757,8 @@ Node 22 oder Docker läuft.
 - Dateien im Datenordner des Backends werden mit Modus 0600 geschrieben (Linux und macOS). Rekursives Löschen läuft
   über `removeTree`, weil `fs.rmSync` unter Windows mit Node 24 Verzeichnis-Junctions folgt.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.3.0...v0.4.0
