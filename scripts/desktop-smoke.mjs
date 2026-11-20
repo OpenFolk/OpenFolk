@@ -79,8 +79,22 @@ async function quit(run) {
     }
 }
 
-const machineConnected = (win) => win.waitForFunction(() => document.querySelector('.welcome-steps li:nth-child(1)')?.classList.contains('done'), null, { timeout: 60_000 })
-    .then(() => true, () => false);
+/** The web app's status line says a machine is connected. */
+const machineConnected = (win) => win.waitForSelector('#agent-status.online', { timeout: 60_000 }).then(() => true, () => false);
+
+/**
+ * Steps 2 and 3 of the setup page: "Set up this computer" (the folders as they are), then, unless an engine is ready
+ * already (the page goes on by itself), OpenCode's free models instead of a sign-in to an AI provider.
+ */
+async function setUpHere(win) {
+    await win.click('#local', { timeout: 60_000 });
+    await win.waitForSelector('#ai-way', { timeout: 60_000 });
+    await win.waitForFunction(() => !document.getElementById('ai-provider').disabled, null, { timeout: 30_000 }).catch(() => undefined);
+    try {
+        await win.selectOption('#ai-provider', 'free', { timeout: 5_000 });
+        await win.click('#ai-try', { timeout: 5_000 });
+    } catch { /* an engine was ready: on to the web app already */ }
+}
 
 /** The window is the app's own page (openfolk://app), pointed at the relay `origin`; waits through a reload. */
 const relayShown = (win, origin, ms = 90_000) => until(async () => {
@@ -104,7 +118,6 @@ function showLog(run) {
         port = run.config().localPort;
         check('a port of its own, kept in the profile', Number.isInteger(port) && port > 0, run.config());
         check('the window is the app\'s own page, pointed at the embedded relay', await relayShown(win, `http://127.0.0.1:${port}`), win.url());
-        await win.waitForSelector('#chat-list .welcome', { timeout: 60_000 });
         check('signed in without a password, the machine is connected', await machineConnected(win));
         check('the pairing link is gone from the address bar', !win.url().includes('e2e='), win.url());
         check('remembered as signed in at the embedded relay', run.config().paired === `http://127.0.0.1:${port}/`, run.config());
@@ -112,8 +125,10 @@ function showLog(run) {
         check('backend data in the profile', ['agent-token', 'client-token', 'e2e-key'].every((f) => fs.existsSync(path.join(data, f))));
         check('backend log in the profile', fs.readFileSync(path.join(data, 'local.log'), 'utf8').includes('Start backend (desktop app'));
 
-        // Move to the relay on a server from the first steps
-        const form = '.welcome-steps li:nth-child(4) .relay-claim';
+        // Move to the relay on a server from the settings (devices block)
+        await win.click('.tab[data-tab="settings"]');
+        const form = '#relay-claim-box .relay-claim';
+        await win.waitForSelector(form, { timeout: 30_000 });
         await win.fill(`${form} input[name="address"]`, server.origin);
         await win.fill(`${form} input[name="code"]`, 'MNPQR-STUVW');
         await win.click(`${form} button`);
@@ -149,7 +164,6 @@ function showLog(run) {
         const win = await run.app.firstWindow();
         await win.waitForURL(/^openfolk:\/\/app\//, { timeout: 90_000 });
         check('after an update: the window is the own page of the app, at the embedded relay', await relayShown(win, `http://127.0.0.1:${port}`), win.url());
-        await win.waitForSelector('#chat-list .welcome', { timeout: 60_000 });
         check('after an update: signed in again by itself, no sign-in page, the machine is connected', await machineConnected(win) && !(await win.isVisible('#login')));
         check('after an update: still remembered as signed in there', run.config().paired === `http://127.0.0.1:${port}/`, run.config());
     } catch (e) {
@@ -197,12 +211,15 @@ function showLog(run) {
         const invite = await fetch(`${server.origin}/machine-invite`, { method: 'POST', headers: { authorization: `Bearer ${AGENT_TOKEN}` } }).then((r) => r.json());
         const key = crypto.randomBytes(32).toString('base64url');
         const win = await run.app.firstWindow();
-        await win.waitForSelector('#join-form');
+        // Step 1: the invitation link as the setup method
+        await win.waitForSelector('#method');
+        await win.selectOption('#method', 'invite');
         await win.fill('#join', 'not a link');
         await win.click('#join-form button');
         check('setup page: a broken link is refused with a reason', (await win.waitForFunction(() => document.getElementById('join-error').textContent, null, { timeout: 15_000 }).then(() => true, () => false)));
         await win.fill('#join', `${server.origin}/#join=${invite.token}&e2e=${key}`);
         await win.click('#join-form button');
+        await setUpHere(win);
         const loaded = await relayShown(win, server.origin);
         check('joined: the window is pointed at the relay on the server', loaded, win.url());
         check('signed in there, the machine of this computer is connected', loaded && await machineConnected(win));
@@ -245,7 +262,7 @@ function showLog(run) {
         }).then((r) => r.json());
         const link = `${server.origin}/#setup=${invite.token}&e2e=${crypto.randomBytes(32).toString('base64url')}`;
         const win = await run.app.firstWindow();
-        await win.waitForSelector('#join-form');
+        await win.waitForSelector('#method');
         // Native dialogs answered by the test: "Set up" and "Disconnect" are the first button each
         await run.app.evaluate(({ dialog }) => {
             globalThis.asked = [];
@@ -262,9 +279,9 @@ function showLog(run) {
         check('setup link: the window is pointed at the relay', loaded, win.url());
         check('setup link: the machine joined bound to the account', await until(() => server.log().includes(`(bound to account ${account})`), 60_000), server.log().slice(-800));
         check('setup link: the binding is kept in the profile', await until(() => readJson(path.join(run.profile, 'data', 'binding.json')).account === account, 20_000));
-        // Signed in as the account, which has no bots until its admin's setup arrives (no admin machine here): it starts
-        // with the people it can write to
-        const start = loaded && await win.waitForFunction(() => [...document.querySelectorAll('#chat-list .welcome button')].some((b) => b.textContent === 'Main'), null, { timeout: 60_000 })
+        // Signed in as the account, which has no bots until its admin's setup arrives (no admin machine here): its list
+        // holds the people it can write to
+        const start = loaded && await win.waitForFunction(() => [...document.querySelectorAll('#chat-list li.person .name')].some((n) => n.firstChild?.textContent === 'Main'), null, { timeout: 60_000 })
             .then(() => true, () => false);
         check('setup link: signed in there as the account, its contacts to write to', start, await win.evaluate(() => document.body.innerText.slice(0, 400)).catch((e) => e.message));
         check('setup link: the link works once', (await fetch(`${server.origin}/setup`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: invite.token, machine: 'x' }) })).status === 403);
