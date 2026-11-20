@@ -180,16 +180,22 @@ export default async function ({ check }) {
         check('main: disconnected, the lines of the relay leave the .env, the folders stay', !/RELAY_URL|AGENT_TOKEN|E2E_KEY|MACHINE_NAME/.test(after) && after.includes('ALLOWED_ROOTS='), after);
         check('main: … and the app runs on this computer again', !app.menu?.[0]?.submenu?.some((i) => /Disconnect/.test(i.label ?? '')));
 
+        /**
+         * Waits until `test` holds, at most 12 seconds: a relay's answer comes asynchronously, after a real DNS lookup of
+         * *.example.test, which a CI runner may take seconds for (main.js gives up on the relay after 10).
+         */
+        const until = async (test) => { for (let i = 0; i < 240 && !test(); i++) await settle(); };
+
         // Connected to a relay: a display-only window
         app = startApp(profile, { mode: 'relay', url: 'https://relay.example.test/' });
         app.whenReady();
-        await settle();
+        // The start page comes after the relay's answer; a page shown later ends a hidden sign-in begun before it, so
+        // the steps below wait for it (on the CI runner it came only after the invitation, which then went nowhere)
+        await until(() => app.win?.loads.length);
         check('main: a display-only window carries no mark', app.win.agent === 'Mozilla/5.0 OpenFolk/0.1.2 Electron/44', app.win.agent);
 
         // The setup page's one field with an invitation into an account: the app signs in at that relay out of sight,
         // the setup page stays (no web app in between)
-        /** Waits until `test` holds (a relay's answer comes asynchronously), at most two seconds. */
-        const until = async (test) => { for (let i = 0; i < 40 && !test(); i++) await settle(); };
         const beforeInvite = app.win.loads.length;
         const invited = await app.handlers['join-server'](fromSetup, 'https://other.example.test/#pair=tok&e2e=key');
         await until(() => app.signIns.at(-1)?.loads?.length);
