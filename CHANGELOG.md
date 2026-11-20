@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-20
+
+### Fixed
+- The desktop apps of 0.7.0 are here: their builds stopped at a test that still expected the start page before the
+  setup wizard, so 0.7.0 shipped without downloads and without an update for installed apps. The apps are the same as
+  0.7.0 would have been.
+
 ## [0.7.0] - 2026-11-20
 
 ### Added
@@ -681,7 +688,8 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.4.0...v0.5.0

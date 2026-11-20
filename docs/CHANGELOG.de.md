@@ -5,6 +5,13 @@ dieselben.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-20
+
+### Behoben
+- Die Desktop-Apps von 0.7.0 sind da: Ihre Builds hielten an einem Test an, der noch die Startseite vor dem
+  Einrichtungs-Assistenten erwartete, so kam 0.7.0 ohne Downloads und ohne Update für installierte Apps. Die Apps sind
+  dieselben, die 0.7.0 gewesen wäre.
+
 ## [0.7.0] - 2026-11-20
 
 ### Neu
@@ -757,7 +764,8 @@ Node 22 oder Docker läuft.
 - Dateien im Datenordner des Backends werden mit Modus 0600 geschrieben (Linux und macOS). Rekursives Löschen läuft
   über `removeTree`, weil `fs.rmSync` unter Windows mit Node 24 Verzeichnis-Junctions folgt.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.4.0...v0.5.0

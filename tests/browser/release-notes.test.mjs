@@ -11,6 +11,10 @@ import { parseChangelog, unwrap, withGerman } from '../../scripts/release-notes.
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
+/** The section headings of a version, in English and German: which of them a version has depends on what it brought. */
+const EN = ['Added', 'Changed', 'Fixed', 'Security'];
+const DE = ['Neu', 'Geändert', 'Behoben', 'Sicherheit'];
+
 export default async function ({ start, check }) {
     let upToDate = true;
     try { execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'release-notes.mjs'), '--check'], { stdio: 'pipe' }); } catch { upToDate = false; }
@@ -56,7 +60,7 @@ export default async function ({ start, check }) {
         link: document.querySelector('#settings-dialog .release-notes-all')?.getAttribute('href'),
         scripts: document.querySelectorAll('#settings-dialog script').length,
     }));
-    check('the notes of this version: its sections and entries', shown.headings.includes('Added') && shown.items > 3, shown);
+    check('the notes of this version: its sections and entries', shown.headings.length > 0 && shown.headings.every((h) => EN.includes(h)) && shown.items > 0, shown);
     check('the older versions folded below it', shown.older.length >= 3 && shown.openOlder === 0 && shown.older.some((s) => s.startsWith('0.1.0 ')), shown);
     check('a link to all versions on GitHub', shown.link === 'https://github.com/OpenFolk/OpenFolk/releases', shown);
     await p.click('#settings-dialog-actions [data-close]');
@@ -70,7 +74,7 @@ export default async function ({ start, check }) {
     await p.click('#brand-version');
     await web.wait(200);
     check('sidebar: a click on the version opens the release notes', await p.isVisible('#settings-dialog') && (await p.textContent('#settings-dialog-title')) === `New in OpenFolk ${VERSION}`
-        && (await p.locator('#settings-dialog .release-notes-current li').count()) > 3);
+        && (await p.locator('#settings-dialog .release-notes-current li').count()) > 0);
     await p.click('#settings-dialog-actions [data-close]');
     await web.wait(100);
     check('sidebar: closed again, the notes back in the settings', !(await p.isVisible('#settings-dialog')) && (await p.locator('#settings-about #release-notes').count()) === 1);
@@ -87,7 +91,7 @@ export default async function ({ start, check }) {
         body: document.getElementById('settings-dialog-body').textContent,
     }));
     check('German: the title and the German notes of this version, no hint about English', (await german.page.textContent('#settings-dialog-title')) === `Neu in OpenFolk ${VERSION}`
-        && de.headings.includes('Neu') && !de.headings.includes('Added') && !de.body.includes('nur auf Englisch'), de.headings);
+        && de.headings.length > 0 && de.headings.every((h) => DE.includes(h)) && !de.body.includes('nur auf Englisch'), de.headings);
     await german.close();
     const englishPage = await start({ bots: [bot('pdf', 'PDF-Reader')], online: [] });
     await englishPage.page.click('[data-tab=settings]');
@@ -95,6 +99,6 @@ export default async function ({ start, check }) {
     await englishPage.page.click('#about-list .about-version');
     await englishPage.wait(200);
     const en = await englishPage.page.evaluate(() => [...document.querySelectorAll('#settings-dialog .release-notes-current h3')].map((h) => h.textContent));
-    check('English: the English notes', en.includes('Added') && !en.includes('Neu'), en);
+    check('English: the English notes', en.length > 0 && en.every((h) => EN.includes(h)), en);
     await englishPage.close();
 }

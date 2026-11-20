@@ -2,10 +2,16 @@
 // editing it.
 
 /** The version of OpenFolk this web app belongs to. */
-export const VERSION = "0.7.0";
+export const VERSION = "0.7.1";
 
 /** @type {{ version: string, date: string, notes: string, notesDe?: string }[]} The released versions, newest first, notes in Markdown (notesDe: German). */
 export const RELEASES = [
+    {
+        "version": "0.7.1",
+        "date": "2026-11-20",
+        "notes": "### Fixed\n- The desktop apps of 0.7.0 are here: their builds stopped at a test that still expected the start page before the setup wizard, so 0.7.0 shipped without downloads and without an update for installed apps. The apps are the same as\n  0.7.0 would have been.",
+        "notesDe": "### Behoben\n- Die Desktop-Apps von 0.7.0 sind da: Ihre Builds hielten an einem Test an, der noch die Startseite vor dem Einrichtungs-Assistenten erwartete, so kam 0.7.0 ohne Downloads und ohne Update für installierte Apps. Die Apps sind dieselben, die 0.7.0 gewesen wäre."
+    },
     {
         "version": "0.7.0",
         "date": "2026-11-20",

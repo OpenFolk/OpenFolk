@@ -39,7 +39,7 @@ export default async function ({ start, check }) {
     // The desktop app takes it over: the page navigates to openfolk://setup, which main.js answers with its question
     const desk = await start({
         before: () => {
-            Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 OpenFolk/0.7.0 Electron/44' });
+            Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 OpenFolk/0.7.1 Electron/44' });
             window.navigation.addEventListener('navigate', (e) => {
                 if (!e.destination.url.startsWith('openfolk:')) return;
                 window.__handed = e.destination.url;
