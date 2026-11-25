@@ -1,6 +1,6 @@
 // The page "New bot" asks for role, name, folder and repository only. The templates stand behind the role as chips: a
-// tap takes the role and, unseen, the template's working instructions and approval level, which a role typed over it
-// drops again. Three names alliterating with the role come without the model and follow its initial; "Others" gives
+// tap takes the role and, unseen, the template's working instructions, which a role typed over it drops again; the
+// approval level is the one of the settings for new bots. Three names alliterating with the role come without the model and follow its initial; "Others" gives
 // three more. The machine shows only where there is a choice. Editing a bot shows the whole editor as before.
 import { bot } from './harness.mjs';
 
@@ -67,6 +67,20 @@ export default async function ({ start, check }) {
     await h.wait(400);
     const pia = h.sent.findLast((f) => f.type === 'bot_save');
     check('a role typed over the template: its presets dropped', pia?.bot.role === 'Product ideas' && pia.bot.tone === '' && pia.bot.approval === 'risky', pia?.bot);
+
+    // The approval level of the settings: every new bot starts with it, whatever template
+    await h.push({ type: 'settings', machine: 'desk', settings: { language: 'en', botApproval: 'write', updatedAt: '2099-01-01T00:00:00Z' } });
+    await h.wait(100);
+    for (const [template, name] of [['Mail', 'Mona'], ['Product Scout', 'Paul']]) {
+        await p.evaluate(() => openEditor(null));
+        await h.wait(150);
+        await p.locator('#editor-role-suggestions .chip', { hasText: template }).click();
+        await p.fill('#editor-name', name);
+        await p.click('#editor-form button[type=submit]');
+        await h.wait(400);
+        const saved = h.sent.findLast((f) => f.type === 'bot_save');
+        check(`settings on "every change": ${template} starts with it`, saved?.bot.name === name && saved.bot.approval === 'write', saved?.bot);
+    }
 
     // Editing: the whole editor as before
     await p.evaluate(() => openEditor(bot('pdf')));

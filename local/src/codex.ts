@@ -206,6 +206,8 @@ export interface EngineStart {
     threadId?: string;
     instructions: string;
     tools: EngineTool[];
+    /** The bot's vault entries (vault.ts), on top of the engine's own environment, after its filters. */
+    env?: Record<string, string>;
 }
 
 /** Approval "always for this session": Codex remembers it itself (acceptForSession). */
@@ -295,7 +297,7 @@ export class CodexRun {
     private ready(s: EngineStart): Promise<void> {
         if (this.v?.running && this.starting) return this.starting;
         this.close();
-        const v = new CodexConnection();
+        const v = new CodexConnection(codexEnv({ ...process.env, ...s.env }));
         this.v = v;
         v.onNotification = (m, p) => this.notification(m, p);
         v.onRequest = (m, p, id) => this.request(m, p, id);

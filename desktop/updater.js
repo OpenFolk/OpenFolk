@@ -26,6 +26,17 @@ let restartAfterQuit = false;
 let opts = { t: (k) => k, onChange: () => undefined, quit: () => app.quit(), window: () => null, auto: () => true, setAuto: () => undefined };
 /** The timers of the automatic checks; empty while they are off. */
 let timers = [];
+/**
+ * Where the update stands, for the settings of the app's own page (updateState): checking, none (up to date), downloading
+ * (`version`), ready (`version`, waits for the restart) or failed (`message`); idle before the first check.
+ * @type {{ phase: 'idle' | 'checking' | 'none' | 'downloading' | 'ready' | 'failed', version: string, message: string }}
+ */
+let progress = { phase: 'idle', version: '', message: '' };
+
+function setProgress(phase, version = '', message = '') {
+    progress = { phase, version, message };
+    opts.onChange();
+}
 
 /**
  * Squirrel.Mac installs only an app signed with a Developer ID; an unsigned or ad-hoc signed build would download
@@ -101,6 +112,21 @@ class CheckFailed extends Error {
  * Rejects only when both fail, with both reasons.
  */
 async function check() {
+    setProgress('checking');
+    try {
+        const result = await checkSources();
+        // A download already done stays ready; otherwise the one found is on its way
+        if (!ready) setProgress(result?.isUpdateAvailable ? 'downloading' : 'none', result?.isUpdateAvailable ? result.updateInfo.version : '');
+        else setProgress('ready', ready);
+        return result;
+    } catch (e) {
+        const both = e instanceof CheckFailed ? e : new CheckFailed(reason(e), reason(e));
+        setProgress('failed', '', both.message);
+        throw both;
+    }
+}
+
+async function checkSources() {
     const today = new Date().toISOString().slice(0, 10);
     const state = countState();
     const count = !state.off && state.day !== today;
@@ -161,13 +187,14 @@ function startUpdates(o) {
     updater.autoDownload = true;
     updater.autoInstallOnAppQuit = true;
     updater.logger = null;
-    // An automatic check stays quiet when it fails (offline, GitHub's rate limit); a check from the menu reports it
-    updater.on('error', () => undefined);
+    // An automatic check stays quiet when it fails (offline, GitHub's rate limit); a check from the menu reports it.
+    // A download that breaks off shows in the settings, the next check starts it again.
+    updater.on('error', (e) => { if (progress.phase === 'downloading') setProgress('failed', '', reason(e)); });
     // Asked once per version: a later check finds the same download again and stays quiet; the menu keeps the entry
     updater.on('update-downloaded', (info) => {
         const fresh = info.version !== ready;
         ready = info.version;
-        opts.onChange();
+        setProgress('ready', ready);
         if (fresh) void askRestart();
     });
     schedule(FIRST_CHECK);
@@ -204,12 +231,37 @@ async function checkNow() {
     if (ready) return askRestart();
     try {
         const result = await check();
+        if (ready) return askRestart();
         if (!result?.isUpdateAvailable) return box(text('updateNone', app.getVersion()));
         return box(text('updateDownloading', result.updateInfo.version));
     } catch (e) {
         const both = e instanceof CheckFailed ? e : new CheckFailed(reason(e), reason(e));
         return box(text('updateFailed').replace('{feed}', both.feed).replace('{github}', both.github), 'warning');
     }
+}
+
+/**
+ * The update as the settings of the app's own page show it: whether this build updates itself, whether the automatic
+ * checks are on (`forced`: switched off by OPENFOLK_NO_UPDATE), the running version (`current`) and where the update
+ * stands (phase, the new `version`, the reasons of a failed check in `message`).
+ */
+function updateState() {
+    return {
+        supported: Boolean(updater), auto: Boolean(updater) && opts.auto(), forced: Boolean(process.env.OPENFOLK_NO_UPDATE),
+        current: app.getVersion(), ...(ready ? { phase: 'ready', version: ready, message: '' } : progress),
+    };
+}
+
+/** "Check for updates" in the settings: no dialog, the page shows the state it gets back. */
+async function checkFromApp() {
+    if (updater && !ready && progress.phase !== 'checking') await check().catch(() => undefined);
+    return updateState();
+}
+
+/** The switch in the settings: like the menu entry. */
+function setAutoFromApp(on) {
+    if (updater && !process.env.OPENFOLK_NO_UPDATE) switchAuto(Boolean(on));
+    return updateState();
 }
 
 /** The automatic checks as a menu entry: switched off by OPENFOLK_NO_UPDATE it is shown unchecked and disabled, saying so. */
@@ -228,4 +280,4 @@ function updateMenuItems() {
     ];
 }
 
-module.exports = { startUpdates, updateMenuItems };
+module.exports = { startUpdates, updateMenuItems, updateState, checkFromApp, setAutoFromApp, restartToUpdate: restart };

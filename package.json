@@ -30,6 +30,7 @@
     "test:browser": "node tests/browser/run.mjs",
     "release-notes": "node scripts/release-notes.mjs",
     "desktop": "npm --prefix desktop start",
+    "desktop:install": "node scripts/desktop-install.mjs",
     "mobile": "npm --prefix mobile run sync"
   },
   "devDependencies": {

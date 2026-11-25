@@ -29,7 +29,7 @@ export default async function ({ start, check }) {
     await h.openChat('Skool Sven');
     check('header shows the real model behind default, without its version', (await badge()) === 'Opus', await badge());
     await page();
-    check('switch without "Default", families without version', (await chips()).join('|') === 'Opus|Fable|Sonnet|Haiku', await chips());
+    check('switch without "Default", families without version, strongest on the left in any order from the machine', (await chips()).join('|') === 'Fable|Opus|Sonnet|Haiku', await chips());
     check('Opus active because the default is Opus', (await active()).join() === 'Opus');
     check('no version in a tooltip either', !(await p.getAttribute('#info-switches .model-switch .chip.on', 'title')));
     await p.locator('#info-switches .model-switch .chip', { hasText: 'Opus' }).click();
@@ -66,7 +66,7 @@ export default async function ({ start, check }) {
     await h.openChat('Cloud Carlo');
     check('header shows the custom id with its name, without its version', (await badge()) === 'Opus', await badge());
     await page();
-    check('custom id as the active chip, pinned', (await active()).join() === 'Opus (pinned)' && (await chips()).join('|') === 'Opus|Fable|Sonnet|Haiku|Opus (pinned)', await chips());
+    check('custom id as the active chip, pinned', (await active()).join() === 'Opus (pinned)' && (await chips()).join('|') === 'Fable|Opus|Sonnet|Haiku|Opus (pinned)', await chips());
     await leave();
 
     await p.click('[data-el=btn-back]');

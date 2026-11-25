@@ -97,7 +97,7 @@ export function bot(id, name = id, extra = {}) {
  *   dark, before (script before loading, in the browser), now (the page's clock starts at this time, for tests of
  *   "today", "yesterday" and the like, which otherwise depend on the hour the test runs), recordDialogs (see there),
  *   onSend(frame, push, state) for own answers,
- *   ownHistory (history requests are answered by onSend), agentsLater (the test sends the machine list), botsLater (and the bots), path,
+ *   ownHistory (history requests are answered by onSend), ownTalk (talk_start is answered by onSend), agentsLater (the test sends the machine list), botsLater (and the bots), path,
  *   language ('en' by default; null = do not pin, the app decides), locale (browser locale, default en-US),
  *   device (stored device key, default 'test'; null = none), secure (https, e.g. for crypto.subtle),
  *   auth(frame) (the relay's answer to the sign-in; default { type: 'auth', ok: true }),
@@ -151,6 +151,8 @@ export async function start(browser, o = {}) {
             const all = state.history[f.chatId] ?? [];
             await reply({ type: 'history', chatId: f.chatId, entries: f.limit ? all.slice(-f.limit) : all, live: o.live?.[f.chatId] ?? [] });
         }
+        // The voice conversation stays in the chat itself unless the test plays the talk conversation (o.ownTalk)
+        if (f.type === 'talk_start' && !o.ownTalk) await reply({ type: 'talk_started', machine: 'desk', botId: f.botId, chatId: f.botId });
         await o.onSend?.(f, push, state, reply);
     });
     await ctx.addInitScript(([language, device]) => {

@@ -22,8 +22,9 @@ import { knowledgeIndex } from './knowledge.ts';
 import { personName } from './people.ts';
 import { keyTurnCost } from './key-fallback.ts';
 import { engineEnabled } from './machine-settings.ts';
-import { foreignMcp, needsApproval, secretRead } from './policy.ts';
+import { foreignMcp, guardrailWrite, needsApproval, secretRead } from './policy.ts';
 import { transcriptStoreError, transcriptPath } from './vscode.ts';
+import { vaultEnv, vaultNames } from './vault.ts';
 import {
     ENGINE_NAMES, OTHER_ENGINES, engineModelId, engineOf, type Attachment, type Bot, type BotState, type Engine, type EngineStatus, type EngineStatuses, type LiveTurn, type ModelInfo, type ModelWindow,
     type JobOrigin, type ToolCall,
@@ -64,6 +65,8 @@ export interface Turn {
     routineId?: string;
     /** History entry of the message (for the blue ticks). */
     entryId?: string;
+    /** The user wants it after the running job, not folded into it (TurnSpec.later). */
+    later?: boolean;
     onDone?: (e: TurnResult) => void;
 }
 
@@ -103,6 +106,8 @@ export interface SessionHooks {
     context(s: BotSession, tokens: number): void;
     /** The bot starts with the job (not for turns the CLI starts by itself). */
     started(s: BotSession, turn: Turn): void;
+    /** A message of the user went into the running turn (BotSession.fold) instead of the queue. */
+    folded(s: BotSession, turn: Turn): void;
     /** Waiting jobs were discarded, the bot no longer gets them (abort, new session, sign-in error). */
     discarded(s: BotSession, turns: Turn[]): void;
     delta(s: BotSession, turn: Turn, text: string): void;
@@ -214,6 +219,8 @@ export class BotSession {
     private generatorNr = 0;
     private pending: Turn[] = [];
     private active: Turn | null = null;
+    /** The user's messages folded into the running turn (fold()); its answer answers them too. */
+    private folded: Turn[] = [];
     private answerText = '';
     private tools: ToolCall[] = [];
     private toolStart = new Map<string, number>();
@@ -290,10 +297,35 @@ export class BotSession {
     }
 
     send(turn: Turn): void {
+        if (this.canFold(turn)) {
+            this.fold(turn);
+            return;
+        }
         this.pending.push(turn);
         this.stopIdle();
         if (!this.active) this.next();
         else this.hooks.state(this, this.state, t('session.queued', { count: this.pending.length }));
+    }
+
+    /**
+     * A message of the user to a Claude bot at work goes into the running turn, as in the terminal: the CLI reads it at
+     * the next step (after the running tool) and folds it into the turn, whose result then names its uuid too. Not for
+     * jobs of other bots, routines or groups (their answers go elsewhere), not on the other engines, not with `later`.
+     */
+    private canFold(turn: Turn): boolean {
+        const a = this.active;
+        return !!a && !!this.running && !this.other?.running && !this.fromCli && !this.stopped && !turn.later
+            && turn.from === 'me' && a.from === 'me' && turn.chatId === a.chatId && !turn.chatId.startsWith('g:')
+            && !turn.job && !a.job && !turn.onDone && !a.onDone;
+    }
+
+    private fold(turn: Turn): void {
+        this.stopIdle();
+        this.folded.push(turn);
+        this.inbox.push({ ...this.message(turn), priority: 'next' });
+        this.wake?.();
+        this.hooks.started(this, turn);
+        this.hooks.folded(this, turn);
     }
 
     stillWaits(entryId: string): boolean {
@@ -505,6 +537,14 @@ export class BotSession {
                         return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {};
                     }],
                 }, {
+                    // An allow rule in the user's settings skips canUseTool: a mission's guardrails are refused here too
+                    matcher: 'Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell',
+                    hooks: [async (input) => {
+                        if (input.hook_event_name !== 'PreToolUse') return {};
+                        const reason = guardrailWrite(input.tool_name, (input.tool_input ?? {}) as Record<string, unknown>);
+                        return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {};
+                    }],
+                }, {
                     // The resource tools skip canUseTool like reads, and an allow rule in the user's settings lets any
                     // MCP tool skip it; 'ask' sends them to canUseTool, which decides by the bot's setting
                     matcher: 'mcp__.*|ListMcpResourcesTool|ReadMcpResourceTool',
@@ -518,8 +558,8 @@ export class BotSession {
             mcpServers: { 'openfolk': this.hooks.tools(this) },
             includePartialMessages: true,
             settingSources: ['user', 'project', 'local'],
-            systemPrompt: { type: 'preset', preset: 'claude_code', append: persona(this.bot, knowledgeIndex(this.bot)), snapshot: false },
-            env: claudeEnv(auth),
+            systemPrompt: { type: 'preset', preset: 'claude_code', append: persona(this.bot, knowledgeIndex(this.bot), 'claude', vaultNames(this.bot.id)), snapshot: false },
+            env: { ...claudeEnv(auth), ...vaultEnv(this.bot.id) },
             settings: claudeSettings(auth),
             stderr: (line) => {
                 if (process.env.OPENFOLK_DEBUG) process.stderr.write(`[cli ${this.bot.id}] ${line}`);
@@ -533,8 +573,9 @@ export class BotSession {
             folder: this.bot.folder,
             model: engineModelId(this.modelChoice),
             threadId: this.otherSessionId(engine),
-            instructions: [persona(this.bot, knowledgeIndex(this.bot), engine), instructions].filter(Boolean).join('\n\n'),
+            instructions: [persona(this.bot, knowledgeIndex(this.bot), engine, vaultNames(this.bot.id)), instructions].filter(Boolean).join('\n\n'),
             tools: this.hooks.engineTools(this),
+            env: vaultEnv(this.bot.id),
         };
     }
 
@@ -637,7 +678,7 @@ export class BotSession {
         this.wake?.();
         q?.close();
         this.hooks.state(this, 'thinking', t('session.retryNew', { reason: `${reason[0].toUpperCase()}${reason.slice(1)}` }));
-        this.inbox = [this.message(this.active)];
+        this.inbox = [this.message(this.active), ...this.folded.map((x) => ({ ...this.message(x), priority: 'next' as const }))];
         this.start();
         return true;
     }
@@ -656,7 +697,7 @@ export class BotSession {
         this.wake?.();
         q?.close();
         this.hooks.state(this, 'thinking', t('session.keyFallback'));
-        this.inbox = [this.message(this.active)];
+        this.inbox = [this.message(this.active), ...this.folded.map((x) => ({ ...this.message(x), priority: 'next' as const }))];
         this.start();
         return true;
     }
@@ -708,6 +749,7 @@ export class BotSession {
             stopped: stopped || undefined,
         };
         this.active = null;
+        this.folded = [];
         if (this.auth === 'apikey') keyTurnCost(result.costUsd);
         if (extra.error && !stopped) this.setState('error', extra.error);
         else this.setState('idle');
@@ -874,7 +916,7 @@ export class BotSession {
  * The part of the system prompt with the bot's persona, its tools and knowledge, in the language chosen in the app;
  * the bot is told to answer in that language.
  */
-export function persona(bot: Bot, knowledge: string, engine: Engine = 'claude'): string {
+export function persona(bot: Bot, knowledge: string, engine: Engine = 'claude', vault: string[] = []): string {
     const lines = [
         t('persona.intro', { name: bot.name, role: roleLine(bot) ? ` (${roleLine(bot)})` : '', folder: bot.folder }),
         t('persona.language'),
@@ -891,6 +933,7 @@ export function persona(bot: Bot, knowledge: string, engine: Engine = 'claude'):
         t('persona.knowledge'),
     ];
     if (bot.contact) lines.push('', t('persona.handover', { name: personName(bot.contact) }));
+    if (vault.length) lines.push('', t('persona.vault', { names: vault.join(', ') }));
     if (bot.tone.trim()) lines.push('', bot.tone.trim());
     if (knowledge.trim()) lines.push('', knowledge.trim());
     return lines.join('\n');

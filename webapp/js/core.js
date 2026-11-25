@@ -13,7 +13,7 @@ export const MIN_BACKEND_PROTOCOL = 0;
 export const el = {
     app: $('app'), login: $('login'), loginForm: /** @type {HTMLFormElement} */ ($('login-form')), loginToken: /** @type {HTMLInputElement} */ ($('login-token')), loginRelay: /** @type {HTMLInputElement} */ ($('login-relay')), loginError: $('login-error'),
     loginTotp: /** @type {HTMLInputElement} */ ($('login-totp')), loginTotpField: $('login-totp-field'), loginName: /** @type {HTMLInputElement} */ ($('login-name')), loginIntro: $('login-intro'),
-    aboutList: $('about-list'), releaseNotes: $('release-notes'), brandVersion: $('brand-version'), settingsDevices: $('settings-devices'), deviceList: $('device-list'), e2eStatus: $('e2e-status'), relayClaimBox: $('relay-claim-box'),
+    aboutList: $('about-list'), aboutUpdate: $('about-update'), releaseNotes: $('release-notes'), brandVersion: $('brand-version'), settingsDevices: $('settings-devices'), deviceList: $('device-list'), e2eStatus: $('e2e-status'), relayClaimBox: $('relay-claim-box'),
     loginAccount: /** @type {HTMLInputElement} */ ($('login-account')), loginOtherAccount: $('login-other-account'), loginCancel: /** @type {HTMLButtonElement} */ ($('login-cancel')),
     accountSwitch: /** @type {HTMLButtonElement} */ ($('account-switch')), accountMenu: $('account-menu'),
     loginChoose: $('login-choose'), loginAccounts: $('login-accounts'),
@@ -27,7 +27,7 @@ export const el = {
     accountsNewForm: $('accounts-new-form'), accountsNewMachines: $('accounts-new-machines'), accountsNewCancel: /** @type {HTMLButtonElement} */ ($('accounts-new-cancel')),
     accountsLink: /** @type {HTMLInputElement} */ ($('accounts-link')), accountsLinkGo: /** @type {HTMLButtonElement} */ ($('accounts-link-go')),
     inviteBox: $('invite-box'), setupBox: $('setup-box'), accountsError: $('accounts-error'),
-    accountsJoin: /** @type {HTMLButtonElement} */ ($('accounts-join')), accountsScan: /** @type {HTMLButtonElement} */ ($('accounts-scan')), accountsOwn: $('accounts-own'), accountsPasswordField: $('accounts-password-field'),
+    accountsJoin: /** @type {HTMLButtonElement} */ ($('accounts-join')), accountsScan: /** @type {HTMLButtonElement} */ ($('accounts-scan')), accountsOwn: $('accounts-own'), accountsDeleteOwn: /** @type {HTMLButtonElement} */ ($('accounts-delete-own')), accountsDeleteOwnRow: $('accounts-delete-own-row'), accountsDeleteOwnHint: $('accounts-delete-own-hint'), accountsPasswordField: $('accounts-password-field'),
     settingsAllAccounts: /** @type {HTMLInputElement} */ ($('settings-all-accounts')), settingsAllAccountsField: $('settings-all-accounts-field'),
     e2eEnter: /** @type {HTMLButtonElement} */ ($('e2e-enter')), e2eDelete: /** @type {HTMLButtonElement} */ ($('e2e-delete')),
     pairCreate: /** @type {HTMLButtonElement} */ ($('pair-create')), pairBox: $('pair-box'), totpTitle: $('totp-title'), totpBox: $('totp-box'),
@@ -43,7 +43,12 @@ export const el = {
     settingsAiAsleep: $('settings-ai-asleep'), aiList: $('settings-ai-list'), aiAddRow: $('settings-ai-add-row'), aiAdd: /** @type {HTMLButtonElement} */ ($('settings-ai-add')),
     aiForm: $('settings-ai-form'), aiProvider: /** @type {HTMLSelectElement} */ ($('settings-ai-provider')), aiKey: /** @type {HTMLInputElement} */ ($('settings-ai-key')),
     aiSave: /** @type {HTMLButtonElement} */ ($('settings-ai-save')), aiCancel: /** @type {HTMLButtonElement} */ ($('settings-ai-cancel')),
+    vaultBlock: $('settings-vault'), vaultAsleep: $('settings-vault-asleep'), vaultList: $('settings-vault-list'), vaultAdd: /** @type {HTMLButtonElement} */ ($('settings-vault-add')),
+    vaultForm: $('settings-vault-form'), vaultName: /** @type {HTMLInputElement} */ ($('settings-vault-name')), vaultNote: /** @type {HTMLInputElement} */ ($('settings-vault-note')),
+    vaultValue: /** @type {HTMLInputElement} */ ($('settings-vault-value')), vaultBots: /** @type {HTMLSelectElement} */ ($('settings-vault-bots')), vaultBotList: $('settings-vault-bot-list'),
+    vaultError: $('settings-vault-error'), vaultSave: /** @type {HTMLButtonElement} */ ($('settings-vault-save')), vaultCancel: /** @type {HTMLButtonElement} */ ($('settings-vault-cancel')),
     settingsAvatarModel: /** @type {HTMLSelectElement} */ ($('settings-avatar-model')), settingsVoiceLanguage: /** @type {HTMLSelectElement} */ ($('settings-voice-language')),
+    settingsBotApproval: /** @type {HTMLSelectElement} */ ($('settings-bot-approval')),
     settingsPushPreview: /** @type {HTMLSelectElement} */ ($('settings-push-preview')), settingsReadAloud: /** @type {HTMLSelectElement} */ ($('settings-read-aloud')), settingsTalkMode: /** @type {HTMLSelectElement} */ ($('settings-talk-mode')), settingsGitPull: /** @type {HTMLInputElement} */ ($('settings-git-pull')),
     keyDialog: $('key-dialog'), keyForm: /** @type {HTMLFormElement} */ ($('key-form')), keyInput: /** @type {HTMLInputElement} */ ($('key-input')), keyText: $('key-text'), keyError: $('key-error'),
     settingsDialog: $('settings-dialog'), settingsDialogTitle: $('settings-dialog-title'), settingsDialogBody: $('settings-dialog-body'), settingsDialogActions: $('settings-dialog-actions'),
@@ -52,6 +57,7 @@ export const el = {
     agentStatus: $('agent-status'), chatList: $('chat-list'), account: $('account'), usage: $('usage'),
     btnNew: /** @type {HTMLButtonElement} */ ($('btn-new')), newMenu: $('new-menu'), searchBox: $('search-box'), search: /** @type {HTMLInputElement} */ ($('search')), searchResults: $('search-results'),
     searchFilters: $('search-filters'), palette: $('palette'), paletteInput: /** @type {HTMLInputElement} */ ($('palette-input')), paletteList: $('palette-list'), paletteHint: $('palette-hint'),
+    docView: $('doc-view'), docTitle: $('doc-title'), docContent: $('doc-content'), docSave: /** @type {HTMLButtonElement} */ ($('doc-save')),
     shortcuts: $('shortcuts'), shortcutsList: $('shortcuts-list'), shortcutsNote: $('shortcuts-note'),
     chatEmpty: $('chat-empty'), chatSetup: $('chat-setup'), panes: $('panes'), paneAdd: /** @type {HTMLButtonElement} */ ($('pane-add')), sidebarResize: $('sidebar-resize'),
     messageMenu: $('message-menu'),
@@ -62,7 +68,7 @@ export const el = {
     editorAvatarAi: /** @type {HTMLButtonElement} */ ($('editor-avatar-ai')), avatarPicker: $('avatar-picker'), avatarGrid: $('avatar-grid'), avatarError: $('avatar-error'), avatarGenerate: /** @type {HTMLButtonElement} */ ($('avatar-generate')), editorNameSuggest: /** @type {HTMLButtonElement} */ ($('editor-name-suggest')), editorNameSuggestions: $('editor-name-suggestions'),
     editorRoleSuggest: /** @type {HTMLButtonElement} */ ($('editor-role-suggest')),
     editorName: /** @type {HTMLInputElement} */ ($('editor-name')), editorArea: /** @type {HTMLInputElement} */ ($('editor-area')), editorRole: /** @type {HTMLInputElement} */ ($('editor-role')), editorFolder: /** @type {HTMLInputElement} */ ($('editor-folder')), editorRepo: /** @type {HTMLInputElement} */ ($('editor-repo')), editorModel: /** @type {HTMLSelectElement} */ ($('editor-model')),
-    editorModelCustom: /** @type {HTMLInputElement} */ ($('editor-model-custom')), editorApproval: /** @type {HTMLSelectElement} */ ($('editor-approval')), editorTone: /** @type {HTMLTextAreaElement} */ ($('editor-tone')), editorVoice: /** @type {HTMLSelectElement} */ ($('editor-voice')), editorVoiceChoice: $('editor-voice-choice'), editorVoiceWhere: $('editor-voice-where'),
+    editorModelCustom: /** @type {HTMLInputElement} */ ($('editor-model-custom')), editorApproval: /** @type {HTMLSelectElement} */ ($('editor-approval')), editorTone: /** @type {HTMLTextAreaElement} */ ($('editor-tone')), editorVoice: /** @type {HTMLSelectElement} */ ($('editor-voice')), editorTalkFast: /** @type {HTMLInputElement} */ ($('editor-talk-fast')), editorVoiceChoice: $('editor-voice-choice'), editorVoiceWhere: $('editor-voice-where'),
     editorVoiceName: /** @type {HTMLSelectElement} */ ($('editor-voice-name')), editorVoiceListen: /** @type {HTMLButtonElement} */ ($('editor-voice-listen')), editorVoiceHint: $('editor-voice-hint'), editorCategory: /** @type {HTMLSelectElement} */ ($('editor-category')),
     editorContact: /** @type {HTMLSelectElement} */ ($('editor-contact')), editorContactBlock: $('editor-contact-block'),
     editorCanMessage: /** @type {HTMLSelectElement} */ ($('editor-can-message')), editorCanMessageBots: $('editor-can-message-bots'), editorAllowedTools: $('editor-allowed-tools'), editorError: $('editor-error'),
@@ -84,9 +90,13 @@ export const el = {
     kEditor: $('knowledge-editor'), kForm: /** @type {HTMLFormElement} */ ($('knowledge-form')), kTitle: $('knowledge-title'), kLocation: $('knowledge-location'), kName: /** @type {HTMLInputElement} */ ($('knowledge-name')),
     kType: /** @type {HTMLSelectElement} */ ($('knowledge-type')), kDescription: /** @type {HTMLInputElement} */ ($('knowledge-description')), kText: /** @type {HTMLTextAreaElement} */ ($('knowledge-text')), kError: $('knowledge-error'), kDelete: /** @type {HTMLButtonElement} */ ($('knowledge-delete')),
     machines: $('machines'), machinesNone: $('machines-none'), usageNone: $('usage-none'), machinesPage: $('machines-page'),
+    missionsPage: $('missions-page'), tabMissionsBadge: $('tab-missions-badge'),
     tabBar: $('tab-bar'), tabRepos: $('tab-repos'), tabReposBadge: $('tab-repos-badge'), tabStatusBadge: $('tab-status-badge'), machinesSignin: $('machines-signin'),
     gitPage: $('git-page'), gitPageContent: $('git-page-content'), gitBack: /** @type {HTMLButtonElement} */ ($('git-back')), gitTitle: $('git-title'), gitSub: $('git-sub'),
     archive: $('archive'), archiveSub: $('archive-sub'), archiveList: $('archive-list'),
+    report: $('report'), reportForm: /** @type {HTMLFormElement} */ ($('report-form')), reportQuote: $('report-quote'), reportReason: /** @type {HTMLSelectElement} */ ($('report-reason')),
+    reportNote: /** @type {HTMLTextAreaElement} */ ($('report-note')), reportTo: $('report-to'), reportError: $('report-error'), reportMail: /** @type {HTMLAnchorElement} */ ($('report-mail')),
+    reportSend: /** @type {HTMLButtonElement} */ ($('report-send')),
     forward: $('forward'), forwardSub: $('forward-sub'), forwardSearch: /** @type {HTMLInputElement} */ ($('forward-search')), forwardList: $('forward-list'),
     vscode: $('vscode'), vsBack: /** @type {HTMLButtonElement} */ ($('vs-back')), vsTitle: $('vs-title'), vsSub: $('vs-sub'), vsList: $('vs-list'), vsShow: $('vs-show'), vsTerminal: $('vs-terminal'),
     talk: $('talk'), talkAvatar: $('talk-avatar'), talkAvatarButton: /** @type {HTMLButtonElement} */ ($('talk-avatar-button')), talkName: $('talk-name'), talkPhase: $('talk-phase'),
@@ -95,16 +105,16 @@ export const el = {
 };
 
 /** Bot templates for the editor; texts are dictionary keys, the folder is left to the user. */
-// The role chips of a new bot (editors.js): a tap takes the role and, unseen, working instructions and approval level;
-// whatever stays open the bot asks in its chat
+// The role chips of a new bot (editors.js): a tap takes the role and, unseen, working instructions (the approval level
+// is the one of the settings); whatever stays open the bot asks in its chat
 export const TEMPLATES = [
-    { id: 'chief', name: 'template.chief.name', role: 'template.chief.role', tone: 'template.chief.tone', approval: 'risky' },
-    { id: 'developer', name: 'template.developer.name', role: 'template.developer.role', tone: 'template.developer.tone', approval: 'risky' },
-    { id: 'infra', name: 'template.infra.name', role: 'template.infra.role', tone: 'template.infra.tone', approval: 'risky' },
-    { id: 'social', name: 'template.social.name', role: 'template.social.role', tone: 'template.social.tone', approval: 'risky' },
-    { id: 'landing', name: 'template.landing.name', role: 'template.landing.role', tone: 'template.landing.tone', approval: 'risky' },
-    { id: 'product', name: 'template.product.name', role: 'template.product.role', tone: 'template.product.tone', approval: 'write' },
-    { id: 'mail', name: 'template.mail.name', role: 'template.mail.role', tone: 'template.mail.tone', approval: 'risky' },
+    { id: 'chief', name: 'template.chief.name', role: 'template.chief.role', tone: 'template.chief.tone' },
+    { id: 'developer', name: 'template.developer.name', role: 'template.developer.role', tone: 'template.developer.tone' },
+    { id: 'infra', name: 'template.infra.name', role: 'template.infra.role', tone: 'template.infra.tone' },
+    { id: 'social', name: 'template.social.name', role: 'template.social.role', tone: 'template.social.tone' },
+    { id: 'landing', name: 'template.landing.name', role: 'template.landing.role', tone: 'template.landing.tone' },
+    { id: 'product', name: 'template.product.name', role: 'template.product.role', tone: 'template.product.tone' },
+    { id: 'mail', name: 'template.mail.name', role: 'template.mail.role', tone: 'template.mail.tone' },
 ];
 
 export const COLORS = ['#d97757', '#0f9d8a', '#7c5cff', '#e0a800', '#3b82f6', '#e5487c', '#16a34a', '#a16207'];
@@ -138,6 +148,7 @@ export const state = {
     pushChannels: {},        // machine -> push channels its backend can send to ('web', 'apns', 'fcm')
     pushSettings: null,      // { kinds: { done: 'normal', … }, updatedAt } for all devices
     settings: null,          // shared settings { language, avatarModel, …, apiKeys, updatedAt }, the newest any backend reported
+    vault: null,             // the vault's entries without values [{ id, name, note, bots, createdAt, updatedAt }], admins only; null = not yet reported
     machineSettings: {},     // host -> { settings, anthropicKey, gitPushToken, engineKeys, keyFallback, offers, shutdownMethod, voice }
     machineTokens: null,     // machines joined by invitation [{ machine, created }]; null = not the main account or an older relay from its backend (main account only)
     machineStatus: null,     // last answer to wake_status
@@ -149,6 +160,8 @@ export const state = {
     autologon: {},           // host -> { on, password } according to its backend (automatic Windows sign-in)
     capabilities: {},        // host -> { shutdown, shutdownSeconds, cancelShutdown, autologon, restart } from its settings
     bots: [], groups: [], categories: [], states: {}, activity: {}, activeChats: {}, approvals: {}, routines: [],
+    missions: [],            // the account's missions (Mission in shared/protocol.ts), from the backends
+    missionDetail: {},       // mission id -> { events, metrics, metricsError } from its machine (mission_open)
     jobs: {},                // host -> the open jobs its bots gave other bots (Job in shared/protocol.ts)
     people: [],              // whom this account can chat with [{ id, name, admin, reach }], from the backends
     peopleByMachine: {},     // machine → its last 'people' list; a picture counts if any backend knows it
@@ -370,6 +383,9 @@ const accountScope = accountScopeOf(loadedAccount);
 export const COLLAPSED_KEY = 'openfolk-collapsed' + accountScope;
 export const SEEN_KEY = 'openfolk-seen' + accountScope;
 export const PANES_KEY = 'openfolk-panes' + accountScope;
+
+/** Contact of the app's publisher (stores: support URL, reports without an admin on the relay). */
+export const SUPPORT_MAIL = 'support@openfolk.app';
 
 // ================================================================ DOM
 

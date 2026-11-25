@@ -3,6 +3,10 @@
 // relay's (USER_PASSWORD or the claim, owner.ts), and it is always an admin. Further accounts keep their password
 // here as a scrypt hash; their first device comes through a pairing link.
 //
+// Demo accounts (DEMO_ACCOUNTS) are for the app stores' reviewers: their name and password come from the relay's
+// settings and cannot be changed in the app, and one that a reviewer deleted is created again under a new id, so the
+// next review finds it.
+//
 // A deleted account leaves a tombstone, which the relay hands every backend on connect so a machine that was asleep
 // removes its data too. Its id is never given out again: a backend would take the new account's data for the old one.
 
@@ -158,12 +162,13 @@ export class Accounts {
         if (change.name !== undefined) {
             const n = change.name.trim().slice(0, MAX_NAME);
             if (!n) return 'invalid';
+            if (a.demo && n !== a.name) return 'invalid';
             if (!this.nameFree(n, id)) return 'name_taken';
             a.name = n;
         }
         if (change.password !== undefined) {
             // The owner's password belongs to the relay's setup (owner.ts), not to this file
-            if (id === MAIN || change.password.length < MIN_TOKEN_LENGTH || change.password.length > 256) return 'invalid';
+            if (id === MAIN || a.demo || change.password.length < MIN_TOKEN_LENGTH || change.password.length > 256) return 'invalid';
             a.hash = hashPassword(change.password);
         }
         if (change.admin !== undefined && id !== MAIN) a.admin = change.admin;
@@ -184,6 +189,33 @@ export class Accounts {
         }
         this.save();
         return 'ok';
+    }
+
+    /**
+     * The demo accounts named in the relay's settings: created where missing (a customer's reach, no admin), the
+     * password set to `password`. Returns the ids it created.
+     */
+    ensureDemo(names: string[], password: string): string[] {
+        const created: string[] = [];
+        for (const name of names) {
+            let a = this.list.find((x) => x.name.toLowerCase() === name.trim().toLowerCase());
+            if (!a) {
+                const made = this.create(name, false, 'admins');
+                if (typeof made === 'string') continue;
+                a = this.list.find((x) => x.id === made.id)!;
+                created.push(a.id);
+            }
+            if (a.id === MAIN) continue;
+            a.demo = true;
+            a.admin = false;
+            if (!a.hash || !checkPassword(a.hash, password)) a.hash = hashPassword(password);
+        }
+        if (names.length) this.save();
+        return created;
+    }
+
+    isDemo(id: string): boolean {
+        return !!this.list.find((x) => x.id === id)?.demo;
     }
 
     remove(id: string): boolean {
@@ -222,13 +254,13 @@ function toPublic(a: StoredAccount): RelayAccount {
     return {
         id: a.id, name: a.name, admin: a.id === MAIN || a.admin, created: a.created, reach: reachOf(a),
         ...(reachOf(a) === 'listed' ? { contacts: a.contacts ?? [] } : {}), ...(a.setupBy ? { setupBy: a.setupBy } : {}),
-        ...(a.machines ? { machines: a.machines } : {}), ...(a.avatar ? { avatar: a.avatar } : {}),
+        ...(a.machines ? { machines: a.machines } : {}), ...(a.avatar ? { avatar: a.avatar } : {}), ...(a.demo ? { demo: true } : {}),
     };
 }
 
 function toPerson(a: StoredAccount): Person {
     return {
         id: a.id, name: a.name, admin: a.id === MAIN || a.admin, reach: reachOf(a), ...(reachOf(a) === 'listed' ? { contacts: a.contacts ?? [] } : {}),
-        ...(a.avatar ? { avatar: a.avatar } : {}),
+        ...(a.avatar ? { avatar: a.avatar } : {}), ...(a.demo ? { demo: true } : {}),
     };
 }

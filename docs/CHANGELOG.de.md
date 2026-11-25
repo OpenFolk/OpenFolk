@@ -5,6 +5,126 @@ dieselben.
 
 ## [Unreleased]
 
+### Neu
+- Mission Control: Missionen, langfristige Ziele, die ein Team aus Bots selbstständig verfolgt, in einem eigenen Tab.
+  Ein Builder macht aus einem Ziel in eigenen Worten einen bearbeitbaren Vorschlag (Kriterien, Team mit Porträts und
+  Supervisor, Meilensteine, Risiken, Autonomie, Freigaberegeln, Budget, Leitplanken, Zeitplan); der Supervisor führt die
+  Mission in Zyklen von je einem Durchlauf, gibt Aufgaben als Aufträge ans Team und protokolliert seine Entscheidungen;
+  Ergebnisse, Freigaben, Meldungen des Teams und der Zeitplan starten den nächsten Zyklus. Vier Autonomiestufen,
+  gespeicherte Freigabe-Anfragen mit Push, ein Budget je Mission (Kosten und Durchläufe), ein Notaus und Zyklen, die
+  einen Neustart überstehen. Das Projekt einer Mission liest seine Grenzen aus `.openfolk/mission.json`, die Bots nicht
+  ändern dürfen, und meldet Zahlen in `.openfolk/metrics.json` für die Missionsseite. Neue Frames `missions`,
+  `mission_open`, `mission_propose`, `mission_save`, `mission_control`, `mission_approval_reply`, `mission_task_save`,
+  `mission_delete` und die Antworten `missions`, `mission_detail`, `mission_proposal`, `mission_saved`; neue Werkzeuge
+  `mission_*` für die Bots im Team einer Mission; Missionen reisen im Abgleich mit.
+- Entwürfe je Chat: Getippter, nicht gesendeter Text bleibt beim Chatwechsel an seinem Chat, der andere Chat beginnt
+  mit leerem Feld (oder seinem eigenen Entwurf); zurück im Chat steht der Text wieder da, auch nach einem Neuladen (nur
+  auf diesem Gerät). Die Liste zeigt „Entwurf: …“ für einen nicht offenen Chat; Senden löscht ihn.
+- Markdown-Anhänge (`.md`, etwa Pläne, die ein Bot schickt) öffnen sich zum Lesen in der App, formatiert wie eine
+  Bot-Antwort, mit „Speichern“ für die Datei; bisher wurden sie nur heruntergeladen.
+- Demo-Konten für die Prüfer der App-Stores: `DEMO_ACCOUNTS` und `DEMO_PASSWORD` am Relay legen Konten mit festem Namen
+  und Passwort an, die nach einer Löschung durch einen Prüfer unter neuer ID wiederkommen, und ein Backend mit
+  `DEMO_BOT` gibt jedem davon einen Bot aus dieser Vorlage. Neues optionales Feld `demo` an Konto und Person.
+- `message_bot` mit `conversation: "new"` öffnet für den Auftrag eine neue Unterhaltung: beim genannten Bot oder, ohne
+  Bot, beim fragenden Bot selbst. Bisher konnte sich ein Bot einen Nebenauftrag nur in eine schon vorhandene eigene
+  Unterhaltung geben.
+- Der Chat eines Bots zeigt seinen Hauptchat und seine Unterhaltungen als Tabs direkt unter dem Kopf: Ein Tipp wechselt
+  den Bereich, „+“ startet eine neue Unterhaltung, langes Drücken (oder Rechtsklick) auf den Tab einer Unterhaltung benennt sie um, ein Punkt markiert einen Tab, der arbeitet oder Ungelesenes hat. Nur
+  bei einem Bot mit Unterhaltungen.
+- Einstellungen › Bots: „Freigaben für neue Bots“, gemeinsam für alle Rechner des Kontos. Jeder neue Bot startet mit
+  dieser Stufe: aus „Neuer Bot“ (die Vorlagen bringen keine eigene mehr mit), von der Kommandozeile und aus `create_bot`
+  ohne Stufe; ein von einem Bot angelegter Bot bekommt nie „nie fragen“ (dann „bei riskanten Aktionen“). Neues Feld
+  `botApproval` der gemeinsamen Einstellungen.
+- Melden und Blockieren, für die Regeln der App-Stores zu KI-Inhalten und Inhalten anderer Personen: „Melden“ im
+  ⋯-Menü einer Bot-Antwort oder der Nachricht einer Person öffnet eine Seite mit Grund und Anmerkung; das Backend
+  zitiert die gespeicherte Nachricht in den Personenchat mit jedem Admin des Relays, ohne weiteren Admin geht die
+  Meldung per Mail an support@openfolk.app (jetzt auch unter Einstellungen › Über). „Blockieren“ im Menü eines
+  Personenchats verwirft Nachrichten und Übergaben dieser Person auf jedem Rechner und sperrt das Schreiben an sie,
+  bis „Blockierung aufheben“. Neue Frames `report`, `report_sent` und `person_block`, neues optionales
+  `PersonChat.blocked`.
+- Nachrichten an einen arbeitenden Claude-Bot gehen in seinen laufenden Auftrag statt in die Warteschlange, wie im
+  Terminal (die CLI liest sie beim nächsten Schritt; der Chat sagt das); „Danach“ neben dem Eingabefeld stellt eine
+  hinter den Auftrag (neues optionales `later` an `send`). Aufträge anderer Bots, Routinen, Gruppen und andere Engines
+  warten wie bisher.
+- Push-Dienst für die Store-Apps: Das Relay von openfolk.app (`PUSH_SERVICE=on`, `POST /push`) stellt App-Push für
+  jedes Backend an jedem Relay zu, mit der Vorschau, die das Backend nach „App-Benachrichtigungen zeigen“ gekürzt hat,
+  gedrosselt je Gerätetoken und Absender, ohne etwas zu speichern; ein Backend nutzt ihn zuletzt, nach eigenen
+  APNs/FCM-Zugangsdaten und seinem Relay (`PUSH_SERVICE_URL`, Standard `https://push.openfolk.app`, `off` schaltet ab).
+  Die zweite Ausnahme zu „das Relay sieht keine Inhalte“ (AGENTS.md).
+- Jedes Konto außer dem des Relay-Besitzers löscht sich in der App selbst: „Mein Konto löschen“ im Formular des
+  eigenen Kontos, mit zweifacher Rückfrage; das Relay entfernt es samt Geräten, seine Rechner löschen seine Daten.
+- Sprachdialog in der App auf einem schnellen Modell: Er läuft in der Unterhaltung „Sprachdialog“ des Bots auf Sonnet,
+  jeder Dialog mit frischem Kontext; die erste Nachricht bekommt die letzten Nachrichten des Hauptchats, schwere Arbeit
+  gibt der Bot mit `message_bot` an seinen Hauptchat (eigenes Modell, ganzer Kontext), und am Ende geht, was gesagt
+  wurde, mit der nächsten Nachricht an den Hauptchat. Je Bot „Sprachdialog auf einem schnellen Modell“ im Editor
+  (Standard an, neues optionales `talkFast`); Bots auf einer anderen Engine sprechen wie bisher in ihrem Chat. Neue
+  Frames `talk_start`, `talk_end`, `talk_started`, neues optionales `talk` an einer Unterhaltung.
+- Sprachdialog in der App: Die Antwort wird Satz für Satz vorgelesen, während der Bot noch schreibt, statt erst am
+  Ende; was beim Vorlesen eines Satzes dazukommt, folgt in einem Zug, ein Codeblock, sobald er geschlossen ist, und die
+  fertige Antwort liest nur noch den Rest.
+- Der Tresor: Zugangsdaten für die Arbeit der Bots (API-Token, Passwörter von Diensten) unter Einstellungen ›
+  „Tresor“, nur für Admins. Jeder Eintrag hat einen Namen wie eine Umgebungsvariable, eine Notiz, einen Wert und die
+  Bots, die ihn nutzen dürfen (alle oder angehakte); ein Bot bekommt seine Einträge als Umgebungsvariablen seines
+  Engine-Prozesses und jedes Befehls, den er ausführt, und sein Systemprompt nennt sie. Ein Wert ist in der App
+  write-only (ersetzen oder löschen, nie anzeigen) und wird als `[vault:NAME]` aus allem geschwärzt, was ein Bot sagt,
+  aus seinen Werkzeugaufrufen und -ergebnissen, Freigabekarten und dem Verlauf. Auf der Platte ist der Tresor mit
+  einem Schlüssel des Rechners verschlüsselt (`vault-key` im Datenordner); zu den anderen Rechnern reist er nur in der
+  verschlüsselten Synchronisation, wie die API-Schlüssel. Namen, mit denen sich die Engines anmelden (`ANTHROPIC_*`,
+  `OPENAI_API_KEY`, `GH_TOKEN`, …), werden abgelehnt. In der Freigabestufe „riskant“ fragt ein Befehl, der die ganze
+  Umgebung ausgibt (`printenv`, `env`, `Get-ChildItem Env:`), vorher nach. Neue Frames `vault`, `vault_save`,
+  `vault_delete`.
+- Bots legen auf Wunsch neue Bots an, mit dem neuen Werkzeug `create_bot` (Name, Ordner, wahlweise Fachgebiet, Rolle,
+  Arbeitsanweisungen, Freigabestufe außer „nie“, Ordner der Liste), gespeichert wie „Neuer Bot“ in der App; der neue Bot
+  richtet sich in seinem eigenen Chat ein.
+- Chats mit Personen kommen wie Bots und Gruppen in Ordner der Chatliste: „Ordner“ in ihrem Menü, Ziehen auf die
+  Überschrift eines Ordners und `set_folder` mit dem Namen der Person (neues optionales `category` am Personen-Chat).
+- Ein Bot der Einrichtung eines Kontos kann das Profilbild eines eigenen Bots des Admins zeigen („Profilbild“: „Wie
+  mein Bot …“ im Einrichtungsdialog, neues optionales `avatarFrom` in der Einrichtung); das Bild reist mit der
+  Einrichtung, und ein neues Bild jenes Bots schickt die Einrichtung von selbst neu, sodass der Bot der Person folgt.
+  SVGs werden nicht übernommen.
+- Desktop-App: Die Einstellungen zeigen unter „Über“ das Update der App: ob sie aktuell ist, ob eine neue Version
+  geladen wird oder bereit ist, „Nach Updates suchen“, „Jetzt neu starten“, sobald eine Version geladen ist, und den
+  Schalter für die automatische Suche, wie in den Menüs der App.
+- Chats mit Personen: „Gefällt mir“ im ⋯-Menü einer Nachricht der anderen Person setzt ein Herz daran, das beide Seiten
+  sehen, „Gefällt mir nicht mehr“ nimmt es zurück. Braucht die neue Version auf den Backends beider Konten.
+
+### Geändert
+- Die Grenze von 30 fehlgeschlagenen Anmeldungen pro Stunde zählt je Konto: Raten an einem Konto sperrt nicht mehr die
+  Passwort-Anmeldung aller anderen, und fehlgeschlagene Joins, Claims und Einrichtungslinks sperren sie gar nicht mehr.
+
+### Behoben
+- Springt man in einen Chat (Tab, Befehlspalette, Benachrichtigung, Favoriten-Kachel), scrollt die Chatliste links zu
+  seiner Zeile, nur so weit wie nötig; eine Unterhaltung unter einem zugeklappten Bot zeigt die Zeile des Bots.
+- iPhone und iPad (Web-App und Home-Bildschirm-App): Bei offener Tastatur springt das Fenster nicht mehr nach oben.
+  iOS beachtet `interactive-widget=resizes-content` nicht und schob stattdessen die ganze Seite; die App nimmt jetzt die
+  Höhe über der Tastatur (`visualViewport`), die Seitenleisten und Dialoge auch (das Feld eines Dialogs bleibt über der
+  Tastatur), und das Fenster bleibt stehen. Umbenennen einer Unterhaltung per langem Drücken auf ihren Tab öffnet die
+  Tastatur im Feld.
+- Auf Tablet und Computer öffnen die offenen Änderungen eines Bots (Git-Symbol im Chatkopf und in der Liste) in der
+  Seitenleiste, als Bot-Seite direkt bei den offenen Änderungen, wie „Bot bearbeiten“; das Handy behält die eigene Seite.
+- Die Modell-Chips gehen von links das stärkste nach rechts das schwächste (Fable, Opus, Sonnet, Haiku), danach die
+  anderen Engines, egal in welcher Reihenfolge der Rechner die Modelle meldet.
+- Die Chatliste zeigt laufende und wartende Bots ganz oben, die fertigen mit Ungelesenem darunter (bisher umgekehrt).
+- Die Suche über der Chatliste hat ihre Filter (Nachrichten, Bots, Dateien, Routinen) auf jedem Bildschirm, nicht nur
+  auf dem Handy; auf dem Desktop suchte sie nur Nachrichten.
+- Sprachnachrichten mit der Sprache „Automatisch erkennen“ werden nur noch unter den Sprachen der App erkannt
+  (Englisch, Deutsch): Whisper hielt kurze Aufnahmen ab und zu für Französisch und schrieb sie französisch auf („Oui,
+  elle est close“ für „Ja, leg los“). Braucht faster-whisper 1.0 oder neuer; mit einem älteren bleibt die Erkennung frei.
+- Die Favoriten-Kacheln oben in der Liste bewegen sich wie die Liste: Ein Bot, der arbeitet oder auf dich wartet,
+  springt nach vorne, fertige mit Ungelesenem folgen, dann der Rest, jeweils neueste Nachricht zuerst.
+- „Kontext leeren“ ist ein Chip in der Zeile der Kontextzahl oben auf der Bot-Seite und im Menü eines Chats (kein
+  Eintrag „Neue Session“ weiter unten mehr), und ein Tipp setzt die Zahl sofort zurück, im Kopf und auf der Seite; die
+  offene Seite folgt auch neuen Zahlen.
+- „Bot bearbeiten“ in der Seitenleiste setzt den Cursor nicht mehr ins erste Feld (keine Tastatur auf dem Tablet), und
+  wo die Leiste über dem Chat liegt, schließt ein Klick daneben den Editor samt Bot-Seite.
+- Sprachnachrichten mit kurzem Transkript nehmen die volle Blasenbreite ein, die Audiospur ist so lang wie bei einem
+  langen (auf dem iPad war sie nur ein kurzer Stummel).
+- Profilbilder: Fehlt der Schlüssel des gewählten Bildmodells, ist aber der des anderen Anbieters gespeichert (Gemini
+  gewählt, nur ein OpenAI-Schlüssel), kommt das Foto von dessen Modell statt eines gezeichneten Bilds; gezeichnet wird
+  nur ohne jeden Schlüssel. Fotos über OpenAI nutzen `gpt-image-2`, weil OpenAI `gpt-image-1` eingestellt hat (die
+  Einstellung behält ihren Wert).
+
+
 ## [0.7.1] - 2026-11-20
 
 ### Behoben

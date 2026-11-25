@@ -1,4 +1,4 @@
-// The bots' own tools (list_bots, list_conversations, message_bot, send_file, set_avatar, make_avatar, set_profile, routines, folders, knowledge, history, hand_over), the same for every engine: Claude gets
+// The bots' own tools (list_bots, list_conversations, message_bot, send_file, set_avatar, make_avatar, set_profile, routines, folders, knowledge, history, hand_over, missions), the same for every engine: Claude gets
 // them as an MCP server, the other engines as plain functions (EngineTool). What a tool needs of the bot manager
 // comes through ToolHost; this module imports only types from agent.ts.
 
@@ -7,11 +7,13 @@ import { createSdkMcpServer, tool, type McpServerConfig } from '@anthropic-ai/cl
 import { z } from 'zod';
 import type { Sender } from './agent.ts';
 import { loadBots, loadCategories, loadGroups, mayMessage, roleLine, sortCategories } from './bots.ts';
+import { loadPersonChats, personName } from './people.ts';
 import type { EngineTool } from './codex.ts';
 import { config } from './config.ts';
 import { botFile } from './files.ts';
 import { AROUND_MAX, readHistoryText, searchHistoryText } from './history-tools.ts';
 import { deleteFact, factName, folderKey, knowledgeSections, locationText, readFact, saveFact, sees } from './knowledge.ts';
+import { missionTools } from './mission-tools.ts';
 import { routinesWithNextRun } from './routines.ts';
 import type { BotSession } from './session.ts';
 import { KNOWLEDGE_TYPES, type Bot, type KnowledgeLocation, type KnowledgeScope } from '../../shared/protocol.ts';
@@ -21,6 +23,16 @@ const SCOPES = ['bot', 'folder', 'group', 'all'] as const;
 export type ToolText = { content: { type: 'text'; text: string }[]; isError: boolean };
 /** What a bot may set of its own profile with set_profile. The approval level stays with the user. */
 export type BotProfile = Partial<Pick<Bot, 'name' | 'area' | 'role' | 'tone'>>;
+/** A new bot made with create_bot; the approval level is one of the asking ones, "never" stays the user's. */
+export interface NewBot {
+    name: string;
+    folder: string;
+    area?: string;
+    role?: string;
+    tone?: string;
+    approval?: 'risky' | 'write' | 'read';
+    folder_of_list?: string;
+}
 /** What a bot may set of one of its own routines with set_routine, found by `name`. Waking machines stays with the user. */
 export interface RoutineChange {
     name: string;
@@ -49,6 +61,8 @@ export interface ToolHost {
     setProfile(s: BotSession, profile: BotProfile): ToolText;
     /** Creates or changes one of the bot's own routines and says so in the chat. */
     setRoutine(s: BotSession, change: RoutineChange): ToolText;
+    /** Makes a new bot on this machine, the way "New bot" in the app does, and starts its setup in its chat. */
+    createBot(s: BotSession, bot: NewBot): ToolText;
     /** Lists the folders of the chat list with what is in them. */
     listFolders(): ToolText;
     /** Puts bots and groups into a folder of the chat list (created if missing; '' takes them out) and says so in the chat. */
@@ -56,6 +70,9 @@ export interface ToolHost {
     /** Makes the bot's own profile picture like the editor's "AI avatar" (wish: what it should show) and stores it. */
     makeAvatar(s: BotSession, wish: string): Promise<ToolText>;
     knowledgeChanged(locations: KnowledgeLocation[], by: BotSession): void;
+    /** Whether the bot is in the team of an active mission: only then it gets the mission tools. */
+    inMission(botId: string): boolean;
+    missionTool(s: BotSession, name: string, args: Record<string, unknown>): ToolText;
 }
 
 export function botToolServer(s: BotSession, host: ToolHost): McpServerConfig {
@@ -115,7 +132,7 @@ export function botTools(s: BotSession, host: ToolHost) {
             + 'With wait_for_reply=true the answer comes back as the result of this call instead (for short questions; after 20 minutes it comes as a message after all).',
             {
                 bot: z.string().optional().describe('Id or name of the target bot, see list_bots; into its main chat, or a conversation of its own while that is busy'),
-                conversation: z.string().optional().describe('Instead of bot: the id of a conversation, see list_conversations (also another one of yours)'),
+                conversation: z.string().optional().describe('Instead of bot: the id of a conversation, see list_conversations (also another one of yours); "new" opens a new conversation of the bot named, without a bot one of your own'),
                 text: z.string().describe('Job or question, fully phrased'),
                 wait_for_reply: z.boolean().optional().describe('Default false'),
             },
@@ -302,6 +319,23 @@ export function botTools(s: BotSession, host: ToolHost) {
             async (args) => host.setRoutine(s, args),
         ),
         tool(
+            'create_bot',
+            'Creates a new bot for the user on this machine, like "New bot" in the app: a name and a working folder, '
+            + 'optionally field of work, role, working instructions and approval level. Only when the user asks for it. '
+            + 'The new bot starts its setup in its own chat (asks the user a few questions there); never write bots.json '
+            + 'or other files of the backend yourself to make a bot.',
+            {
+                name: z.string().min(1).max(60).describe('The bot\'s name, e.g. "Hugo"'),
+                folder: z.string().min(1).max(1000).describe('Its working folder on this machine (absolute path, must exist, inside the allowed folders)'),
+                area: z.string().max(60).optional().describe('Field of work shown with the name, e.g. "Hub"'),
+                role: z.string().max(200).optional().describe('Short role for the list'),
+                tone: z.string().max(4000).optional().describe('Working instructions and tone, part of its system prompt'),
+                approval: z.enum(['risky', 'write', 'read']).optional().describe('What it asks before: risky, write (every change) or read (only reads); default: the level the user set for new bots'),
+                folder_of_list: z.string().max(40).optional().describe('Folder of the chat list to put it into (created if missing)'),
+            },
+            async (args) => host.createBot(s, args),
+        ),
+        tool(
             'list_folders',
             'Lists the folders of the user\'s chat list and the bots and groups in each, and those in none.',
             {},
@@ -309,13 +343,13 @@ export function botTools(s: BotSession, host: ToolHost) {
         ),
         tool(
             'set_folder',
-            'Sorts bots and groups of the user\'s chat list into a folder, which is created if it does not exist yet; '
+            'Sorts bots, groups and people of the user\'s chat list into a folder, which is created if it does not exist yet; '
             + 'an empty folder takes them out of theirs. Only when the user asks for it. The chat shows the change, the '
             + 'user can move them again with a long press in the list.',
             {
                 folder: z.string().max(40).describe('Name of the folder, e.g. "Agents"; "" takes the chats out of their folder'),
                 chats: z.array(z.string().max(200)).min(1).max(100)
-                    .describe('Bots and groups by id or name (see list_bots); a group as its name or g:<id>'),
+                    .describe('Bots, groups and people by id or name (see list_bots); a group as its name or g:<id>, a person as their name or p:<account>'),
             },
             async (args) => host.setFolder(s, args.folder, args.chats),
         ),
@@ -338,6 +372,8 @@ export function botTools(s: BotSession, host: ToolHost) {
             },
             async (args) => host.handOver(s, args.summary),
         )] : []),
+        // Only for bots in a mission's team (their sessions reload when they join one)
+        ...(host.inMission?.(s.bot.id) ? missionTools(s, host) : []),
     ];
 }
 
@@ -356,7 +392,11 @@ export function imageType(data: Buffer): string | null {
 /** list_routines: the bot's own routines with what set_routine changes and how the last runs went. */
 /** The folders of the chat list with their bots and groups, then those in none (list_folders). */
 export function foldersText(): string {
-    const chats = [...loadBots().map((b) => ({ name: `${b.name} (${b.id})`, category: b.category })), ...loadGroups().map((g) => ({ name: `${g.name} (group g:${g.id})`, category: g.category }))];
+    const chats = [
+        ...loadBots().map((b) => ({ name: `${b.name} (${b.id})`, category: b.category })),
+        ...loadGroups().map((g) => ({ name: `${g.name} (group g:${g.id})`, category: g.category })),
+        ...loadPersonChats().filter((c) => !c.cleared || c.category).map((c) => ({ name: `${personName(c.id)} (person p:${c.id})`, category: c.category })),
+    ];
     const folders = sortCategories(loadCategories());
     const ids = new Set(folders.map((f) => f.id));
     const lines = folders.map((f) => `- ${f.name}: ${chats.filter((c) => c.category === f.id).map((c) => c.name).join(', ') || 'empty'}`);

@@ -58,8 +58,11 @@ export default async function ({ start, check }) {
     const mute = h.sent.findLast((f) => f.type === 'mute');
     check('mute: sent for the bot, the page stays and shows the new state', mute && mute.chatId === 'skool' && mute.on === true && await p.isVisible('#info')
         && (await p.textContent('#info-actions button[data-action="mute"]')) === 'Notify again', mute);
+    // "Clear context" stands in the line of the figure
+    await h.push({ type: 'context', machine: 'desk', botId: 'skool', tokens: 5000 });
+    await h.wait(100);
     accept = false;
-    await p.click('#info-actions button[data-action="restart"]');
+    await p.click('#info-switches button[data-action="restart"]');
     await h.wait(100);
     check('restart declined: nothing sent, the page stays', !h.sent.some((f) => f.type === 'restart') && await p.isVisible('#info'));
 

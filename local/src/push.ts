@@ -1,6 +1,7 @@
 // Push directly from the home machine: Web Push to the browsers' push services (end-to-end encrypted) and, through
 // push-native.ts, APNs and FCM to the mobile apps. For app channels this machine has no credentials for, the relay
-// delivers if it has them (relay_hello); then the relay sees what Apple and Google see.
+// delivers if it has them (relay_hello), otherwise the push service of openfolk.app (PUSH_SERVICE_URL); either then
+// sees what Apple and Google see.
 
 import webpush, { type PushSubscription } from 'web-push';
 import { nativeChannels, sendNative, visibleText, type NativeChannel, type NativeSubscription } from '../../shared/push-native.ts';
@@ -14,6 +15,25 @@ export const relayPush: {
     channels: () => NativeChannel[];
     send: (subscriptions: NativeSubscription[], message: NativePushMessage) => boolean;
 } = { channels: () => [], send: () => false };
+
+/**
+ * The push service for the store apps (relay/src/push-service.ts): the relay of openfolk.app holds their APNs and FCM
+ * credentials and delivers for every backend. PUSH_SERVICE_URL names another one, `off` none; '' = none.
+ */
+export function pushServiceUrl(): string {
+    const v = (process.env.PUSH_SERVICE_URL ?? '').trim();
+    if (v.toLowerCase() === 'off') return '';
+    return (v || 'https://push.openfolk.app').replace(/\/+$/, '');
+}
+
+/** The request to the push service; the answer names the tokens Apple and Google no longer know (tests replace it). */
+export const pushService = {
+    post: async (url: string, body: unknown): Promise<{ gone?: string[] } | null> => {
+        const r = await fetch(`${url}/push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });
+        if (!r.ok) throw new Error(`push service: HTTP ${r.status}`);
+        return await r.json() as { gone?: string[] };
+    },
+};
 
 /** What a device said about itself with its subscription (push_subscribe); synced with it, the newer state wins. */
 export interface DeviceTraits {
@@ -57,7 +77,7 @@ const bare = ({ channel, token, app, env }: NativeSubscription): NativeSubscript
 
 /** Push channels this machine can deliver to: always Web Push, the apps' channels once configured here or on the relay. */
 export function pushChannels(): ('web' | NativeChannel)[] {
-    return ['web', ...new Set([...nativeChannels(), ...relayPush.channels()])];
+    return ['web', ...new Set([...nativeChannels(), ...relayPush.channels(), ...(pushServiceUrl() ? ['apns', 'fcm'] as const : [])])];
 }
 
 /** Drops app device tokens the push services no longer know (reported by the relay). */
@@ -337,10 +357,17 @@ async function deliver(list: StoredSubscription[], n: PushMessage, priority: Exc
     const sandbox: StoredSubscription[] = [];
     // Without own credentials for a channel the relay delivers, with the text already reduced to the preview
     const viaRelay = list.filter((s): s is NativeSubscription => isNativeSub(s) && !native.includes(s.channel) && relayPush.channels().includes(s.channel));
-    if (viaRelay.length) {
-        const text = visibleText({ title: n.title, body }, pushPreview());
-        relayPush.send(viaRelay.map(bare), { ...text, url: n.url, ...(n.tag ? { tag: n.tag } : {}), priority, ttlSeconds: DELIVERY[priority].TTL });
-    }
+    const appMessage = { ...visibleText({ title: n.title, body }, pushPreview()), url: n.url, ...(n.tag ? { tag: n.tag } : {}), priority, ttlSeconds: DELIVERY[priority].TTL };
+    if (viaRelay.length) relayPush.send(viaRelay.map(bare), appMessage);
+    // Neither here nor on the relay: the push service, which reports the tokens to drop
+    const service = pushServiceUrl();
+    const viaService = service ? list.filter((s): s is NativeSubscription & DeviceTraits => isNativeSub(s) && !native.includes(s.channel) && !relayPush.channels().includes(s.channel)) : [];
+    const serviceDone = viaService.length
+        ? pushService.post(service, { subscriptions: viaService.map(bare), message: appMessage }).then(
+            (a) => { for (const token of a?.gone ?? []) gone.push(...viaService.filter((s) => s.token === token)); },
+            (e: Error) => console.log(`push: ${e.message}`),
+        )
+        : Promise.resolve();
     await Promise.all(list.map(async (sub) => {
         if (isNativeSub(sub)) {
             // Another machine or the relay may have the credentials; this one skips the channel
@@ -363,6 +390,7 @@ async function deliver(list: StoredSubscription[], n: PushMessage, priority: Exc
             else console.log(`push: error ${status ?? ''} ${(e as Error).message}`);
         }
     }));
+    await serviceDone;
     if (gone.length || sandbox.length) {
         // Re-read: a device may have subscribed meanwhile
         const next = subscriptions()

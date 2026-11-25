@@ -1,0 +1,174 @@
+name: Mobile apps
+
+# Builds the iOS and Android apps from mobile/ (Capacitor around webapp/). A push or pull request builds both
+# unsigned, to catch broken native projects early. A manual run signs them in the protected environment "store"
+# (secrets listed in .claude/plans/2026-11-22-mobile-store-release.md) and, with "upload", sends the iOS build to
+# TestFlight and the Android bundle to the internal test track as a draft. The build number is the run number of this
+# workflow, so it grows with every run; the version comes from mobile/package.json.
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**', 'webapp/**', '.github/workflows/mobile.yml']
+  pull_request:
+    paths: ['mobile/**', '.github/workflows/mobile.yml']
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Which apps to build
+        type: choice
+        options: [both, ios, android]
+        default: both
+      upload:
+        description: Upload to TestFlight / Play internal test (Google needs the very first bundle uploaded by hand)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+env:
+  OPENFOLK_BUILD_NUMBER: ${{ github.run_number }}
+  SIGNED: ${{ github.event_name == 'workflow_dispatch' }}
+
+jobs:
+  ios:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'android'
+    runs-on: macos-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && 'store' || '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+      # marked, DOMPurify and qrcode-generator for www/ come from the root
+      - run: npm ci
+      - run: npm ci --prefix mobile
+      - run: npm run sync --prefix mobile
+      - name: App Store Connect key
+        if: env.SIGNED == 'true'
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc.p8" >> "$GITHUB_ENV"
+      - name: Archive
+        working-directory: mobile/ios/App
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          VERSION=$(node -p "require('../../package.json').version")
+          COMMON=(-project App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS'
+            -archivePath "$RUNNER_TEMP/App.xcarchive" MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$OPENFOLK_BUILD_NUMBER")
+          if [ "$SIGNED" = true ]; then
+            # Xcode fetches or creates certificate and profile itself with the Admin key
+            xcodebuild archive "${COMMON[@]}" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+              -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+              -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          else
+            xcodebuild archive "${COMMON[@]}" CODE_SIGNING_ALLOWED=NO
+          fi
+      - name: Export and upload to TestFlight
+        if: env.SIGNED == 'true'
+        working-directory: mobile/ios/App
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DESTINATION: ${{ inputs.upload && 'upload' || 'export' }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>$DESTINATION</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - uses: actions/upload-artifact@v4
+        if: env.SIGNED == 'true' && !inputs.upload
+        with:
+          name: openfolk-ios-${{ github.run_number }}
+          path: ${{ runner.temp }}/export/*.ipa
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/asc.p8"
+
+  android:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'ios'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && 'store' || '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm ci --prefix mobile
+      - run: npm run sync --prefix mobile
+      - name: Signing key and Firebase config
+        if: env.SIGNED == 'true'
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+          # Without google-services.json the app builds, but cannot register for push
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then printf '%s' "$GOOGLE_SERVICES_JSON" > mobile/android/app/google-services.json; fi
+      - name: Build the bundle
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon bundleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openfolk-android-${{ github.run_number }}
+          path: |
+            mobile/android/app/build/outputs/bundle/release/*.aab
+            mobile/android/app/build/outputs/mapping/release/mapping.txt
+      - name: Upload to the internal test track
+        if: env.SIGNED == 'true' && inputs.upload
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: io.openfolk.app
+          releaseFiles: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          mappingFile: mobile/android/app/build/outputs/mapping/release/mapping.txt
+          track: internal
+          status: draft
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.jks" mobile/android/app/google-services.json

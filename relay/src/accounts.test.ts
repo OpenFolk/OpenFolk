@@ -288,6 +288,19 @@ check('the device key of a deleted account no longer works', after.reply?.ok ===
 const ownerAgain = await client({ device: ownerKey });
 check('main\'s device keeps working', ownerAgain.reply?.ok === true);
 
+// An account deletes itself (the stores want it in the app), not another one
+ownerAgain.send({ type: 'account_create', name: 'Leaving' });
+const leaving = await ownerAgain.next((m) => m.type === 'account_created');
+const leaver = await client({ pair: (leaving!.pair as { token: string }).token, name: 'Phone' });
+leaver.send({ type: 'account_delete', id: 'main' });
+check('a person cannot delete another account', !!(await leaver.next((m) => m.type === 'error' && m.request === 'account_delete')));
+leaver.send({ type: 'account_delete', id: 'leaving' });
+check('a person deletes their own account: disconnected', await Promise.race([leaver.closed, new Promise<number>((r) => setTimeout(() => r(0), 2000))]) === 4004);
+check('… backends remove its data', !!(await desk.next((m) => m.type === 'account_deleted' && m.account === 'leaving')));
+check('… and its key no longer works', (await client({ device: (leaver.reply!.device as { token: string }).token })).reply?.loggedOut === true);
+ownerAgain.send({ type: 'account_delete', id: 'main' });
+check('main still cannot delete itself', !!(await ownerAgain.next((m) => m.type === 'error' && m.request === 'account_delete')));
+
 for (const s of [desk, server, old, owner, second, ownerAgain]) s.ws.close();
 await relay.close();
 

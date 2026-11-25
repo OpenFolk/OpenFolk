@@ -11,6 +11,7 @@ import { BotManager } from './agent.ts';
 import { findBot, loadBots, saveBot } from './bots.ts';
 import { readHistory } from './history.ts';
 import { migrateDataDir } from './migrate.ts';
+import { botApproval } from './settings.ts';
 import type { AgentFrame, Approval, Bot } from '../../shared/protocol.ts';
 
 migrateDataDir();
@@ -23,7 +24,7 @@ if (args[0] === '--new') {
         console.error('Usage: npm run cli -- --new <folder> [name] [model]');
         process.exit(2);
     }
-    bot = saveBot({ id: '', folder, name: name ?? '', role: '', model: model ?? 'default', tone: '', avatar: '', approval: 'risky', machine: '' });
+    bot = saveBot({ id: '', folder, name: name ?? '', role: '', model: model ?? 'default', tone: '', avatar: '', approval: botApproval(), machine: '' });
     console.log(`Bot created: ${bot.id} (${bot.folder}, model ${bot.model})`);
 } else if (args[0]) {
     bot = findBot(args[0]);

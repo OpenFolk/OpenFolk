@@ -79,6 +79,8 @@ const plain = JSON.parse(requests[0]?.payload ?? '{}') as { url?: string; tag?: 
 check('main: link and tag as before', plain.url === '/?chat=anna' && plain.tag === 'anna');
 
 // A desktop in use keeps the phones quiet: answers stay away, requests follow after the delay unless taken up
+// The push service of openfolk.app stays out: these tests never reach the network
+process.env.PUSH_SERVICE_URL = 'off';
 const { attention, mergeSubscriptions, phoneDelay, relayPush, ACTIVE_MS } = await import('./push.ts');
 await inAccount('desk', async () => {
     saveSubscription(subscription('desk-pc'), { form: 'desktop' });

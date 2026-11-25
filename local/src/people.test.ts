@@ -90,6 +90,32 @@ check('the file is copied into the receiver\'s uploads', copy.startsWith(inAccou
 handle('main', { type: 'send', chatId: 'p:kunde', text: '', attachments: [{ name: 'voice.webm', type: 'audio/webm', data: file }] });
 check('a voice message arrives as it is', history('kunde', 'p:main').at(-1)?.voice === true);
 
+// Likes: on what the other person wrote, visible in both halves
+check('frames: like passes the check', checkClientFrame({ type: 'like', chatId: 'p:main', entryId: 'x', on: true }).ok);
+handle('main', { type: 'like', chatId: 'p:kunde', entryId: got[0].id!, on: true });
+const likeOf = (account: string, chatId: string) => history(account, chatId).find((e) => e.id === got[0].id)?.like;
+check('a like is stored with the liker\'s half', likeOf('main', 'p:kunde')?.on === true, likeOf('main', 'p:kunde'));
+check('… and with the author\'s', likeOf('kunde', 'p:main')?.on === true, likeOf('kunde', 'p:main'));
+const likedFrame = (account: string) => last(account, 'liked') as { chatId?: string; entryId?: string; on?: boolean } | undefined;
+check('both sides\' browsers hear of it', likedFrame('main')?.chatId === 'p:kunde' && likedFrame('main')?.on === true
+    && likedFrame('kunde')?.chatId === 'p:main' && likedFrame('kunde')?.entryId === got[0].id, [likedFrame('main'), likedFrame('kunde')]);
+const errors = () => frames.main.filter((f) => f.type === 'error').length;
+const refused = errors();
+handle('main', { type: 'like', chatId: 'p:kunde', entryId: reply.id!, on: true });
+check('one\'s own message cannot be liked', errors() === refused + 1 && !history('main', 'p:kunde').find((e) => e.id === reply.id)?.like);
+handle('main', { type: 'like', chatId: 'helper', entryId: got[0].id!, on: true });
+check('nor a message outside a person chat', errors() === refused + 2);
+// Another machine of the account: a newer like state of a known entry is taken over, an older one is not
+const stale = { ...got[0], like: { on: false, at: '2000-01-01T00:00:00.000Z' } };
+inAccount('main', () => merge({ bots: [], groups: [], routines: [], deleted: {}, push: [], history: { 'p:kunde': [stale] } }));
+check('an older like state from another machine changes nothing', likeOf('main', 'p:kunde')?.on === true);
+handle('main', { type: 'like', chatId: 'p:kunde', entryId: got[0].id!, on: false });
+check('taking the like back reaches both halves', likeOf('main', 'p:kunde')?.on === false && likeOf('kunde', 'p:main')?.on === false && likedFrame('kunde')?.on === false);
+const newer = { ...got[0], like: { on: true, at: '2999-01-01T00:00:00.000Z' } };
+inAccount('anna', () => merge({ bots: [], groups: [], routines: [], deleted: {}, push: [], history: { 'p:kunde': [{ ...got[0], like: undefined }] } }));
+check('sync: a newer like of a known entry is taken over', inAccount('anna', () => merge({ bots: [], groups: [], routines: [], deleted: {}, push: [], history: { 'p:kunde': [newer] } })).history.includes('p:kunde')
+    && history('anna', 'p:kunde')[0]?.like?.on === true);
+
 // Reach
 const before = frames.anna.length;
 handle('anna', { type: 'send', chatId: 'p:kunde', text: 'Hi' });
@@ -177,6 +203,18 @@ const arrived = history('main', 'p:kunde').at(-1);
 const arrivedFile = arrived?.attachments?.[0]?.path ?? '';
 check('it arrives in the receiver\'s half from the person, with the file in its uploads', arrived?.from === 'person:kunde' && arrived.text === 'Von meinem Rechner'
     && fs.existsSync(arrivedFile) && fs.readFileSync(arrivedFile, 'utf8') === 'notiz', arrived);
+// A like across machines: out through the relay, in by the entry id
+const theirId = arrived!.id!;
+managers.main.otherAccount = () => false;
+managers.main.toAccount = (to, data) => { routed.push({ to, data }); };
+handle('main', { type: 'like', chatId: 'p:kunde', entryId: theirId, on: true });
+const likeOut = routed.at(-1);
+check('a like for a person on another machine goes through the relay', likeOut?.to === 'kunde' && likeOut.data.kind === 'person_like' && likeOut.data.entryId === theirId && likeOut.data.on, likeOut);
+inAccount('kunde', () => managers.kunde.personInbound('main', { kind: 'person_like', entryId: theirId, on: true, at: '2999-01-01T00:00:00.000Z' }));
+const far = history('kunde', 'p:main').find((e) => e.id === theirId)?.like;
+check('arriving there it is stored, a time from the future cut to now', far?.on === true && far.at < '2999', far);
+inAccount('kunde', () => managers.kunde.personInbound('main', { kind: 'person_like', entryId: reply.id!, on: true, at: new Date().toISOString() }));
+check('… but not on a message the other person wrote themselves', !history('kunde', 'p:main').find((e) => e.id === reply.id)?.like);
 const count = history('main', 'p:anna').length;
 inAccount('main', () => managers.main.personInbound('anna', { kind: 'person_message', entry: { id: 'x1', role: 'user', text: 'Hi', ts: new Date().toISOString(), from: 'me' }, message: 'message' }));
 check('from an account this one does not reach: dropped', history('main', 'p:anna').length === count);

@@ -108,6 +108,10 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   das für dieses Handy ab. Browser
   bekommen Web Push (Ende-zu-Ende-verschlüsselt), die Mobile-Apps APNs bzw. FCM; dort sehen Apple und Google den
   Inhalt, deshalb zeigt eine App-Benachrichtigung standardmäßig nur den Titel (einstellbar in den Einstellungen).
+- **Nachrichten während der Arbeit:** Bei Claude geht eine Nachricht (getippt oder gesprochen) in den laufenden Auftrag,
+  wie im Terminal: Der Bot liest sie beim nächsten Schritt und nimmt sie in seinen Plan auf; der Chat sagt das.
+  „Danach“ neben dem Eingabefeld stellt sie stattdessen hinter den Auftrag. Aufträge anderer Bots, Routinen, Gruppen
+  und die anderen Engines warten wie bisher.
 - **Routinen** nach Zeitplan (täglich, werktags, wöchentlich, stündlich oder Cron), auf Wunsch mit Wecken des Rechners.
   Auf der Seite des Bots steht je Routine eine Zeile mit „Wann“ in Worten („werktags 8:00“, „alle 2 Stunden“), nächstem
   Lauf und einem Schalter zum Pausieren; aufgeklappt die Anweisung, „Jetzt ausführen“, „Bearbeiten“ und die letzten 20
@@ -133,11 +137,27 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   auf wen der Chat seit wann wartet, mit „Nicht mehr warten“ und „Auftrag abbrechen“. Offene Aufträge überstehen einen
   Neustart, Schleifen werden abgelehnt. Welche Bots einer erreicht, steht in seinen Einstellungen unter „Kann Aufträge
   geben an“ (alle, ausgewählte oder keinen, jeweils mit allen Unterhaltungen).
+- **Missionen:** Der Tab „Missionen“ (Mission Control) gibt einem Team aus Bots ein langfristiges Ziel, das es
+  selbstständig verfolgt. Der Builder macht aus einem Ziel in eigenen Worten einen Vorschlag (Erfolgs- und
+  Abbruchkriterien, Team mit Porträts und einem Supervisor, Meilensteine, Risiken, Autonomie, Freigaberegeln, Budget,
+  Leitplanken, Zeitplan), den du bearbeitest, bevor etwas angelegt wird. Der Supervisor führt die Mission in Zyklen, je
+  ein Durchlauf in seinem Missions-Chat: Er plant Aufgaben, gibt sie als Aufträge ans Team, prüft Ergebnisse und
+  protokolliert Entscheidungen mit Grund und Daten. Ein Ergebnis, deine Entscheidung, eine Meldung aus dem Team oder der
+  Zeitplan startet den nächsten Zyklus. Vier Autonomiestufen legen fest, was dich vorher fragt; Budget, Autonomie,
+  Regeln und Leitplanken ändern sich nur in der App, nie über einen Bot. Ein Zyklus je Mission zur Zeit, zwei Minuten
+  Abstand, Budgetprüfung vor jedem, drei Fehlschläge blockieren, der Notaus stoppt Zyklen und Aufträge bis zum
+  Fortsetzen. OpenFolk kennt kein Fachgebiet: Das Projekt liest seine Grenzen aus `.openfolk/mission.json` und meldet
+  Zahlen in `.openfolk/metrics.json`, die die Missionsseite als Kacheln, Kurven und Tabellen zeigt.
 - **Chats mit Personen:** „+“ → „Person“ öffnet einen Chat mit jemandem auf demselben Relay, einem Teammitglied oder
   einem Kunden (siehe Konten). Texte, Dateien und Sprachnachrichten gehen hin und her, mit Benachrichtigung, Ungelesen,
-  Favorit, Stumm und Suche wie bei jedem Chat. Ein Bot mit „Übergabe an“ in seinen Einstellungen bekommt das
+  Favorit, Stumm und Suche wie bei jedem Chat. „Gefällt mir“ im ⋯-Menü einer Nachricht der anderen Person setzt ein
+  Herz daran, das ihr beide seht; „Gefällt mir nicht mehr“ nimmt es zurück. Ein Bot mit „Übergabe an“ in seinen Einstellungen bekommt das
   Werkzeug `hand_over`: Er schickt der Person seine Zusammenfassung, sie bekommt eine Benachrichtigung, und der User
-  im Bot-Chat einen Knopf „Weiter mit …“. Bots lesen Chats zwischen Personen nicht.
+  im Bot-Chat einen Knopf „Weiter mit …“. Bots lesen Chats zwischen Personen nicht. „Blockieren“ im Menü des Chats
+  hält Nachrichten in beide Richtungen auf, bis „Blockierung aufheben“.
+- **Melden:** „Melden“ im ⋯-Menü einer Bot-Antwort oder der Nachricht einer Person schickt sie mit Grund an die Admins
+  des Relays, in deinen Chat mit ihnen. Gibt es außer dir keinen Admin, geht die Meldung per Mail an den Herausgeber
+  der App (support@openfolk.app, auch unter Einstellungen › Über).
 - **Dateien** anhängen, einfügen oder hineinziehen; Bots schicken Dateien mit `send_file`. Bilder
   stehen direkt im Chat (auch die eines Bots, vom Rechner geholt) und öffnen sich mit einem Tipp groß; Videos (MP4,
   WebM, MOV) laufen in der App. Bis 20 MB je Datei, Ende-zu-Ende verschlüsselt über das Relay. Auf Wunsch setzt ein Bot
@@ -159,8 +179,14 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   Einrichtung oder beim ersten Gebrauch; etwas flacher als die Cloud-Stimmen.
 - **Sprachdialog.** Der Knopf neben dem Mikrofon öffnet eine Seite, auf der du freihändig mit einem Bot sprichst: Die
   Aufnahme geht nach einer Sprechpause von selbst raus, der verstandene Text und die Arbeit des Bots sind zu sehen,
-  die Antwort wird vorgelesen (was der Bot vor einem Werkzeug sagt, sofort) und das Mikrofon geht wieder auf. Ein
+  die Antwort wird Satz für Satz vorgelesen, während der Bot noch schreibt (ein Codeblock, sobald er geschlossen ist) und das Mikrofon geht wieder auf. Ein
   Tipp auf das Bild sendet sofort oder stoppt die Stimme; der Bot wird gebeten, kurz und gesprochen zu antworten.
+  In der App läuft der Dialog in der Unterhaltung „Sprachdialog“ des Bots auf einem schnellen Modell (Sonnet) mit
+  frischem Kontext: Die erste Nachricht bekommt die letzten Nachrichten des Hauptchats, schwere Arbeit (Code, längere
+  Recherchen, frühere Entscheidungen, „denk gründlich nach“) geht an den Hauptchat auf dem eigenen Modell des Bots mit
+  seinem ganzen Kontext, und am Ende geht, was gesagt wurde, mit der nächsten Nachricht an den Hauptchat. „Sprachdialog
+  auf einem schnellen Modell“ im Bot-Editor schaltet das je Bot ab; Bots auf einer anderen Engine als Claude sprechen
+  wie bisher in ihrem Chat.
   Die Seite hält den Bildschirm an, wo der Browser das erlaubt; im Hintergrund pausiert sie und liest eine wartende
   Antwort, sobald du zurück bist. Nur in Bot-Chats, und Sprachnachrichten müssen auf dem Rechner des Bots
   eingerichtet sein.
@@ -188,7 +214,8 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   behält der Browser Strg+N, Strg+Umschalt+N und Strg+1 bis 9; die Desktop-App kennt alle und zeigt sie im Menü
   „Gehe zu“. Auf dem Handy hat die Suche über der Liste stattdessen Filter: Nachrichten, Bots, Dateien, Routinen; Nachrichten auch
   dort erst aus den letzten vier Wochen, die neuesten zuerst.
-- **Tabs** schwebend unten an der Liste: Bots, Repos (offene Änderungen aller Bots, mit Zähler), Status (die Rechner
+- **Tabs** schwebend unten an der Liste: Bots, Repos (offene Änderungen aller Bots, mit Zähler), Missionen (mit der
+  Zahl offener Entscheidungen), Status (die Rechner
   mit ihren Bots, Engines und Backend, Wecken und Herunterfahren, Kontingent der Abos mit 5-Stunden- und Wochenfenster, Fable getrennt, und wann jedes
   zurückgesetzt wird) und Einstellungen.
 - **Offene Änderungen** der Git-Repos im Ordner eines Bots, mit Committen und Pushen oder Holen je Repo. Pushen
@@ -223,7 +250,7 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   der Ordner außerhalb der freigegebenen Ordner liegt, fragt die App nach Ordner und Repository.
 - **Einstellungen:** Sprache, Darstellung, Benachrichtigungen, Geräte und Sicherheit; je Gerät, ob das Mikrofon Sprachnachrichten
   sendet (Standard) oder ins Eingabefeld diktiert und ob die Antwort auf eine Sprachnachricht von selbst vorgelesen wird, sobald sie fertig ist (Standard: an). Für alle Rechner: die
-  KI-Dienste (API-Schlüssel von OpenAI und Google Gemini als Liste), das Bildmodell für Profilbilder, wie der Sprachdialog läuft (in der App oder über OpenAI Realtime), die Stimme zum
+  KI-Dienste (API-Schlüssel von OpenAI und Google Gemini als Liste), der Tresor (Zugangsdaten für die Arbeit der Bots, siehe „Sicherheit“), das Bildmodell für Profilbilder, wie der Sprachdialog läuft (in der App oder über OpenAI Realtime), die Stimme zum
   Vorlesen von Antworten (mit einem dieser Schlüssel eine Stimme
   von OpenAI oder Gemini, sonst der Rechner des Bots, wenn dort Sprachnachrichten eingerichtet sind, sonst die des
   Geräts; bei einer Cloud-Stimme geht der Text an diesen Anbieter), Sprache der Sprachnachrichten,
@@ -576,10 +603,27 @@ Was der Betreiber des Relays kann und was nicht, mit Ende-zu-Ende-Verschlüsselu
 - **Ende-zu-Ende-Verschlüsselung:** AES-256-GCM zwischen Browser und Backend und zwischen den Backends; jede
   Nachricht trägt Zähler und Sendezeit, das Relay kann nichts erneut zustellen. `E2E_KEY=off` schaltet ab, dann
   kann der Relay-Host jeden Chat lesen.
+- **Der Tresor:** Zugangsdaten, die Bots für ihre Arbeit brauchen (der API-Token des Hosters, das Passwort eines
+  Mailkontos), kommen unter Einstellungen › „Tresor“ hinein, nur für Admins, statt in eine `.env` oder den Chat.
+  Jeder Eintrag hat einen Namen wie eine Umgebungsvariable, eine Notiz, einen Wert und die Bots, die ihn nutzen dürfen
+  (alle oder angehakte). Ein Bot bekommt seine Einträge als Umgebungsvariablen seines Engine-Prozesses und jedes
+  Befehls, den er ausführt, und sein Systemprompt nennt sie; er schreibt also `curl -H "Authorization: Bearer
+  $HETZNER_API_TOKEN"`, ohne den Wert je zu sehen. Ein Wert ist in der App write-only (ersetzen oder löschen, nie
+  anzeigen) und wird als `[vault:NAME]` aus allem geschwärzt, was ein Bot sagt, aus seinen Werkzeugaufrufen und
+  -ergebnissen, Freigabekarten und dem Verlauf. Auf der Platte ist der Tresor mit einem Schlüssel des Rechners
+  verschlüsselt (`local/data/vault-key`); zu den anderen Rechnern reist er nur in der verschlüsselten Synchronisation,
+  wie die API-Schlüssel. Namen, mit denen sich die Engines anmelden (`ANTHROPIC_*`, `OPENAI_API_KEY`, `GH_TOKEN`, …),
+  werden abgelehnt, ein Eintrag kann also nie ändern, auf wessen Abo ein Bot läuft. In der Freigabestufe „riskant“
+  fragt ein Befehl, der die ganze Umgebung ausgibt (`printenv`, `env`, `Get-ChildItem Env:`), vorher nach. Grenzen: Die
+  eigenen Transkripte der Engines in ihren Konfigurationsordnern behalten rohe Werkzeugausgaben, und ein Wert, der
+  über zwei gestreamte Stücke verteilt ankommt, steht im Live-Text, bis die fertige Antwort ihn ersetzt.
 - **Dateien:** Die App bekommt Dateien nur aus den Bot-Ordnern und den Uploads, nie Geheimnisse (`.env`,
   Schlüssel), die Daten des Backends oder die Punktordner im Benutzerordner. Bots lesen `.env` und Schlüssel nicht.
 - **Push an die Mobile-Apps** ist nicht Ende-zu-Ende-verschlüsselt: Apple und Google sehen den Titel (er nennt
   Bot, Gruppe oder Rechner); in den Einstellungen lässt sich das auf Titel und Text oder nur „OpenFolk“ ändern.
+  Ohne eigene Apple- und Google-Zugangsdaten stellt das Relay zu, wenn es welche hat, sonst der Push-Dienst von
+  openfolk.app (`PUSH_SERVICE_URL`, `off` schaltet ab): Er sieht Gerätetoken und dieselbe Vorschau, speichert nichts
+  und drosselt je Gerät.
 - Sicherheitslücken bitte vertraulich an security@openfolk.app melden, nicht in öffentlichen Issues (`SECURITY.md`).
 
 ## Entwicklung

@@ -1,6 +1,7 @@
 """Transcribes voice messages locally with faster-whisper.
 
-Runs as a service of the backend (local/src/voice.ts): reads one JSON {"id", "path", "language", "prompt"} per line from stdin
+Runs as a service of the backend (local/src/voice.ts): reads one JSON {"id", "path", "language", "prompt", "languages"} per
+line from stdin (languages: without a language, detect only among these)
 and writes one {"id", "text", "language", "duration"} or {"id", "error"} per line to stdout. The model
 stays loaded between jobs. At start it reports {"ready": true, "model", "device"}.
 
@@ -95,10 +96,27 @@ def decode(path):
     return np.concatenate(parts).astype(np.float32) / 32768.0
 
 
-def transcribe(model, path, language=None, prompt=None):
+def pick_language(model, audio, languages):
+    """The most likely of the allowed languages, or None (detect freely) if that cannot be told.
+
+    Free detection takes a short recording for French or Portuguese now and then, and Whisper then writes
+    the text in that language.
+    """
+    try:
+        _, _, probs = model.detect_language(audio, vad_filter=True)
+    except Exception:  # noqa: BLE001 - older faster-whisper without it, or no speech: detect as before
+        return None
+    allowed = [(lang, p) for lang, p in probs if lang in languages]
+    return max(allowed, key=lambda x: x[1])[0] if allowed else None
+
+
+def transcribe(model, path, language=None, prompt=None, languages=None):
     language = language or os.environ.get("WHISPER_LANGUAGE", "") or None
+    audio = decode(path)
+    if not language and languages:
+        language = pick_language(model, audio, set(languages))
     # prompt: names and terms of the chat (the bot, its folder and repository), so Whisper spells them as written
-    segments, info = model.transcribe(decode(path), language=language, vad_filter=True, beam_size=5, initial_prompt=prompt or None)
+    segments, info = model.transcribe(audio, language=language, vad_filter=True, beam_size=5, initial_prompt=prompt or None)
     text = " ".join(s.text.strip() for s in segments).strip()
     return {"text": text, "language": info.language, "duration": round(info.duration, 2)}
 
@@ -123,7 +141,7 @@ def main():
         job = {}
         try:
             job = json.loads(line)
-            report(id=job["id"], **transcribe(model, job["path"], job.get("language"), job.get("prompt")))
+            report(id=job["id"], **transcribe(model, job["path"], job.get("language"), job.get("prompt"), job.get("languages")))
         except Exception as e:  # noqa: BLE001
             report(id=job.get("id"), error=str(e))
 

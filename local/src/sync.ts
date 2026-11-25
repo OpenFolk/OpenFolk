@@ -9,11 +9,13 @@ import { migrateSnapshot } from './migrate.ts';
 import { clearedAt, loadPersonChats, mergePersonChats } from './people.ts';
 import { loadPinned, mergePinned } from './pinned.ts';
 import { mergePushSettings, mergeSubscriptions, pushSettings, subscriptions } from './push.ts';
+import { loadMissions, saveMissions } from './missions.ts';
 import { loadRoutines, saveRoutines } from './routines.ts';
 import { applySeen, loadSeen } from './seen.ts';
 import { keysForSync, loadSettings, mergeApiKeys, mergeSettings } from './settings.ts';
 import { saveTombstones, tombstones } from './store.ts';
-import { botIdOf, isPerson, personOf, type Bot, type Category, type Group, type KnowledgeLocation, type Routine, type Snapshot } from '../../shared/protocol.ts';
+import { mergeVault, vaultForSync } from './vault.ts';
+import { botIdOf, isPerson, personOf, type Bot, type Category, type Group, type KnowledgeLocation, type Mission, type Routine, type Snapshot } from '../../shared/protocol.ts';
 
 /** This many entries per chat go along with the first sync. */
 const HISTORY_PER_CHAT = 300;
@@ -33,6 +35,8 @@ export function snapshot(withHistory: boolean): Snapshot {
         pinned: loadPinned(),
         seen: loadSeen(),
         personChats: loadPersonChats(),
+        vault: vaultForSync(),
+        missions: loadMissions(),
     };
     if (withHistory) {
         s.history = {};
@@ -68,6 +72,10 @@ export interface MergeResult {
     seen: boolean;
     /** favorite, mute or deletion of person chats taken over from the other machine */
     personChats: boolean;
+    /** vault entries taken over from the other machine (the sessions get a new environment) */
+    vault: boolean;
+    /** missions taken over from the other machine */
+    missions: boolean;
 }
 
 function newer(a: { updatedAt?: string } | undefined, b: { updatedAt?: string }): boolean {
@@ -104,6 +112,7 @@ export function merge(incoming: Snapshot): MergeResult {
     const s = migrateSnapshot(incoming);
     const result: MergeResult = {
         config: false, botsChanged: [], botsMoved: [], botsDeleted: [], chatsDeleted: [], knowledge: [], history: [], mainCleared: [], pushSettings: false, settings: false, pinned: false, seen: false, personChats: false,
+        vault: false, missions: false,
     };
 
     // Unite tombstones (the later one wins)
@@ -170,8 +179,17 @@ export function merge(incoming: Snapshot): MergeResult {
         result.config = true;
     }
 
+    // A mission is changed on its own machine (cycles, the user's frames); the others only follow it
+    const missions = mergeById<Mission>(loadMissions(), s.missions ?? [], 'mission', dead);
+    if (missions.changed.length || missions.removed.length) {
+        saveMissions(missions.list);
+        result.missions = true;
+    }
+
     // Even without knowledge in the snapshot: new tombstones can affect facts present here
     if (s.knowledge || deadChanged) result.knowledge = mergeKnowledge(s.knowledge ?? {}, dead);
+
+    result.vault = mergeVault(s.vault, dead);
 
     mergeSubscriptions(s.push ?? []);
     result.pushSettings = mergePushSettings(s.pushSettings);

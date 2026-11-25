@@ -5,6 +5,120 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+### Added
+- Mission Control: missions, long-term goals a team of bots pursues on its own, in a tab of their own. A builder turns
+  a goal in plain words into an editable proposal (criteria, team with portraits and a supervisor, milestones, risks,
+  autonomy, approval rules, budget, guardrails, schedule); the supervisor runs the mission in cycles of one turn each,
+  delegates tasks to the team as jobs between bots and records its decisions; results, approvals, reports of the team
+  and the schedule start the next cycle. Four autonomy levels, persistent approval requests with push, a budget per
+  mission (cost and turns), a kill switch, and cycles that survive a restart. The project of a mission reads its limits
+  from `.openfolk/mission.json`, which bots may not change, and reports figures in `.openfolk/metrics.json` for the
+  mission page. New frames `missions`, `mission_open`, `mission_propose`, `mission_save`, `mission_control`,
+  `mission_approval_reply`, `mission_task_save`, `mission_delete` and the answers `missions`, `mission_detail`,
+  `mission_proposal`, `mission_saved`; new tools `mission_*` for the bots of a mission's team; missions travel in the
+  sync.
+- Drafts per chat: text typed and not sent stays with its chat when the pane shows another one, which starts with an
+  empty field (or its own draft); coming back brings the text again, also after a reload (this device only). The list
+  shows "Draft: …" for a chat not open; sending clears it.
+- Markdown attachments (`.md`, e.g. plans a bot sends) open to read in the app, formatted like a bot's answer, with
+  "Save" for the file; until now they were only downloaded.
+- Demo accounts for the app stores' reviewers: `DEMO_ACCOUNTS` and `DEMO_PASSWORD` on a relay create accounts with a
+  fixed name and password, which come back under a new id after a reviewer deleted one, and a backend with `DEMO_BOT`
+  gives each of them a bot from that template. New optional field `demo` of an account and a person.
+- `message_bot` with `conversation: "new"` opens a new conversation for the job: of the bot named, or without a bot
+  one of the asking bot itself. Until now a bot could hand itself a side job only into a conversation it already had.
+- A bot's chat shows its main chat and its conversations as tabs right below the header: a tap switches the pane,
+  "+" starts a new conversation, a long press (or a right click) on a conversation's tab renames it, a dot marks a tab that works or has something unread. Only for a bot with
+  conversations.
+- Settings › Bots: "Approvals for new bots", shared by all machines of the account. Every new bot starts with this
+  level: from "New bot" (the templates no longer bring their own), from the command line and from `create_bot` without
+  a level; a bot made by a bot never gets "never ask" (then "on risky actions"). New field `botApproval` of the shared
+  settings.
+- Report and block, for the app stores' rules on AI content and content of other people: "Report" in the ⋯ menu of a
+  bot's answer or a person's message opens a page with reason and note; the backend quotes the stored message into
+  the person chat with each admin of the relay, and without another admin the report goes by mail to
+  support@openfolk.app (now also under Settings › About). "Block" in the menu of a person chat drops that person's
+  messages and hand-overs on every machine and stops writing to them, until "Unblock". New frames `report`,
+  `report_sent` and `person_block`, new optional `PersonChat.blocked`.
+- Messages to a working Claude bot go into its running job instead of the queue, as in the terminal (the CLI reads
+  them at the next step; the chat says so); "Afterwards" next to the input field queues one behind the job (new
+  optional `later` on `send`). Jobs of other bots, routines, groups and other engines queue as before.
+- Push service for the store apps: the relay of openfolk.app (`PUSH_SERVICE=on`, `POST /push`) delivers app push for
+  every backend on any relay, with the preview the backend reduced by "App notifications show", limited per device
+  token and per sender, storing nothing; a backend uses it last, after its own APNs/FCM credentials and its relay
+  (`PUSH_SERVICE_URL`, default `https://push.openfolk.app`, `off` switches it off). The second exception to "the relay
+  sees no contents" (AGENTS.md).
+- Every account but the relay owner's deletes itself in the app: "Delete my account" in its own account's form, asked
+  twice; the relay removes it with its devices, and its machines remove its data.
+- Voice conversation in the app on a fast model: it runs in the bot's conversation "Voice conversation" on Sonnet,
+  each dialog with fresh context; the first message gets the main chat's last messages, the bot hands heavy work to
+  its main chat with `message_bot` (its own model, all its context), and when the dialog ends what was said goes along
+  with the main chat's next message. Per bot "Voice conversation on a fast model" in the editor (on by default, new
+  optional `talkFast`); bots on another engine talk in their chat as before. New frames `talk_start`, `talk_end`,
+  `talk_started`, new optional `talk` on a conversation.
+- Voice conversation in the app: the answer is read sentence by sentence while the bot still writes it, instead of
+  once it is done; what arrives while a sentence is read follows in one go, a code block once it is closed, and the
+  finished answer reads only what is left.
+- The vault: credentials for the bots' work (API tokens, passwords of services) under Settings › "Vault", admins
+  only. Each entry has a name shaped like an environment variable, a note, a value and the bots that may use it (all or
+  ticked ones); a bot gets its entries as environment variables of its engine process and of every command it runs,
+  and its system prompt names them. A value is write-only in the app (replace or delete, never shown) and is blacked
+  out as `[vault:NAME]` from everything a bot says, its tool calls and results, approval cards and the history. On
+  disk the vault is encrypted with a key of the machine (`vault-key` in the data folder); it travels to the other
+  machines only in the encrypted sync, like the API keys. Names the engines sign in with (`ANTHROPIC_*`,
+  `OPENAI_API_KEY`, `GH_TOKEN`, …) are refused. In the approval level "risky" a command that prints the whole
+  environment (`printenv`, `env`, `Get-ChildItem Env:`) asks first. New frames `vault`, `vault_save`, `vault_delete`.
+- Bots create bots on request with the new tool `create_bot` (name, folder, optionally field of work, role, working
+  instructions, approval level other than "never", folder of the list), saved like "New bot" in the app; the new bot
+  sets itself up in its own chat.
+- Chats with people go into folders of the chat list like bots and groups: "Folder" in their menu, dragging them onto a
+  folder's heading, and `set_folder` by the person's name (new optional `category` on a person chat).
+- A bot of an account's setup can show the profile picture of one of the admin's own bots ("Profile picture": "Like my
+  bot …" in the setup dialog, new optional `avatarFrom` in the setup); the picture goes along with the setup, and a new
+  picture of that bot sends the setup again by itself, so the person's bot follows it; after a start the backend sends
+  such setups once, in case a picture changed meanwhile. SVGs are not taken.
+- Desktop app: the settings show the app's own update under "About": whether it is up to date, a new version
+  downloading or ready, "Check for updates", "Restart now" once a version is downloaded, and the switch for the
+  automatic checks, as in the app's menus.
+- Chats with people: "Like" in the ⋯ menu of a message the other person wrote puts a heart on it that both sides see,
+  "Unlike" takes it back. It needs the new version on the backends of both accounts.
+
+### Changed
+- The limit of 30 failed sign-ins per hour counts per account: guessing at one account no longer locks the password
+  sign-in of every other, and failed joins, claims and setup links no longer lock it at all.
+
+### Fixed
+- Jumping into a chat (a tab, the command palette, a notification, a favorite tile) scrolls the chat list on the
+  left to its row, just far enough; a conversation under a folded bot shows the bot's row.
+- iPhone and iPad (web app and home screen app): with the keyboard open the window no longer jumps up. iOS ignores
+  `interactive-widget=resizes-content` and scrolled the whole page instead; the app now takes the height left above
+  the keyboard (`visualViewport`), the side panels and dialogs too (a dialog's field stays above the keyboard), and
+  keeps the window in place. Renaming a conversation by a long press on its tab opens the keyboard in the field.
+- On a tablet or a computer the open changes of a bot (the git badge in the chat's header and in the list) open in
+  the side panel, as the bot's page right at its open changes, like "Edit bot"; the phone keeps the page of their own.
+- The model chips go from the strongest on the left to the weakest on the right (Fable, Opus, Sonnet, Haiku), then
+  the other engines, whatever order the machine lists the models in.
+- The chat list shows running and waiting bots at the very top, the finished ones with something unread below them
+  (it was the other way round).
+- The search above the chat list has its chips (messages, bots, files, routines) on every screen, not only on the
+  phone; on a desktop it searched messages only.
+- Voice messages with the language on "Detect automatically" are detected only among the app's languages (English,
+  German): Whisper took short recordings for French now and then and wrote them down in French ("Oui, elle est
+  close" for "Ja, leg los"). Needs faster-whisper 1.0 or newer; with an older one detection stays free.
+- The favorite tiles at the top of the list move like the list: a bot that works or waits for you jumps to the front,
+  finished ones with something unread come next, the rest after them, each newest message first.
+- "Clear context" is a chip in the line of the context figure at the top of the bot's page and of a chat's menu (no
+  entry "New session" further down any more), and a tap clears the figure at once, in the header and on the page; the
+  open page also follows new figures.
+- "Edit bot" in the side panel no longer puts the focus into the first field (no keyboard popping up on a tablet), and
+  where the panel lies over the chat a click beside it closes the editor together with the bot page.
+- Voice messages with a short transcript take the full bubble width, so the track is as long as with a long one (on
+  an iPad it was a short stub).
+- Profile pictures: with the image model's key missing but the other provider's stored (Gemini chosen, only an OpenAI
+  key), the photo comes from that provider's model instead of a drawn picture; only without any key is it drawn. Photos through OpenAI
+  use `gpt-image-2`, since OpenAI retired `gpt-image-1` (the setting keeps its value).
+
+
 ## [0.7.1] - 2026-11-20
 
 ### Fixed

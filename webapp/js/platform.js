@@ -60,6 +60,28 @@ export const desktopMachine = (() => {
     };
 })();
 
+/**
+ * @typedef {{ supported: boolean, auto: boolean, forced: boolean, current: string, phase: 'idle' | 'checking' | 'none' | 'downloading' | 'ready' | 'failed', version: string, message: string }} DesktopUpdate
+ */
+/**
+ * The desktop app's own update (desktop/updater.js) for the settings: its state, a check, the switch for the automatic
+ * checks, the restart into a downloaded version, and `changes` for the states that follow (a download done). Only the
+ * app's own page gets it (desktop/preload.js); null in the browser, the mobile apps and a desktop app before 0.7.2.
+ * @type {{ state: () => Promise<DesktopUpdate | null>, check: () => Promise<DesktopUpdate | null>, auto: (on: boolean) => Promise<DesktopUpdate | null>, restart: () => void, changes: (handler: (s: DesktopUpdate) => void) => void } | null}
+ */
+export const desktopUpdates = (() => {
+    const d = /** @type {any} */ (window).openfolkDesktop;
+    if (platformKind !== 'desktop' || !d || typeof d.updateState !== 'function') return null;
+    const safe = (p) => Promise.resolve(p).then((r) => r || null, () => null);
+    return {
+        state: () => safe(d.updateState()),
+        check: () => safe(d.updateCheck()),
+        auto: (on) => safe(d.updateAuto(on)),
+        restart: () => { void d.updateRestart(); },
+        changes: (handler) => { if (typeof d.onUpdateState === 'function') d.onUpdateState(handler); },
+    };
+})();
+
 /** An Apple keyboard: the shortcuts take Cmd instead of Ctrl, and the overview shows the keys' symbols. */
 export const appleKeys = /Mac|iPhone|iPad/.test(/** @type {any} */ (navigator).userAgentData?.platform || navigator.platform || '');
 /** The key of the shortcuts held alone: Cmd on a Mac, Ctrl elsewhere (AltGr reports Ctrl and Alt, and is no shortcut). */
@@ -250,14 +272,34 @@ export function socketUrl(path, base = relayAddress()) {
     return url.href;
 }
 
+/** An iPhone or iPad (iPadOS reports a Mac with a touch screen). */
+const iosDevice = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+/**
+ * iOS keeps the layout full height while the keyboard is open (it ignores interactive-widget=resizes-content) and
+ * scrolls the whole window up instead, which jumps back with every redraw. There the app takes the height of what the
+ * keyboard leaves visible (--app-height) and the window stays where it is.
+ */
+export function fitToKeyboard() {
+    const vv = window.visualViewport;
+    if (!vv || isNative || !iosDevice()) return;
+    const root = document.documentElement;
+    const fit = () => {
+        root.style.setProperty('--app-height', `${Math.round(vv.height)}px`);
+        if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+    };
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+    fit();
+}
+
 /**
  * An iPhone or iPad in a Safari tab: not the app of the home screen (it has storage of its own, so the device has to be
  * paired there again, and only it can receive Web Push) and not the native app. iPadOS reports a Mac with a touch screen.
  */
 export function iosBrowserTab() {
     if (isNative) return false;
-    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    return ios && !(/** @type {any} */ (navigator).standalone === true || matchMedia('(display-mode: standalone)').matches);
+    return iosDevice() && !(/** @type {any} */ (navigator).standalone === true || matchMedia('(display-mode: standalone)').matches);
 }
 
 // ================================================================ Push notifications

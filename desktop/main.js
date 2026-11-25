@@ -18,7 +18,7 @@ const { Backend, aiSetup, dataDir, freePort, guardQuit, joinServer, profileRoots
 const task = require('./task.js');
 const { watchHandovers } = require('./handover.js');
 const { startQrJoin, stopQrJoin } = require('./qr-join.js');
-const { startUpdates, updateMenuItems } = require('./updater.js');
+const { startUpdates, updateMenuItems, updateState, checkFromApp, setAutoFromApp, restartToUpdate } = require('./updater.js');
 
 const CONFIG = () => path.join(app.getPath('userData'), 'config.json');
 const SETUP = path.join(__dirname, 'setup.html');
@@ -1335,6 +1335,8 @@ if (!app.requestSingleInstanceLock()) {
             },
             onChange: () => {
                 createMenu();
+                // The settings of the app's own page show the update too (webapp/js/settings.js)
+                if (win && !win.isDestroyed() && win.webContents.getURL().startsWith(APP)) win.webContents.send('update-state', updateState());
             },
         });
         createMenu();
@@ -1370,6 +1372,11 @@ if (!app.requestSingleInstanceLock()) {
     });
     ipcMain.handle('machine-none', (e) => { if (fromSignIn(e)) signInDone(true); });
     const fromApp = (e) => String(e.senderFrame?.url || '').startsWith(APP);
+    // The update in the settings of the app's own page: its state, "Check for updates", the restart and the switch
+    ipcMain.handle('update-state', (e) => (fromApp(e) ? updateState() : null));
+    ipcMain.handle('update-check', (e) => (fromApp(e) ? checkFromApp() : null));
+    ipcMain.handle('update-auto', (e, on) => (fromApp(e) ? setAutoFromApp(on === true) : null));
+    ipcMain.handle('update-restart', (e) => { if (fromApp(e)) restartToUpdate(); });
     /** The relay this window is signed in at as a mere window: the one a computer can be set up for. */
     const windowRelay = (relay) => (config.mode === 'relay' && relay && originOf(relay) === originOf(config.url) ? originOf(relay) : '');
     // The web app, signed in: is this computer still to be set up at its relay, and do we know the end-to-end key?

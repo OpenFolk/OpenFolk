@@ -58,8 +58,37 @@ check('an existing folder whatever its case, no second one', categoryOf('chief')
 const listed = await run('list_folders', {});
 check('list_folders: folders with their chats', listed.text.includes('Agenten: ') && listed.text.includes('Carlo (cloud)') && listed.text.includes('Delivery: Charlotte (chief)'), listed.text);
 
+// People: by name, into a folder like bots; list_folders names them
+const { setPeople, loadPersonChats } = await import('./people.ts');
+setPeople([{ id: 'main', name: 'Marco', admin: true, reach: 'all' }, { id: 'erik', name: 'Erik', admin: false, reach: 'all' }]);
+const people = await run('set_folder', { folder: 'Personen', chats: ['Erik'] });
+check('a person by name into a new folder', !people.error && loadPersonChats().find((c) => c.id === 'erik')?.category === bots.loadCategories().find((c) => c.name === 'Personen')?.id, people);
+check('… list_folders names the person', (await run('list_folders', {})).text.includes('Personen: Erik (person p:erik)'));
+
 await run('set_folder', { folder: '', chats: ['cloud'] });
 check('an empty folder takes it out', categoryOf('cloud') === '' && (await run('list_folders', {})).text.includes('In no folder: Carlo (cloud)'));
+
+// ---- create_bot: a new bot like "New bot" in the app, set up in its own chat
+const turns: { botId: string; chatId: string }[] = [];
+(m as unknown as { startTurn: (b: { id: string }, spec: { chatId: string }) => void }).startTurn = (b, spec) => { turns.push({ botId: b.id, chatId: spec.chatId }); };
+check('create_bot is a tool of the other engines too', engineToolsFor(s as never, m.toolHost as never).some((x) => x.name === 'create_bot'));
+const made = await run('create_bot', { name: 'Hugo', folder, area: 'Hub', role: 'Hub and core', folder_of_list: 'Agenten' });
+const hugo = bots.loadBots().find((b) => b.name === 'Hugo');
+check('the bot is made on this machine with its profile, asking before risky steps', !made.error && !!hugo && hugo.area === 'Hub' && hugo.approval === 'risky' && hugo.machine === 'workstation', made);
+check('… into the folder of the list', !!hugo && categoryOf(hugo.id) === 'Agenten');
+check('… its setup starts in its own chat, with a line there', !!hugo && turns.some((x) => x.botId === hugo.id && x.chatId === hugo.id) && readHistory(hugo.id).some((e) => e.role === 'event'));
+check('… and the chat of the bot that made it says so', readHistory('chief').some((e) => e.role === 'event' && e.text.includes('Hugo')));
+check('a second bot of that name: refused', (await run('create_bot', { name: 'hugo', folder })).error);
+check('a folder outside the allowed ones: refused, nothing made', (await run('create_bot', { name: 'Ida', folder: 'C:/nowhere-at-all' })).error && !bots.loadBots().some((b) => b.name === 'Ida'));
+// Without a level the one of the settings for new bots, but "never" stays the user's
+const { saveSettings } = await import('./settings.ts');
+saveSettings({ botApproval: 'write' });
+await run('create_bot', { name: 'Jana', folder });
+check('without a level: the one of the settings for new bots', bots.loadBots().find((b) => b.name === 'Jana')?.approval === 'write');
+saveSettings({ botApproval: 'never' });
+await run('create_bot', { name: 'Kai', folder });
+check('settings on "never": a bot made by a bot still asks before risky steps', bots.loadBots().find((b) => b.name === 'Kai')?.approval === 'risky');
+check('the approval level "never" cannot be chosen', !JSON.stringify(engineToolsFor(s as never, m.toolHost as never).find((x) => x.name === 'create_bot')?.schema).includes('"never"'));
 
 console.log(failures ? `\n${failures} FAILED` : '\nall ok');
 process.exit(failures ? 1 : 0);

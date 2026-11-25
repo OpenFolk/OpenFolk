@@ -3,7 +3,7 @@
    and sends it to the person's computer, which joins with the setup link and makes the bots from it. The page a setup
    link opens in a browser only points to the desktop app: a setup needs a computer that runs the bots. */
 import { locale, t } from './i18n.js';
-import { el, node, startParams, toast } from './core.js';
+import { el, node, startParams, state, toast } from './core.js';
 import { fillAvatar, send } from './e2e.js';
 import { shrinkImage } from './voice.js';
 import { closeSettingsDialog, openSettingsDialog } from './menus.js';
@@ -11,7 +11,7 @@ import { alertDialog, confirmDialog } from './dialogs.js';
 import { isNative, parsePairingLink, platformKind } from './platform.js';
 import { approvalLink } from './qr-login.js';
 
-/** @typedef {{ key: string, name: string, role: string, tone: string, approval: string, repo: string, gitUser: string, model?: string, token: boolean | string }} SetupBotRow */
+/** @typedef {{ key: string, name: string, role: string, tone: string, approval: string, repo: string, gitUser: string, model?: string, avatarFrom?: string, token: boolean | string }} SetupBotRow */
 /** @typedef {{ account: string, bots: SetupBotRow[], handover: string, updatedAt?: string }} SetupView */
 /** @typedef {{ id: string, name: string, admin: boolean, reach?: string, contacts?: string[], setupBy?: string, machines?: string[], avatar?: string }} AccountRow */
 /** @typedef {{ name: string, account?: string }} RelayMachine */
@@ -243,6 +243,28 @@ export function accountAvatarField(account) {
     return box;
 }
 
+/**
+ * Which of the admin's own bots this bot takes its picture from; a new picture there reaches the account by itself.
+ * @param {SetupBotRow} r
+ */
+function avatarChoice(r) {
+    const select = /** @type {HTMLSelectElement} */ (node('select'));
+    const none = /** @type {HTMLOptionElement} */ (node('option', '', t('setup.avatarNone')));
+    none.value = '';
+    select.appendChild(none);
+    for (const b of state.bots) {
+        const o = /** @type {HTMLOptionElement} */ (node('option', '', t('setup.avatarLike', { name: b.name })));
+        o.value = b.id;
+        select.appendChild(o);
+    }
+    select.value = r.avatarFrom && state.bots.some((b) => b.id === r.avatarFrom) ? r.avatarFrom : '';
+    select.addEventListener('change', () => {
+        if (select.value) r.avatarFrom = select.value;
+        else delete r.avatarFrom;
+    });
+    return select;
+}
+
 function labelled(label, field) {
     const l = node('label');
     l.append(node('span', '', label), field);
@@ -346,6 +368,7 @@ function render() {
             labelled(t('setup.gitUser'), input(r.gitUser, (v) => { r.gitUser = v; }, { maxLength: 200 })),
             labelled(t('setup.token'), input(String(r.token || ''), (v) => { r.token = v; }, { type: 'password', autocomplete: 'new-password', placeholder: hasToken ? t('setup.tokenStored') : '' })),
             labelled(t('setup.approval'), level),
+            labelled(t('setup.avatarFrom'), avatarChoice(r)),
         );
         if (rows.length > 1) fields.appendChild(button(t('setup.removeBot'), ' small danger', () => { rows.splice(i, 1); expanded.delete(r.key); render(); }));
         card.append(head, fields);

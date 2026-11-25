@@ -15,6 +15,8 @@ import './connection.js';
 import './list.js';
 import './chat.js';
 import './machines.js';
+import './chart.js';
+import './missions.js';
 import './chat-features.js';
 import './queue.js';
 import './voice.js';

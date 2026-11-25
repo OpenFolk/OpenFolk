@@ -9,7 +9,7 @@ import { openChat } from './chat.js';
 import { shrinkImage } from './voice.js';
 import { backendVoice, guessVoice, previewVoice, stopPreview } from './read-aloud.js';
 import { VOICE_CATALOG } from './voices.js';
-import { chatMenuButtons, closeDialog, gitOpenOf, leaveInfo, menuButton, renderInfoChat, showGitChanges } from './menus.js';
+import { chatMenuButtons, closeDialog, gitOpenOf, leaveInfo, menuButton, openGitPage, renderInfoChat, showGitChanges } from './menus.js';
 import { sortedCategories } from './connection.js';
 import { alertDialog } from './dialogs.js';
 import { openGitSettings } from './settings.js';
@@ -42,7 +42,7 @@ export function openEditor(b, machine) {
     folderAsked = '';
     el.editorMachine.value = '';
     el.editorTitle.textContent = moving ? t('editor.moveTitle', { name: b.name, machine: upper(machine) }) : b ? t('editor.editBot') : t('editor.newBot');
-    editorValues(b || BLANK_BOT);
+    editorValues(b || blankBot());
     // The machine only where there is a choice; a new bot starts on the first machine awake
     el.editorMachineField.hidden = !b && el.editorMachine.options.length < 2;
     el.editorError.hidden = true;
@@ -61,15 +61,19 @@ export function openEditor(b, machine) {
         machineChanged();
     }
     el.editor.hidden = false;
-    (moving ? el.editorFolder : b ? el.editorName : el.editorRole).focus();
+    // In the side panel the editor is looked at first, not typed into: no field takes the focus (no keyboard on a tablet)
+    if (!el.editor.classList.contains('side-edit')) (moving ? el.editorFolder : b ? el.editorName : el.editorRole).focus();
 }
 
 /** A new bot before anything is typed. */
-const BLANK_BOT = { name: '', role: '', tone: '', folder: '', approval: 'risky', machine: '' };
+const blankBot = () => ({ name: '', role: '', tone: '', folder: '', approval: newApproval(), machine: '' });
+
+/** The approval level a new bot starts with: the one of the settings (Settings › Bots). */
+const newApproval = () => state.settings?.botApproval || 'risky';
 
 // ---------------------------------------------------------------- A new bot: role and name chips
 // The templates stand behind the role chips: a tap takes the role and, unseen on this page, the template's working
-// instructions and approval level, which a role typed over it drops again. The names come from names.js.
+// instructions, which a role typed over it drops again; the approval level stays the one of the settings. The names come from names.js.
 let pickedTemplate = null;
 /** The initial the shown names share; the chips are drawn anew only when it changes (or on "Others"). */
 let nameInitial = '';
@@ -83,7 +87,6 @@ function renderRoleChips() {
             pickedTemplate = tpl;
             el.editorRole.value = t(tpl.role);
             el.editorTone.value = t(tpl.tone);
-            el.editorApproval.value = tpl.approval;
             renderNameChips();
         });
         return chip;
@@ -97,7 +100,6 @@ export function roleChanged() {
     if (pickedTemplate && el.editorRole.value.trim() !== t(pickedTemplate.role)) {
         pickedTemplate = null;
         el.editorTone.value = '';
-        el.editorApproval.value = 'risky';
     }
     renderNameChips();
 }
@@ -139,6 +141,7 @@ export function editorValues(v) {
     el.editorApproval.value = v.approval || 'risky';
     el.editorTone.value = v.tone || '';
     el.editorVoice.value = v.voice || '';
+    el.editorTalkFast.checked = v.talkFast !== false;
     editorVoices = { ...v.voices };
     fillCategoryOptions(el.editorCategory, v.category);
     canMessageValues(v);
@@ -526,7 +529,7 @@ function saveBot(folder, to) {
             id: b ? b.id : '',
             name: el.editorName.value.trim(), area: el.editorArea.value.trim(), role: el.editorRole.value.trim(), folder,
             model, tone: el.editorTone.value.trim(), avatar: state.editorAvatar, approval: el.editorApproval.value, machine: el.editorMachine.value,
-            voice: el.editorVoice.value, voices: { ...editorVoices }, category: el.editorCategory.value, canMessage: canMessageInput(), allowedTools: allowedToolsInput(), contact: contactInput(),
+            voice: el.editorVoice.value, voices: { ...editorVoices }, talkFast: el.editorTalkFast.checked, category: el.editorCategory.value, canMessage: canMessageInput(), allowedTools: allowedToolsInput(), contact: contactInput(),
         },
     }, to);
     setSaving(false);
@@ -976,6 +979,25 @@ export function openInfo(chatId) {
     renderInfoChat(true);
     showGitChanges(b, el.infoGit, (...parts) => el.infoGit.replaceChildren(...parts));
     send({ type: 'bot_info', botId }, responsibleMachine(b) || undefined);
+}
+
+/**
+ * The open changes of a bot (the git badge in the chat's header and in the list): on a tablet or a computer in the side
+ * panel, as the bot's page scrolled to them, like "Edit bot"; on the phone the page of their own as before.
+ * `chatId`: the chat the badge belongs to (a conversation keeps its page).
+ */
+export function openBotChanges(chatId, fromChat = false) {
+    const b = bot(chatId);
+    if (!b) return;
+    if (window.innerWidth <= 760) {
+        openGitPage(b, fromChat);
+        return;
+    }
+    if (el.info.hidden || state.infoChat !== chatId) openInfo(chatId);
+    // right below the page's head, which stays in view while the page scrolls
+    const panel = /** @type {HTMLElement} */ (el.infoGit.closest('.panel'));
+    const head = /** @type {HTMLElement | null} */ (panel?.querySelector('.panel-top'));
+    if (panel) panel.scrollTop += el.infoGit.getBoundingClientRect().top - panel.getBoundingClientRect().top - (head ? head.offsetHeight : 0);
 }
 
 /** What the top of the bot's page shows of the bot; the page is drawn again when it changes. */

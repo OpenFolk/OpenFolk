@@ -228,6 +228,14 @@ sent to backends in the hello and after every change (`people`); the relay route
 and sees nothing new. Bots never read person chats (`search_history` skips them), because the people did not write
 them for a bot. `hand_over` writes a bot's summary into the person chat between the bot's account and its contact,
 with a push of its own kind that ignores mute; it does not wait for the person, as a session must not hang for hours.
+A **report** (the stores' rules for AI answers and content of other people) is a person message too: the backend
+quotes the stored entry, not what the client claims, into the chat with each admin the account reaches, so it gets
+the push, the sync and a way to answer without a store of its own. A **block** is a flag on the person chat
+(`PersonChat.blocked`), synced like mute; the receiving backend drops the blocked person's messages, so it holds on
+every machine without the relay or the other side knowing. A **like** is a field on the liked entry
+(`HistoryEntry.like`) in both halves, found by the entry id the halves share, and the one part of an entry that
+changes after other machines have it: `mergeHistory` therefore takes over a newer like of an entry it knows, and a
+like taken back stays as `on: false` with its time instead of being removed, or an older copy would bring it back.
 
 **Machines bound to an account** turn "machines belong to nobody" around for one case: an employee's or customer's
 own computer, joined with a setup link (`/setup-invite`, `/setup` in `relay/src/relay.ts`, `MachineTokens` in
@@ -329,4 +337,5 @@ restarts. Nothing can assume a coordinated release:
 - The relay speaks to old backends too: it tolerates the German field names from before the English protocol
   (`relay/src/migrate.ts`, `wake-schedule.ts`) and a backend ignores relay messages it does not know.
 
-See [web-app.md](./web-app.md) for the web app's structure and [push.md](./push.md) for notifications.
+See [web-app.md](./web-app.md) for the web app's structure, [push.md](./push.md) for notifications and
+[missions.md](./missions.md) for Mission Control.

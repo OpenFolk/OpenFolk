@@ -14,9 +14,9 @@ const settings = await import('./settings.ts');
 const { checkClientFrame } = await import('./frames.ts');
 const { snapshot } = await import('./sync.ts');
 
-check('defaults', settings.avatarModel() === 'gemini-3.1-flash-image' && settings.gitAutoPull() && settings.pushPreview() === 'title' && settings.voiceLanguage() === '');
-const saved = settings.saveSettings({ avatarModel: 'gpt-image-1', gitAutoPull: false, voiceLanguage: 'de', pushPreview: 'none' });
-check('saved with a time', settings.avatarModel() === 'gpt-image-1' && !settings.gitAutoPull() && settings.voiceLanguage() === 'de' && settings.pushPreview() === 'none' && Boolean(saved.updatedAt));
+check('defaults', settings.avatarModel() === 'gemini-3.1-flash-image' && settings.gitAutoPull() && settings.pushPreview() === 'title' && settings.voiceLanguage() === '' && settings.botApproval() === 'risky');
+const saved = settings.saveSettings({ avatarModel: 'gpt-image-1', gitAutoPull: false, voiceLanguage: 'de', pushPreview: 'none', botApproval: 'write' });
+check('saved with a time', settings.avatarModel() === 'gpt-image-1' && !settings.gitAutoPull() && settings.voiceLanguage() === 'de' && settings.pushPreview() === 'none' && settings.botApproval() === 'write' && Boolean(saved.updatedAt));
 check('language stays when other fields change', settings.loadSettings().language === 'en');
 
 check('keys: stored, trimmed', settings.saveApiKeys({ openai: ' sk-1 ' }) && settings.apiKey('openai') === 'sk-1');

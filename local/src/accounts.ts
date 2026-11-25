@@ -16,9 +16,10 @@ import { setPeople } from './people.ts';
 import type { PersonRoute } from './person-route.ts';
 import type { HistoryEntry, PeerData, Person } from '../../shared/protocol.ts';
 
-/** What a person chat needs of the other account's manager: its half of a message (people.ts). */
+/** What a person chat needs of the other account's manager: its half of a message or of a like (people.ts). */
 export interface PersonInbox {
     fromPerson(from: string, entry: HistoryEntry, kind?: 'message' | 'handover'): void;
+    likeFromPerson(from: string, entryId: string, on: boolean, at: string): void;
 }
 
 /** What the router needs of a BotManager; agent.ts implements it. */
@@ -39,6 +40,7 @@ export interface AccountManager extends RelayHandler {
     /** The relay's list of people changed. */
     peopleChanged(): void;
     fromPerson(from: string, entry: HistoryEntry, kind?: 'message' | 'handover'): void;
+    likeFromPerson(from: string, entryId: string, on: boolean, at: string): void;
 }
 
 export class Accounts implements AccountRouter {

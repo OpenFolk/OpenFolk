@@ -39,6 +39,12 @@ execFileSync('git', ['init', '-q'], { cwd: repo });
 execFileSync('git', ['remote', 'add', 'origin', 'https://git.example.com/team/website.git'], { cwd: repo });
 const inspected = await inspectFolder(repo);
 check('check: folder as stored and its origin', inspected.folder === repo.replace(/\\/g, '/') && inspected.remote === 'https://git.example.com/team/website.git', inspected);
+fs.writeFileSync(path.join(repo, '.gitignore'), 'ignored/\n');
+fs.mkdirSync(path.join(repo, 'ignored'));
+fs.mkdirSync(path.join(repo, 'tracked'));
+check('check: a folder the repository ignores has no origin', (await inspectFolder(path.join(repo, 'ignored'))).remote === undefined);
+check('check: a folder inside the repository has its origin', (await inspectFolder(path.join(repo, 'tracked'))).remote === 'https://git.example.com/team/website.git');
+for (const f of ['.gitignore', 'ignored', 'tracked']) fs.rmSync(path.join(repo, f), { recursive: true });
 check('check: missing folder refused', (await refused(() => inspectFolder(path.join(root, 'nothing')))) !== '');
 check('check: folder outside the allowed roots refused', (await refused(() => inspectFolder(os.homedir()))) !== '');
 

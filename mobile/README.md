@@ -44,6 +44,20 @@ are versioned; `www/` and the copies inside the native projects are not.
 The app id is `io.openfolk.app` (`capacitor.config.json`, Android `applicationId`, iOS bundle identifier). If you
 publish your own build, change it in all three places and set `APNS_TOPIC` accordingly.
 
+### Icons and splash screens
+
+`npm run assets` renders `../webapp/icons/icon.svg` into `assets/` (`scripts/make-assets.mjs`) and lets
+`@capacitor/assets` write the iOS app icon, the Android launcher icons and the splash screens (light and dark); the
+Play Store icon and feature graphic land in `store/graphics/`. Run it after a change to the logo.
+
+### Store builds
+
+`.github/workflows/mobile.yml` builds both apps on GitHub: unsigned on every push to `mobile/` or `webapp/`, signed
+when started by hand (environment `store`; with "upload" to TestFlight and Google Play's internal test track). The
+version is `version` in `package.json`, the build number the workflow's run number. Android release builds are
+shrunk with R8 and signed only when `ANDROID_KEYSTORE_FILE` and its passwords are set in the environment; signing keys
+never go into the repository (`secrets/` is ignored).
+
 ## Push
 
 The backends send directly to Apple and Google, with credentials of whoever builds the app. Set them in the `.env`
@@ -86,6 +100,21 @@ show" decides what goes into a notification: `title` (default, e.g. the bot's na
 the stores that many people use with their own backends, the relay of the publisher holds the credentials and
 delivers for all of them (see above); a self-hosted relay without them leaves the apps without push unless the
 backends have credentials of their own.
+
+## Review
+
+Apple and Google sign in on their own devices, several times and for every update, so the reviewers get a relay
+address, an account and a password, never a pairing link or a code that works once. A demo relay holds accounts for
+them (`DEMO_ACCOUNTS` and `DEMO_PASSWORD` in `relay/.env.sample`), one per store, so a deletion by one reviewer does
+not cut off the other. Their name and password are fixed, failed sign-ins do not lock them, and one a reviewer deletes
+(the stores want "Delete my account" to work) comes back at once under a new id with the same name and password.
+
+The backend of the demo relay runs with `DEMO_BOT` (`.env.sample`): every demo account without a bot gets the bot from
+that template, by default one that only answers. Run it with `E2E_KEY=off`: a device signed in with a password does not
+know the end-to-end key, and a reviewer cannot be asked to type it. The demo holds no real people and no real data.
+
+Reviewers sign in with *URL and password*, the relay address, then *Sign in to another account than the main one?*,
+the account's name and the password.
 
 ## Tests
 

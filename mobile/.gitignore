@@ -1,3 +1,9 @@
 node_modules/
 # Copied from ../webapp by scripts/copy-web.mjs
 www/
+# Signing keys and service accounts; the originals live in 1Password (vault Dev)
+secrets/
+*.jks
+*.keystore
+*.p8
+google-services.json

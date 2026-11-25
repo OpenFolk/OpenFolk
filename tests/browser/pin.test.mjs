@@ -27,7 +27,7 @@ export default async function ({ start, check }) {
     await h.openChat('PDF');
 
     await more('a1');
-    check('"⋯" opens the menu', (await menu()) === 'Reply|Pin|Read aloud|Copy|Forward', await menu());
+    check('"⋯" opens the menu', (await menu()) === 'Reply|Pin|Read aloud|Copy|Forward|Report', await menu());
     await p.locator('#message-menu button', { hasText: 'Pin' }).click();
     await h.wait(200);
     check('bar shows the pinned answer', (await bar()).includes('PDF-Reader: The deploy command is npm run deploy.'), await bar());

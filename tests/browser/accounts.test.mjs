@@ -209,7 +209,7 @@ export default async function ({ start, check }) {
     await m.click('#accounts-own-avatar button:has-text("Remove picture")');
     await admin.wait(100);
     check('… "Remove" sends null', admin.sent.findLast((f) => f.type === 'account_update' && 'avatar' in f)?.avatar === null);
-    check('… no save or close button, it saves as a field is left', await m.locator('#accounts-own button').allTextContents().then((b) => JSON.stringify(b) === JSON.stringify(['Choose picture', 'Remove picture'])));
+    check('… no save or close button, it saves as a field is left', await m.locator('#accounts-own button:not(#accounts-delete-own)').allTextContents().then((b) => JSON.stringify(b) === JSON.stringify(['Choose picture', 'Remove picture'])));
     await m.fill('#accounts-own-name', 'Alex B.');
     await m.press('#accounts-own-name', 'Enter');
     await admin.wait(100);

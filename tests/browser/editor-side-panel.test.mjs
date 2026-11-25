@@ -1,5 +1,6 @@
 // The bot editor opens in the side panel when it is started from the bot's page, on top of that page: the chat stays
 // usable, Cancel and Save lead back to the page, and the page shows the saved values. A new bot keeps the window.
+// No field takes the focus there; as an overlay a click beside the panel closes the editor and the page.
 import { bot } from './harness.mjs';
 
 export default async function ({ start, check }) {
@@ -32,6 +33,7 @@ export default async function ({ start, check }) {
         await p.click('#info-edit-top');
         await h.wait(200);
         check(`${label}: the editor opens, the page stays open below it`, await p.isVisible('#editor-form') && !(await infoHidden()));
+        check(`${label}: no field takes the focus`, await p.evaluate(() => !document.getElementById('editor').contains(document.activeElement)));
         const form = await box('#editor-form');
         check(`${label}: the editor sits at the right edge`, (await sideEdit()) && Math.round(form.x + form.width) === width && (width !== 1900 || (await sideBySide())), form);
         const chat = await box('[data-el=text]');
@@ -47,8 +49,16 @@ export default async function ({ start, check }) {
         await p.click('#editor-form .actions [data-close]');
         await h.wait(200);
         check(`${label}: Cancel leads back to the page`, !(await p.isVisible('#editor-form')) && (await p.isVisible('#info-panel')) && (await infoName()) === 'PDF-Reader', await infoName());
-        await p.click('#info [data-close]');
-        await h.wait(150);
+        if (width === 1100) {
+            await p.click('#info-edit-top');
+            await h.wait(200);
+            await p.mouse.click(200, 400);
+            await h.wait(200);
+            check('overlay: a click beside the panel closes editor and page', !(await p.isVisible('#editor-form')) && (await infoHidden()));
+        } else {
+            await p.click('#info [data-close]');
+            await h.wait(150);
+        }
     }
 
     // The machine link on the page: same place

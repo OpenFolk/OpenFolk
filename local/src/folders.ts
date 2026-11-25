@@ -23,9 +23,16 @@ function git(cwd: string, args: string[], timeout = 15_000): Promise<string> {
     });
 }
 
-/** Address of the repository the folder lives in (origin), if it is one. */
-export function originOf(folder: string): Promise<string | undefined> {
-    return git(folder, ['remote', 'get-url', 'origin']).then((o) => o.trim() || undefined, () => undefined);
+/**
+ * Address of the repository the folder lives in (origin), if it is one. A folder the enclosing repository ignores
+ * (C:/www with agents/ in its .gitignore) is not part of it, so it has none.
+ */
+export async function originOf(folder: string): Promise<string | undefined> {
+    const remote = await git(folder, ['remote', 'get-url', 'origin']).then((o) => o.trim() || undefined, () => undefined);
+    if (!remote) return undefined;
+    // check-ignore exits 0 for an ignored path, 1 for one that is not
+    const ignored = await git(folder, ['check-ignore', '-q', '.']).then(() => true, () => false);
+    return ignored ? undefined : remote;
 }
 
 /**

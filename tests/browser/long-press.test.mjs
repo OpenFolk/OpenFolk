@@ -31,7 +31,7 @@ export default async function ({ start, check }) {
     const entries = (sel) => p.evaluate((sel) => { const m = document.querySelector(sel); return m && !m.hidden ? [...m.querySelectorAll(':scope > button')].map((b) => b.textContent.trim() + (b.disabled ? ' (disabled)' : '')) : null; }, sel);
     const menu = () => entries('#row-menu');
     const chips = () => p.locator('#row-menu .model-switch .chip').allTextContents();
-    const BOT = ['New conversation', 'Move to a conversation', 'Open changes', 'Search in chat', 'Machine sessions', 'Info, routines, knowledge', 'Edit bot', 'Duplicate bot', 'Mark as favorite', 'Mute', 'Folder', 'New session (clear context)', 'Delete bot'];
+    const BOT = ['New conversation', 'Move to a conversation', 'Open changes', 'Search in chat', 'Machine sessions', 'Info, routines, knowledge', 'Edit bot', 'Duplicate bot', 'Mark as favorite', 'Mute', 'Folder', 'Delete bot'];
     const open = () => p.evaluate(() => document.getElementById('app').classList.contains('chat-open'));
 
     await hold('Skool Sven', 150);

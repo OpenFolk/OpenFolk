@@ -25,8 +25,23 @@ const MAX_SVG = 200 * 1024;
 const TIMEOUT_MS = 90_000;
 /** Image model for photos; the answer must be there before the web app's 120-s timer. */
 const PHOTO_TIMEOUT_MS = 75_000;
-/** Gemini or OpenAI, after the image model in the shared settings (default Nano Banana 2, about 6 cents per image). */
-const photoProvider = (): 'gemini' | 'openai' => (avatarModel().startsWith('gemini') ? 'gemini' : 'openai');
+/**
+ * The image model a photo is made with: the one chosen in the shared settings (default Nano Banana 2, about 6 cents per
+ * image), or, when only the other provider's key is stored, that provider's model; a drawing only without either key.
+ */
+export function photoModel(has: (p: 'gemini' | 'openai') => boolean = (p) => Boolean(apiKey(p)), chosen: string = avatarModel()): string | null {
+    const provider = chosen.startsWith('gemini') ? 'gemini' : 'openai';
+    if (has(provider)) return chosen;
+    if (provider === 'gemini' && has('openai')) return 'gpt-image-1';
+    if (provider === 'openai' && has('gemini')) return 'gemini-3.1-flash-image';
+    return null;
+}
+/**
+ * The model OpenAI makes the photo with. The setting keeps the value 'gpt-image-1' as "OpenAI" (stored settings and
+ * older apps name it), but OpenAI retired that model; its successor answers the same request.
+ */
+const OPENAI_IMAGE_MODEL = 'gpt-image-2';
+const photoProvider = (): 'gemini' | 'openai' => ((photoModel() ?? avatarModel()).startsWith('gemini') ? 'gemini' : 'openai');
 
 const LANGUAGE_NAMES: Record<Language, string> = { en: 'English', de: 'German' };
 
@@ -49,9 +64,9 @@ const SCHEMAS = {
     photo: { type: 'object', properties: { description: { type: 'string' } }, required: ['description'], additionalProperties: false },
 } as const;
 
-/** Whether photos are possible: the key of the chosen image model is in the settings. */
+/** Whether photos are possible: a key of an image model's provider is in the settings. */
 export function photoPossible(): boolean {
-    return Boolean(photoKey());
+    return photoModel() !== null;
 }
 
 function photoKey(): string {
@@ -215,9 +230,26 @@ export function suggestionEngine(model: string | undefined, on: (e: Engine) => b
 }
 
 function ask(a: SuggestionRequest, context: string, task: Task): Promise<unknown> {
-    const engine = suggestionEngine(a.model);
+    return askJson({ prompt: prompt(a, context, task), schema: SCHEMAS[task], shape: SHAPES[task], folder: context ? a.folder : '', model: a.model });
+}
+
+/** One question with a JSON answer, without tools or history: Claude with structured output, another engine in words. */
+export interface JsonQuestion {
+    prompt: string;
+    schema: object;
+    /** The answer's shape in words, for the engines without structured output */
+    shape: string;
+    /** Working folder of the short session; '' = the project's own */
+    folder: string;
+    model?: string;
+    system?: string;
+    timeoutMs?: number;
+}
+
+export function askJson(q: JsonQuestion): Promise<unknown> {
+    const engine = suggestionEngine(q.model);
     // A model of another engine means nothing to Claude: then its default
-    return engine === 'claude' ? askClaude({ ...a, model: engineOf(a.model) === 'claude' ? a.model : 'default' }, context, task) : askEngine(engine, a, context, task);
+    return engine === 'claude' ? askClaude({ ...q, model: engineOf(q.model) === 'claude' ? q.model : 'default' }) : askEngine(engine, q);
 }
 
 /** The answer's shape in words, for the engines without structured output. */
@@ -237,8 +269,8 @@ export function jsonIn(text: string): unknown {
 }
 
 /** One question to another engine (Codex, ACP) in a session of its own: no tools, every approval refused. */
-function askEngine(engine: Exclude<Engine, 'claude'>, a: SuggestionRequest, context: string, task: Task): Promise<unknown> {
-    const folder = context ? path.resolve(a.folder) : projectRoot;
+function askEngine(engine: Exclude<Engine, 'claude'>, q: JsonQuestion): Promise<unknown> {
+    const folder = q.folder ? path.resolve(q.folder) : projectRoot;
     return new Promise((resolve, reject) => {
         let text = '';
         let settled = false;
@@ -258,41 +290,41 @@ function askEngine(engine: Exclude<Engine, 'claude'>, a: SuggestionRequest, cont
             approval: async () => ({ behavior: 'deny', message: 'No tools here: answer with the JSON only.' }),
         };
         const run = engine === 'codex' ? new CodexRun(target) : new AcpRun(ACP_AGENTS[engine], target);
-        const timer = setTimeout(() => end('timeout'), TIMEOUT_MS);
-        void run.send(`${prompt(a, context, task)}\nAnswer with one JSON object of this shape and nothing else: ${SHAPES[task]}`, {
+        const timer = setTimeout(() => end('timeout'), q.timeoutMs ?? TIMEOUT_MS);
+        void run.send(`${q.prompt}\nAnswer with one JSON object of this shape and nothing else: ${q.shape}`, {
             folder,
-            model: engineOf(a.model) === engine ? engineModelId(a.model) : undefined,
-            instructions: 'You help set up bots. Use no tools and change no files. Answer only with the requested JSON.',
+            model: engineOf(q.model) === engine ? engineModelId(q.model) : undefined,
+            instructions: `${q.system ?? 'You help set up bots.'} Use no tools and change no files. Answer only with the requested JSON.`,
             tools: [],
         });
     });
 }
 
-async function askClaude(a: SuggestionRequest, context: string, task: Task): Promise<unknown> {
-    const cwd = context ? path.resolve(a.folder) : projectRoot;
+async function askClaude(q: JsonQuestion): Promise<unknown> {
+    const cwd = q.folder ? path.resolve(q.folder) : projectRoot;
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => abort.abort(), q.timeoutMs ?? TIMEOUT_MS);
     try {
         let data: unknown;
         let error: string | null = null;
-        const q = query({
-            prompt: prompt(a, context, task),
+        const run = query({
+            prompt: q.prompt,
             options: {
                 cwd,
-                model: !a.model || a.model === 'default' ? undefined : a.model,
+                model: !q.model || q.model === 'default' ? undefined : q.model,
                 tools: [],
                 // The structured answer needs a second round depending on the model
                 maxTurns: 3,
                 persistSession: false,
                 settingSources: [],
-                systemPrompt: 'You help set up bots. Answer only with the requested JSON.',
-                outputFormat: { type: 'json_schema', schema: SCHEMAS[task] },
+                systemPrompt: `${q.system ?? 'You help set up bots.'} Answer only with the requested JSON.`,
+                outputFormat: { type: 'json_schema', schema: q.schema as Record<string, unknown> },
                 env: claudeEnv(),
                 settings: claudeSettings(),
                 abortController: abort,
             },
         });
-        for await (const m of q) {
+        for await (const m of run) {
             if (m.type !== 'result') continue;
             if (m.subtype === 'success') {
                 data = m.structured_output ?? jsonFrom(m.result);
@@ -327,7 +359,7 @@ async function imageRequest(url: string, headers: Record<string, string>, body: 
 /** Google Gemini (Nano Banana): generateContent with image output, image in candidates[].content.parts[].inlineData. */
 async function photoGemini(promptText: string, small: boolean): Promise<string> {
     const { ok, status, json } = await imageRequest(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(avatarModel())}:generateContent`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(photoModel() ?? avatarModel())}:generateContent`,
         { 'x-goog-api-key': photoKey() },
         {
             contents: [{ parts: [{ text: promptText }] }],
@@ -336,7 +368,7 @@ async function photoGemini(promptText: string, small: boolean): Promise<string> 
         },
     );
     const error = (json.error as { message?: string } | undefined)?.message;
-    if (!ok) throw new Error(`Image model ${avatarModel()}: ${error || `HTTP ${status}`}`);
+    if (!ok) throw new Error(`Image model ${photoModel() ?? avatarModel()}: ${error || `HTTP ${status}`}`);
     type Part = { inlineData?: { mimeType?: string; data?: string }; text?: string };
     const candidates = json.candidates as { content?: { parts?: Part[] }; finishReason?: string }[] | undefined;
     const parts = candidates?.[0]?.content?.parts ?? [];
@@ -356,10 +388,10 @@ async function photoOpenai(promptText: string, small: boolean): Promise<string> 
         'https://api.openai.com/v1/images/generations',
         { authorization: `Bearer ${photoKey()}` },
         // gpt-image makes no 512: a stronger JPEG compression keeps the picture small instead
-        { model: avatarModel(), prompt: promptText, n: 1, size: '1024x1024', quality: 'medium', output_format: 'jpeg', ...(small ? { output_compression: 60 } : {}) },
+        { model: OPENAI_IMAGE_MODEL, prompt: promptText, n: 1, size: '1024x1024', quality: 'medium', output_format: 'jpeg', ...(small ? { output_compression: 60 } : {}) },
     );
     const error = (json.error as { message?: string } | undefined)?.message;
-    if (!ok) throw new Error(`Image model ${avatarModel()}: ${error || `HTTP ${status}`}`);
+    if (!ok) throw new Error(`Image model ${OPENAI_IMAGE_MODEL}: ${error || `HTTP ${status}`}`);
     const b64 = (json.data as { b64_json?: string }[] | undefined)?.[0]?.b64_json;
     if (!b64) throw new Error(t('suggest.noImage', { reason: '' }));
     return `data:image/jpeg;base64,${b64}`;

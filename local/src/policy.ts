@@ -46,7 +46,7 @@ const RISKY = [
 ];
 
 /** Sensitive file names ('zugangsdaten' is German for credentials, a common name in existing setups). */
-const SENSITIVE = /\.env(\.|$)|\.(pem|key|pfx|p12|ppk)$|zugangsdaten|credentials|secrets\./i;
+const SENSITIVE = /\.env(\.|$)|\.(pem|key|pfx|p12|ppk)$|zugangsdaten|credentials|secrets\.|(^|[\\/])vault(\.json|-key)$/i;
 /** Templates of .env files, without values (AGENTS.md: .env.sample may be read). */
 const TEMPLATE = /\.env\.(sample|example|tpl|template|dist)$/i;
 
@@ -78,10 +78,34 @@ export function secretRead(tool: string, input: Record<string, unknown>): string
     return null;
 }
 
+/** The guardrails of a mission, written by the backend for the project (missions.ts). */
+const GUARDRAILS = /\.openfolk[\\/]+mission\.json$/i;
+const GUARDRAILS_IN_COMMAND = /\.openfolk[\\/]+mission\.json/i;
+const WRITES_IN_COMMAND = />|\b(Set-Content|Out-File|Add-Content|Remove-Item|Move-Item|Copy-Item|New-Item|rm|mv|cp|del|tee|truncate)\b|\bsed\s+-i/i;
+
+/**
+ * Reason to refuse a change of a mission's guardrail file, in every approval level, "never" included: the user sets
+ * those limits in Mission Control, and a bot that could edit them could raise its own. The cycle checks the file as
+ * well and puts it back, for whatever gets around this (a program the bot runs).
+ */
+export function guardrailWrite(tool: string, input: Record<string, unknown>): string | null {
+    if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit') {
+        const files = Array.isArray(input.files) ? input.files.map(String) : [String(input.file_path ?? input.notebook_path ?? '')];
+        if (files.some((f) => GUARDRAILS.test(f))) return t('policy.guardrails');
+    }
+    if (tool === 'Bash' || tool === 'PowerShell') {
+        const command = String(input.command ?? '');
+        if (GUARDRAILS_IN_COMMAND.test(command) && WRITES_IN_COMMAND.test(command)) return t('policy.guardrails');
+    }
+    return null;
+}
+
 export function needsApproval(policy: ApprovalPolicy, tool: string, input: Record<string, unknown>, folder: string, allowed: readonly string[] = []): Decision {
     if (tool === 'AskUserQuestion') return { ask: true, reason: t('policy.question') };
     const secret = secretRead(tool, input);
     if (secret) return { ask: false, deny: true, reason: secret };
+    const guardrails = guardrailWrite(tool, input);
+    if (guardrails) return { ask: false, deny: true, reason: guardrails };
     if (tool.startsWith('mcp__openfolk__')) return { ask: false };
     const writing = WRITING.has(tool) || foreignMcp(tool);
     // Reading only: whatever writes, runs commands or reaches a foreign service is refused without a card. Also a tool

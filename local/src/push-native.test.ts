@@ -20,6 +20,8 @@ Object.assign(process.env, {
     APNS_KEY_FILE: path.join(dir, 'AuthKey.p8'), APNS_KEY_ID: 'KEY123', APNS_TEAM_ID: 'TEAM456',
     FCM_SERVICE_ACCOUNT_FILE: path.join(dir, 'firebase.json'),
 });
+// The push service of openfolk.app is tried last; these tests never reach the network
+process.env.PUSH_SERVICE_URL = 'off';
 delete process.env.APNS_ENV;
 // The address the apps store for this relay: their notifications name it, so an app on several relays opens the right one
 process.env.APP_URL = 'https://relay.example.com';
@@ -166,6 +168,28 @@ await sendPush({ title: 'x', body: 'y', url: '/' });
 check('own credentials win: APNs sent by this machine, only FCM handed to the relay', apnsCalls.length === 1 && handed.length === 1 && handed[0].subscriptions.length === 1, { apns: apnsCalls.length, handed });
 relayPush.channels = () => [];
 relayPush.send = () => false;
+
+// ---- neither here nor on the relay: the push service of openfolk.app, with the preview; it reports tokens to drop
+const { pushService, pushServiceUrl } = await import('./push.ts');
+delete process.env.APNS_KEY_FILE;
+resetNativeConfig();
+const posted: { url: string; body: { subscriptions: { token: string }[]; message: { title: string; body: string; url: string } } }[] = [];
+pushService.post = async (url, body) => { posted.push({ url, body: body as never }); return { gone: [PIXEL] }; };
+delete process.env.PUSH_SERVICE_URL;
+check('the push service by default: push.openfolk.app, its channels deliverable', pushServiceUrl() === 'https://push.openfolk.app' && pushChannels().join() === 'web,apns,fcm');
+await sendPush({ title: 'Cloud agent', body: 'Deploy finished', url: '/?chat=cloud', tag: 'cloud' }, 'done');
+check('both app tokens to the service, the preview only and the link', posted.length === 1 && posted[0].body.subscriptions.length === 2 && posted[0].body.message.title === 'Cloud agent'
+    && posted[0].body.message.body === '' && posted[0].body.message.url === LINK, posted);
+check('a token the service reports gone is dropped', !subscriptions().some((s) => (s as { token?: string }).token === PIXEL) && subscriptions().length === 1, subscriptions());
+relayPush.channels = () => ['apns', 'fcm'];
+relayPush.send = () => true;
+posted.length = 0;
+await sendPush({ title: 'x', body: 'y', url: '/' });
+check('the own relay delivers: the service is not asked', posted.length === 0);
+relayPush.channels = () => [];
+process.env.PUSH_SERVICE_URL = 'off';
+await sendPush({ title: 'x', body: 'y', url: '/' });
+check('PUSH_SERVICE_URL=off: not asked, only web', posted.length === 0 && pushChannels().join() === 'web');
 
 fs.rmSync(dir, { recursive: true, force: true });
 if (failures) process.exit(1);

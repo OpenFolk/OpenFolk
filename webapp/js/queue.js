@@ -1,5 +1,5 @@
 /* OpenFolk web app: queue, running answers, approvals and questions, sending and attachments. */
-import { t, tn } from './i18n.js';
+import { readSetting, t, tn, writeSetting } from './i18n.js';
 import { el, md, node, state, closest } from './core.js';
 import { codeBlocks } from './code-blocks.js';
 import { activePane, paneFor, paneOf } from './panes.js';
@@ -12,7 +12,7 @@ import { isRead, renderEntry, scroll, setReply } from './chat-features.js';
 /** @typedef {import('./panes.js').Pane} Pane */
 import { canRecord, dictationOn, imageRequested, rec, renderUploads } from './voice.js';
 import { dropExpected } from './read-aloud.js';
-import { INLINE_IMAGE_MAX, cachedUrl, fileUrl, isVideo, loadWhenVisible, showVideo } from './media.js';
+import { INLINE_IMAGE_MAX, cachedUrl, fileUrl, isMarkdown, isVideo, loadWhenVisible, showMarkdown, showVideo } from './media.js';
 
 // ---------------------------------------------------------- Queue
 // Own messages that arrive while the bot is still working are not in the history, but collapsed above the
@@ -376,7 +376,16 @@ export function attachmentBar(list) {
         } else {
             k.append(node('span', 'symbol', '📄'), node('span', 'name', a.name), node('span', 'size', fileSize(a.size)));
         }
+        const doc = !isImage && !video && isMarkdown(a);
+        if (doc) k.title = t('attachment.read', { name: a.name });
         k.addEventListener('click', () => {
+            // A Markdown file opens to read in the app, formatted; saving it is a button there
+            if (doc) {
+                if (!reachable) { showEvent(t('attachment.machineOff', { name: a.name, machine: upper(a.machine) }), true); return; }
+                k.classList.add('loading');
+                showMarkdown(a).catch((e) => showEvent(e.message, true)).finally(() => k.classList.remove('loading'));
+                return;
+            }
             // A video plays in the app: fetched from the machine once, then from memory
             if (video) {
                 if (!reachable) { showEvent(t('attachment.machineOff', { name: a.name, machine: upper(a.machine) }), true); return; }
@@ -597,6 +606,36 @@ function approvalCard(a) {
     return k;
 }
 
+// ---------------------------------------------------------------- Drafts
+// What was typed into a chat and not sent stays with that chat when the pane shows another one, also across a reload
+// of the page (this device only); the list shows it as "Draft: …" while the chat is not open.
+const DRAFTS_KEY = 'openfolk.drafts';
+/** @type {Record<string, string>} */
+const drafts = (() => {
+    try { return JSON.parse(readSetting(DRAFTS_KEY) || '{}'); } catch { return {}; }
+})();
+
+const keepDrafts = () => writeSetting(DRAFTS_KEY, Object.keys(drafts).length ? JSON.stringify(drafts) : '');
+
+/** The draft of a chat ('' if none). */
+export const draftOf = (chatId) => (chatId && drafts[chatId]) || '';
+
+/** Notes the text of the pane's input as the draft of the chat it shows (an empty one removes it). @param {Pane} p */
+export function saveDraft(p) {
+    if (!p.chatId) return;
+    const text = p.el.text.value;
+    if (text.trim()) drafts[p.chatId] = text;
+    else if (!(p.chatId in drafts)) return;
+    else delete drafts[p.chatId];
+    keepDrafts();
+}
+
+/** Puts the draft of the chat the pane shows now into its input, or empties it. @param {Pane} p */
+export function loadDraft(p) {
+    p.el.text.value = draftOf(p.chatId);
+    textHeight(p);
+}
+
 // ---------------------------------------------------------------- Sending, attachments
 
 /** @param {Pane} p */
@@ -610,10 +649,13 @@ export function sendMessage(p) {
         type: 'send', chatId, text,
         attachments: p.uploads.length ? p.uploads.map((u) => ({ name: u.name, type: u.type, data: u.data, thumb: u.thumb })) : undefined,
         replyTo: p.replyTo || undefined,
+        later: p.later || undefined,
     }, b ? responsibleMachine(b) : undefined);
+    p.later = false;
     dropExpected(chatId);
     setReply(p, null);
     p.el.text.value = '';
+    saveDraft(p);
     p.uploads = [];
     renderUploads(p);
     textHeight(p);
@@ -655,4 +697,10 @@ export function composerButtons(p) {
     e.btnMic.disabled = e.btnSend.disabled || (!!rec.recorder && !recording) || !!p.dictating;
     e.btnMic.classList.toggle('busy', !!p.dictating);
     e.btnTalk.disabled = e.btnMic.disabled;
+    // While the bot works a message goes into its running job (session.ts fold); "Afterwards" queues it behind
+    const working = !!p.chatId && !isGroup(p.chatId) && !isPerson(p.chatId) && chatStatus(p.chatId).state === 'thinking';
+    if (!working) p.later = false;
+    e.btnLater.hidden = !working || (recording && !!rec.talk);
+    e.btnLater.setAttribute('aria-pressed', String(!!p.later));
+    e.btnLater.classList.toggle('on', !!p.later);
 }

@@ -47,7 +47,7 @@ export function saveSetup(input: AccountSetupInput): AccountSetup {
         account: input.account, handover: input.handover, updatedAt: new Date().toISOString(),
         bots: input.bots.map(({ token: _t, ...b }) => ({
             key: b.key, name: b.name.trim(), role: b.role.trim(), tone: b.tone, approval: b.approval, repo: b.repo.trim(), gitUser: b.gitUser.trim(),
-            ...(b.model ? { model: b.model } : {}),
+            ...(b.model ? { model: b.model } : {}), ...(b.avatarFrom ? { avatarFrom: b.avatarFrom } : {}),
         })),
     };
     writeJson(FILE, [...loadSetups().filter((s) => s.account !== setup.account), setup]);
@@ -62,12 +62,29 @@ export function deleteSetup(account: string): void {
     writeJson(TOKENS, all);
 }
 
-/** What goes to the account's machine; null without a setup for it. */
+/** What goes to the account's machine, with the pictures of the bots they follow as they are now; null without a setup. */
 export function setupMessage(account: string): Extract<PeerData, { kind: 'setup' }> | null {
     const setup = loadSetups().find((s) => s.account === account);
     if (!setup) return null;
-    return { kind: 'setup', setup, tokens: readJson<Tokens>(TOKENS, {})[account] ?? {} };
+    const bots = setup.bots.map((b) => {
+        const avatar = b.avatarFrom ? findBot(b.avatarFrom)?.avatar : undefined;
+        return avatar && isPicture(avatar) ? { ...b, avatar } : b;
+    });
+    return { kind: 'setup', setup: { ...setup, bots }, tokens: readJson<Tokens>(TOKENS, {})[account] ?? {} };
 }
+
+/**
+ * The pictures each set-up account shows of the admin's bots, to notice a new one (agent.ts sends the setup again then):
+ * per account a string that changes with any of its pictures.
+ */
+export function setupPictures(): Map<string, string> {
+    return new Map(loadSetups().filter((s) => s.bots.some((b) => b.avatarFrom)).map((s) => [
+        s.account, s.bots.map((b) => (b.avatarFrom ? `${b.key}:${findBot(b.avatarFrom)?.avatar ?? ''}` : '')).join('\n'),
+    ]));
+}
+
+/** A picture a setup may carry: a small PNG, JPEG, WebP or GIF data URL (never SVG, which can carry script). */
+const isPicture = (x: unknown): x is string => typeof x === 'string' && x.length <= 400_000 && /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/.test(x);
 
 // ------------------------------------------------------------------ The account's machine
 
@@ -153,7 +170,8 @@ export async function applySetup(setup: AccountSetup, tokens: Record<string, str
                 await useToken(folder, b.key, b.gitUser);
             }
             const bot = saveBot({
-                id, name: b.name, role: b.role, tone: b.tone, folder, model: b.model || old?.model || 'default', avatar: old?.avatar ?? '',
+                // The admin's picture when the setup brings one (it follows one of the admin's bots), else what it had
+                id, name: b.name, role: b.role, tone: b.tone, folder, model: b.model || old?.model || 'default', avatar: isPicture(b.avatar) ? b.avatar : old?.avatar ?? '',
                 approval: b.approval, machine: config.machine, area: old?.area, contact: setup.handover,
             }, b.key);
             hooks.saved(old, bot);

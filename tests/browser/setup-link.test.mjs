@@ -80,8 +80,11 @@ export default async function ({ start, check }) {
     await h.wait(200);
     check('the dialog opens with a support and a development bot', await p.isVisible('#setup-box') && (await p.locator('#setup-box .setup-bot').count()) === 2
         && (await p.textContent('#settings-dialog-title')) === 'Edit Kunde');
+    // Per bot two choices: its approval level, then whose picture it shows (none to begin with)
     const levels = await p.locator('#setup-box .setup-bot select').evaluateAll((s) => s.map((x) => x.value));
-    check('support only reads, development asks before what is risky', levels.join() === 'read,risky', levels);
+    check('support only reads, development asks before what is risky; no picture yet', levels.join() === 'read,,risky,', levels);
+    const pictures = await p.locator('#setup-box .setup-bot').first().locator('select').nth(1).locator('option').allTextContents();
+    check('the picture: none, or like one of my bots', pictures[0] === 'None (initials)' && pictures.some((x) => x.startsWith('Like my bot ')), pictures);
     const ticked = await p.locator('#setup-box .setup-contacts input:checked').evaluateAll((l) => l.map((x) => x.value));
     check('the admin is the contact from the start', ticked.join() === 'main', ticked);
 
@@ -94,6 +97,10 @@ export default async function ({ start, check }) {
         await cards.nth(i).locator('input[type="url"]').fill('https://git.example.com/team/dashboard.git');
         await cards.nth(i).locator('input[type="password"]').fill(token);
     }
+    // The support bot shows the picture of one of the admin's bots
+    const pictureOf = cards.nth(0).locator('select').nth(1);
+    await pictureOf.selectOption({ index: 1 });
+    const followed = await pictureOf.inputValue();
     await p.locator('#setup-box .setup-contacts input[value="anna"]').check();
     await p.locator('#setup-box').getByRole('button', { name: 'Save', exact: true }).click();
     await h.wait(300);
@@ -102,6 +109,7 @@ export default async function ({ start, check }) {
     const saved = h.sent.find((f) => f.type === 'setup_save');
     check('… the bots with their tokens to the backend, the hand-over to the admin',
         saved?.setup.account === 'kunde' && saved.setup.handover === 'main' && saved.setup.bots.map((b) => `${b.key}:${b.approval}:${b.token}`).join() === 'support:read:read-tok,dev:risky:write-tok', saved?.setup);
+    check('… the support bot names whose picture it shows, the other none', saved?.setup.bots[0].avatarFrom === followed && !!followed && !('avatarFrom' in saved.setup.bots[1]), saved?.setup.bots);
     check('a stored token shows as stored, not as text', (await cards.nth(0).locator('input[type="password"]').getAttribute('placeholder'))?.includes('stored'));
 
     check('the dialog has no link of its own, only saving', (await p.locator('#setup-box button', { hasText: 'link' }).count()) === 0);

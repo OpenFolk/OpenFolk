@@ -140,6 +140,46 @@ inAccount('kunde', () => kunde.personInbound('main', next));
 check('a newer setup changes and removes managed bots', await wait(() => made().length === 1 && made()[0].name === 'Hilfe'), made().map((b) => b.name));
 check('the folder of a removed bot stays', fs.existsSync(path.join(folder, 'README.md')));
 
+// ---- A bot of the setup follows the picture of one of the admin's own bots
+const { saveBot } = await import('./bots.ts');
+const logo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+const logo2 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC';
+const adminBot = { id: 'nick', name: 'Dashboard Nick', role: '', folder: bots, model: 'default', tone: '', avatar: logo, approval: 'never' as const, machine: 'laptop' };
+inAccount('main', () => {
+    saveBot(adminBot);
+    saveSetup({ ...input, bots: [{ ...input.bots[0], token: '', avatarFrom: 'nick' }] });
+});
+check('the setup keeps whose picture a bot follows, not the picture', inAccount('main', () => setupViews()[0].bots[0].avatarFrom === 'nick' && !('avatar' in setupViews()[0].bots[0])));
+const withPicture = inAccount('main', () => setupMessage('kunde'))!;
+check('the message to the account carries the picture as it is now', withPicture.setup.bots[0].avatar === logo);
+check('the frame of the setup editor takes avatarFrom', checkClientFrame({ type: 'setup_save', setup: { ...input, bots: [{ ...input.bots[0], repo: 'https://x.example/y.git', avatarFrom: 'nick' }] } }).ok);
+inAccount('kunde', () => kunde.personInbound('main', { ...withPicture, setup: { ...withPicture.setup, updatedAt: new Date().toISOString() } }));
+check('the account\'s bot gets the picture', await wait(() => made()[0]?.avatar === logo), made()[0]?.avatar?.slice(0, 30));
+inAccount('kunde', () => kunde.personInbound('main', { ...withPicture, setup: { ...withPicture.setup, bots: [{ ...withPicture.setup.bots[0], avatar: 'data:image/svg+xml;base64,PHN2Zz4=' }], updatedAt: new Date().toISOString() } }));
+await new Promise((r) => setTimeout(r, 300));
+check('an SVG (it can carry script) is not taken, the picture stays', made()[0]?.avatar === logo);
+
+// The admin's bot gets a new picture: the setup goes to the account again, by itself
+const pictureSent: { to: string; data: PeerData }[] = [];
+const adminManager = inAccount('main', () => {
+    const m = new BotManager(() => undefined) as Manager;
+    m.toAccount = (to, data) => { pictureSent.push({ to, data }); };
+    return m;
+});
+const lookAtBots = () => inAccount('main', () => (adminManager as unknown as { sendBots: () => void }).sendBots());
+lookAtBots();
+check('the first look after a start sends the setup once (a picture may have changed meanwhile)', pictureSent.filter((x) => x.to === 'kunde' && x.data.kind === 'setup').length === 1);
+pictureSent.length = 0;
+lookAtBots();
+check('… the next look without a change sends nothing', pictureSent.length === 0);
+inAccount('main', () => saveBot({ ...adminBot, avatar: logo2 }));
+lookAtBots();
+const resent = pictureSent.find((s) => s.to === 'kunde' && s.data.kind === 'setup');
+check('a new picture of the followed bot: the setup goes again, with it', resent?.data.kind === 'setup' && resent.data.setup.bots[0].avatar === logo2, pictureSent.map((s) => s.data.kind));
+pictureSent.length = 0;
+lookAtBots();
+check('nothing changed: nothing sent again', pictureSent.length === 0);
+
 // The admin answers a request with the setup, others get nothing
 const adminSent: { to: string; data: PeerData }[] = [];
 const admin = inAccount('main', () => {

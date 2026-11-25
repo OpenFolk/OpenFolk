@@ -42,10 +42,14 @@ const MAX = 5;
 const WINDOW = 15 * 60_000;
 const failures = new Map<string, { count: number; since: number }>();
 
-/** Additionally a global limit against attempts from many addresses: at most GLOBAL_MAX failures per hour. */
+/**
+ * Additionally a limit against attempts from many addresses: at most GLOBAL_MAX failures per hour, counted per key. A
+ * password sign-in counts on its account (or '?' for a name that is no account), everything else (claim, join, setup,
+ * machine tokens) on ''. So nobody locks every account by guessing at one, nor the password sign-in with failed joins.
+ */
 const GLOBAL_MAX = 30;
 const GLOBAL_WINDOW = 60 * 60_000;
-let globalFailures: number[] = [];
+const globalFailures = new Map<string, number[]>();
 
 export function isBlocked(ip: string): boolean {
     const e = failures.get(ip);
@@ -58,22 +62,26 @@ export function isBlocked(ip: string): boolean {
 }
 
 /**
- * Global limit reached? Applies to password logins only: an attacker must not be able to lock out devices
- * that are already signed in (device keys).
+ * Limit reached for `key`? Applies to password logins and the relay's codes only: an attacker must not be able to lock
+ * out devices that are already signed in (device keys).
  */
-export function isGloballyBlocked(): boolean {
+export function isGloballyBlocked(key = ''): boolean {
     const limit = Date.now() - GLOBAL_WINDOW;
-    globalFailures = globalFailures.filter((t) => t > limit);
-    return globalFailures.length >= GLOBAL_MAX;
+    const list = (globalFailures.get(key) ?? []).filter((t) => t > limit);
+    if (list.length) globalFailures.set(key, list);
+    else globalFailures.delete(key);
+    return list.length >= GLOBAL_MAX;
 }
 
-export function recordFailure(ip: string): void {
+export function recordFailure(ip: string, key = ''): void {
     // Expired entries otherwise stay until the same address comes back; addresses are cheap to vary
     if (failures.size > 1000) for (const [k, v] of failures) if (Date.now() - v.since > WINDOW) failures.delete(k);
     const e = failures.get(ip);
     if (!e || Date.now() - e.since > WINDOW) failures.set(ip, { count: 1, since: Date.now() });
     else e.count++;
-    globalFailures.push(Date.now());
+    const list = globalFailures.get(key) ?? [];
+    list.push(Date.now());
+    globalFailures.set(key, list.slice(-GLOBAL_MAX));
 }
 
 export function recordSuccess(ip: string): void {

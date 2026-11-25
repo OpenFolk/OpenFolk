@@ -1,9 +1,10 @@
 /* OpenFolk web app: menus, git changes and dialogs. */
+import { renderMissionsPage, showMissionList } from './missions.js';
 import { locale, t, tn } from './i18n.js';
 import { MIN_BACKEND_PROTOCOL, PROTOCOL_VERSION, el, node, state, toast } from './core.js';
 import { activePane, capacity, layoutPanes, onSettingsGone, paneFor, settingsDialogDocked } from './panes.js';
 import { bot, clockTime, conversation, conversationTitle, group, isConversation, isGroup, isPerson, modelOf, modelsOfChat, person, responsibleMachine, send, shortFolder, upper } from './e2e.js';
-import { archivedOf, isFavorite, isMuted, toggleFavorite, toggleMuted, categoryOf, setCategory, sortedCategories } from './connection.js';
+import { archivedOf, isBlocked, isFavorite, isMuted, toggleFavorite, toggleMuted, categoryOf, setCategory, sortedCategories } from './connection.js';
 import { listTap, openChatSearch, renderChatList, rowMenu } from './list.js';
 import { closeChat, openChat, paneActivated, renderChatHeader, renderHeaders } from './chat.js';
 import { refreshMachinesPage, renderMachines, wake } from './machines.js';
@@ -43,6 +44,8 @@ export const ICONS = {
     group: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/>',
     bot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9.5 13h.01M14.5 13h.01"/>',
     reply: '<path d="M9 15l-5-5 5-5"/><path d="M4 10h10a6 6 0 0 1 6 6v4"/>',
+    like: '<path d="M12 20.5s-7.5-4.6-7.5-10.4A4.1 4.1 0 0 1 12 7.6a4.1 4.1 0 0 1 7.5 2.5c0 5.8-7.5 10.4-7.5 10.4z"/>',
+    unlike: '<path d="M12 20.5s-7.5-4.6-7.5-10.4A4.1 4.1 0 0 1 12 7.6a4.1 4.1 0 0 1 7.5 2.5c0 5.8-7.5 10.4-7.5 10.4z"/><path d="M3 3l18 18"/>',
     pin: '<path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 13v7"/>',
     unpin: '<path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 13v7M3 3l18 18"/>',
     speaker: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/>',
@@ -51,6 +54,8 @@ export const ICONS = {
     link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
     up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
     down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+    flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+    block: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
     forward: '<path d="M15 5l5 5-5 5"/><path d="M20 10H10a6 6 0 0 0-6 6v4"/>',
     monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     folder: '<path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
@@ -86,26 +91,27 @@ export function chatMenuButtons(id, onPage = false) {
     const vscode = ['vscode', 'monitor', t('menu.vscode')];
     // The archived conversations of a bot behind one entry, which lists them in the menu's place
     const archive = b && !isConversation(id) && archivedOf(b).length ? [['archive', 'archive', t('menu.archiveCount', { n: archivedOf(b).length })]] : [];
-    const restart = ['restart', 'restart', t('menu.newSession')];
+    // "New session" is not among the entries: chatSwitches puts it below the context at the top
     const editBot = ['edit', 'pencil', t('menu.editBot')];
     // The bot's machine makes the copy (its folder is there); a bot of an admin's setup is not the account's to copy
     const duplicate = b && !b.managed ? [['duplicate', 'copy', t('menu.duplicateBot'), '', asleep]] : [];
     // The folder of the list the chat is in; conversations follow their bot, the group editor has a field of its own
-    const cat = isPerson(id) ? '' : categoryOf(id);
+    const cat = categoryOf(id);
     const catName = cat ? (state.categories.find((c) => c.id === cat) || {}).name : '';
     const folder = ['category', 'folder', catName ? t('menu.categoryIn', { name: catName }) : t('menu.category')];
     const entries = isPerson(id)
-        ? [search, fav, mute, ['person_delete', 'delete', t('people.deleteChat'), 'danger']]
+        ? [search, fav, mute, folder, isBlocked(id) ? ['person_block', 'block', t('people.unblock')] : ['person_block', 'block', t('people.block'), 'danger'],
+            ['person_delete', 'delete', t('people.deleteChat'), 'danger']]
         : !b
         ? [search, ...(onPage ? [] : [['group', 'group', t('menu.editGroup')]]), fav, mute, ...(onPage ? [] : [folder]), ['group_delete', 'delete', t('menu.deleteGroup'), 'danger']]
         : isConversation(id)
             ? [conversationNew, ['rename', 'pencil', t('menu.renameConversation')], ...(onPage ? [] : [git]), search,
-                ['main_chat', 'back', t('menu.mainChat', { name: b.name })], vscode, editBot, restart,
+                ['main_chat', 'back', t('menu.mainChat', { name: b.name })], vscode, editBot,
                 ['to_archive', 'archive', t('menu.toArchive')], ['conversation_delete', 'delete', t('menu.deletePermanently'), 'danger']]
             : onPage
-                ? [conversationNew, mainMove, search, ...archive, vscode, editBot, ...duplicate, fav, mute, folder, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']]
+                ? [conversationNew, mainMove, search, ...archive, vscode, editBot, ...duplicate, fav, mute, folder, ['delete', 'delete', t('menu.deleteBot'), 'danger']]
                 : [conversationNew, mainMove, git, search, ...archive,
-                    vscode, ['info', 'info', t('menu.info')], editBot, ...duplicate, fav, mute, folder, restart, ['delete', 'delete', t('menu.deleteBot'), 'danger']];
+                    vscode, ['info', 'info', t('menu.info')], editBot, ...duplicate, fav, mute, folder, ['delete', 'delete', t('menu.deleteBot'), 'danger']];
     return entries.map(([action, icon, text, cls, disabled]) => {
         const k = menuButton(icon, text, cls);
         k.dataset.action = action;
@@ -117,7 +123,8 @@ export function chatMenuButtons(id, onPage = false) {
 }
 
 /**
- * Context size of the chat's session (groups: different per bot, so not shown), model and machine switch. `picked`
+ * Context size of the chat's session with "Clear context" in its line (groups: different per bot, so not shown), model
+ * and machine switch. `picked`
  * runs after a choice: the menu closes, the bot's page shows the new state.
  */
 export function chatSwitches(id, picked) {
@@ -126,7 +133,14 @@ export function chatSwitches(id, picked) {
     const tokens = b ? state.context[id] : 0;
     if (tokens) {
         const info = node('div', 'menu-info' + (tokens >= CONTEXT_LARGE ? ' large' : ''));
-        info.append(node('strong', '', t('menu.contextTokens', { tokens: tokens.toLocaleString(locale()) })));
+        // "Clear context" in the line of the figure it clears, a chip like the model's (handled like the menu's entries)
+        const line = node('div', 'context-line');
+        const clear = node('button', 'chip context-clear', t('menu.clearContext'));
+        clear.type = 'button';
+        clear.dataset.action = 'restart';
+        clear.title = t('menu.newSession');
+        line.append(node('strong', '', t('menu.contextTokens', { tokens: tokens.toLocaleString(locale()) })), clear);
+        info.append(line);
         if (tokens >= CONTEXT_LARGE) info.append(node('span', '', t('menu.contextLarge')));
         parts.push(info);
     }
@@ -187,6 +201,10 @@ function modelSwitch(chatId, picked) {
     row.setAttribute('aria-label', t('model.label'));
     const values = models.length ? models.map((m) => m.value).filter((v) => MODEL_SHORT.includes(v) || ENGINES[v]) : MODEL_SHORT;
     if (!values.includes(current)) values.push(current);
+    // Strongest on the left, weakest on the right (MODEL_SHORT's order), whatever order the machine lists them in; the
+    // other engines and a pinned model after the Claude families
+    const rank = (v) => (MODEL_SHORT.includes(v) ? MODEL_SHORT.indexOf(v) : ENGINES[v] ? MODEL_SHORT.length : MODEL_SHORT.length + 1);
+    values.sort((a, b) => rank(a) - rank(b));
     // The default of an engine is named after the engine in the switch, not after the model behind it; a family by its
     // name, never with a version
     const label = (value) => ENGINES[value] || (MODEL_SHORT.includes(value) ? value.charAt(0).toUpperCase() + value.slice(1) : modelDisplay(value, models));
@@ -270,7 +288,7 @@ export async function chatMenuAction(id, action, menu, show = (...k) => { menu.r
     const b = bot(id);
     const g = group(id);
     if (action === 'favorite') toggleFavorite(id);
-    if (action === 'category' && (b || g)) {
+    if (action === 'category' && (b || g || isPerson(id))) {
         // continue in the same menu: the folders to choose from; on the bot's page the entries come back afterwards
         const done = () => { if (menu === el.infoActions) renderInfoChat(true); else menu.hidden = true; };
         show(node('div', 'menu-info', t('category.choose')), ...categoryButtons(id, done));
@@ -282,6 +300,9 @@ export async function chatMenuAction(id, action, menu, show = (...k) => { menu.r
     if (action === 'restart' && b) {
         if (!(await confirmDialog(t('menu.newSessionConfirm', { name: isConversation(id) ? conversationTitle(id) : b.name })))) return false;
         send({ type: 'restart', botId: b.id, chatId: id });
+        // The context is gone with the session: show it right away, the machine's context frame confirms it
+        state.context[id] = 0;
+        renderHeaders();
     }
     if (action === 'delete' && b) {
         const folder = await askFolderDeletion(b);
@@ -319,6 +340,11 @@ export async function chatMenuAction(id, action, menu, show = (...k) => { menu.r
         if (!(await confirmDialog(t('people.deleteChatConfirm', { name: person(id).name })))) return false;
         send({ type: 'person_chat_delete', account: id.slice(2) });
         if (p) closeChat(p);
+    }
+    if (action === 'person_block' && isPerson(id)) {
+        const on = !isBlocked(id);
+        if (on && !(await confirmDialog(t('people.blockConfirm', { name: person(id).name })))) return false;
+        send({ type: 'person_block', account: id.slice(2), on });
     }
     if (action === 'group' && g) openGroupEditor(g);
     if (action === 'group_delete' && g) {
@@ -912,7 +938,14 @@ export function openMachinesPage() {
     renderMachines();
 }
 
-/** The page frame over the panes, with the repos of all bots, of one bot, or the machines. */
+/** The tab "Missions": the overview of the missions, from there one mission or the builder (missions.js). */
+export function openMissionsPage() {
+    showPage('missions', false);
+    showMissionList();
+    renderMissionsPage();
+}
+
+/** The page frame over the panes, with the repos of all bots, of one bot, the machines or the missions. */
 function showPage(page, fromChat) {
     gitFromChat = fromChat;
     rowMenu.hidden = true;
@@ -920,15 +953,17 @@ function showPage(page, fromChat) {
     el.gitPage.hidden = false;
     el.gitPage.dataset.page = page;
     // a git answer arriving later must not fill the page while it shows the machines
-    if (page === 'machines') delete el.gitPage.dataset.view;
-    el.gitPageContent.hidden = page === 'machines';
+    if (page === 'machines' || page === 'missions') delete el.gitPage.dataset.view;
+    el.gitPageContent.hidden = page === 'machines' || page === 'missions';
     el.machinesPage.hidden = page !== 'machines';
+    el.missionsPage.hidden = page !== 'missions';
     renderPageTitle();
     layoutPanes();
 }
 
 /** The page's title, also after a change of language. */
 export function renderPageTitle() {
+    if (el.gitPage.dataset.page === 'missions') return renderMissionsPage();
     el.gitTitle.textContent = t(el.gitPage.dataset.page === 'machines' ? 'tabs.status' : 'git.openChanges');
 }
 

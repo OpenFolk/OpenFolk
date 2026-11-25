@@ -6,6 +6,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { LANGUAGES } from '../../shared/protocol.ts';
 import { config, projectRoot } from './config.ts';
 import { t } from './i18n.ts';
 import { machineSettings } from './machine-settings.ts';
@@ -199,7 +200,10 @@ class Transcriber {
             }, JOB_TIMEOUT_S * 1000);
             this.pending.set(id, { resolve, reject, timer });
         });
-        this.proc!.stdin.write(JSON.stringify({ id, path: file, language, ...(prompt ? { prompt } : {}) }) + '\n');
+        // Detected automatically, Whisper picks only among the app's languages: a short recording was taken for French
+        // now and then and came out translated ("Oui, elle est close")
+        const languages = language ? {} : { languages: LANGUAGES };
+        this.proc!.stdin.write(JSON.stringify({ id, path: file, language, ...languages, ...(prompt ? { prompt } : {}) }) + '\n');
         try {
             const x = await result;
             const model = waited >= 100 ? `, ${seconds(waited)} s of it waiting for the model${cold ? ' (cold start)' : ''}` : '';

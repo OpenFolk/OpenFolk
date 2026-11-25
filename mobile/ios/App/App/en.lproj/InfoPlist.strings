@@ -1,0 +1,3 @@
+/* Purpose strings shown by iOS when the app asks for a permission. Keep in sync with Info.plist. */
+"NSMicrophoneUsageDescription" = "Voice messages to your bots are recorded with the microphone.";
+"NSCameraUsageDescription" = "Photos you take can be attached to messages, and QR codes sign devices in.";

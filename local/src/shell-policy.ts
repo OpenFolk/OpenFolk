@@ -8,10 +8,19 @@ import path from 'node:path';
 import { isUnder } from './bots.ts';
 
 /** Why a command asks; the keys are i18n keys `policy.<risk>`. */
-export type ShellRisk = 'outsideFolder' | 'sensitiveFile' | 'remoteCode' | 'install' | 'elevation';
+export type ShellRisk = 'outsideFolder' | 'sensitiveFile' | 'remoteCode' | 'install' | 'elevation' | 'envDump';
 
 /** Sensitive file names ('zugangsdaten' is German for credentials); templates of .env files stay free. */
-const SENSITIVE = /(^|[\\/])\.env(\.[\w-]+)?$|\.(pem|key|pfx|p12|ppk)$|(^|[\\/])id_(rsa|ed25519|ecdsa)$|zugangsdaten|credentials|(^|[\\/])secrets\./i;
+const SENSITIVE = /(^|[\\/])\.env(\.[\w-]+)?$|\.(pem|key|pfx|p12|ppk)$|(^|[\\/])id_(rsa|ed25519|ecdsa)$|zugangsdaten|credentials|(^|[\\/])secrets\.|(^|[\\/])vault(\.json|-key)$/i;
+/** PowerShell commands that list the environment drive. */
+const PS_LISTERS = new Set(['get-childitem', 'gci', 'ls', 'dir', 'get-item', 'gi', 'get-variable', 'gv']);
+
+/** A command that prints the whole environment, where the vault's values would show (vault.ts). */
+function dumpsEnv(name: string, args: string[]): boolean {
+    if (name === 'printenv') return true;
+    if ((name === 'env' || name === 'set' || name === 'export') && (!args.length || (name === 'export' && args[0] === '-p'))) return true;
+    return PS_LISTERS.has(name) && args.some((a) => /^env:/i.test(a));
+}
 const TEMPLATE = /\.env\.(sample|example|tpl|template|dist)$/i;
 
 /** Commands that read a file's content (or copy it somewhere). */
@@ -186,6 +195,7 @@ export function shellRisk(command: string, folder: string): ShellRisk | null {
             if (to) cwd = path.resolve(cwd, to);
             continue;
         }
+        if (dumpsEnv(name, args)) return 'envDump';
         if (name === 'env' || name === 'command' || name === 'exec') {
             name = commandName(args[0]);
             args = args.slice(1);

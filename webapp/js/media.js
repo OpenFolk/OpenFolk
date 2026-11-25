@@ -1,10 +1,13 @@
 /* OpenFolk web app: images and videos of attachments shown in the app, fetched from the machine that holds them. */
 import { t } from './i18n.js';
-import { node } from './core.js';
+import { el, md, node } from './core.js';
+import { codeBlocks } from './code-blocks.js';
 import { send } from './e2e.js';
 
 /** Object URLs of files fetched for display, by path; kept for the page's life so a re-render does not fetch again. */
 const cache = new Map();
+/** The files themselves by path, to read a text without fetching its object URL (Safari refuses that: "Load failed"). */
+const blobs = new Map();
 /** Fetches under way: path → waiting callers. */
 const waiting = new Map();
 const TIMEOUT_MS = 90_000;
@@ -43,10 +46,27 @@ export function mediaArrived(f) {
     if (!list) return false;
     waiting.delete(f.path);
     const bytes = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0));
-    const url = URL.createObjectURL(new Blob([bytes], { type: f.mime }));
+    const blob = new Blob([bytes], { type: f.mime });
+    const url = URL.createObjectURL(blob);
     cache.set(f.path, url);
+    blobs.set(f.path, blob);
     for (const w of list) { clearTimeout(w.timer); w.resolve(url); }
     return true;
+}
+
+/** A Markdown file (plans, notes, READMEs): read in the app instead of downloaded. */
+export const isMarkdown = (a) => /^text\/(markdown|x-markdown)$/.test(a.type || '') || /\.(md|markdown)$/i.test(a.name || '');
+
+/** Shows a Markdown attachment formatted, like a bot's answer; "Save" still hands over the file. */
+export async function showMarkdown(a) {
+    await fileUrl(a);
+    const text = await blobs.get(a.path).text();
+    el.docTitle.textContent = a.name;
+    el.docContent.innerHTML = md(text);
+    codeBlocks(el.docContent);
+    el.docSave.onclick = () => send({ type: 'file_get', path: a.path }, a.machine);
+    el.docView.hidden = false;
+    el.docContent.parentElement.scrollTop = 0;
 }
 
 /** The URL if the file is here already (no request). */

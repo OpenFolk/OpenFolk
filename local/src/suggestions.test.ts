@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 // Allowed root for this test: the folder containing this repo (set before the config is loaded)
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 process.env.ALLOWED_ROOTS = path.dirname(projectRoot);
-const { avatarDataUrl, descriptionFrom, resultFrom, photoPrompt, folderContext, prompt, checkSvg, suggestionEngine, jsonIn } = await import('./suggestions.ts');
+const { avatarDataUrl, descriptionFrom, resultFrom, photoPrompt, folderContext, prompt, checkSvg, suggestionEngine, jsonIn, photoModel } = await import('./suggestions.ts');
 
 let failures = 0;
 const check = (name: string, ok: boolean) => { console.log(`${ok ? 'ok    ' : 'FAILED'} ${name}`); if (!ok) failures++; };
@@ -66,6 +66,13 @@ check('engine: Claude off, the bot on Claude: the first one on', suggestionEngin
 check('engine: none on stays Claude', suggestionEngine('default', onOnly()) === 'claude');
 check('JSON in an answer with a fence or words around it', JSON.stringify(jsonIn('Sure:\n```json\n{"role":"Servers"}\n```')) === '{"role":"Servers"}'
     && jsonIn('no json') === undefined && jsonIn('{broken') === undefined);
+
+// The photo's model: the chosen one with its key, else the other provider's with its key, a drawing only without any
+const keys = (...p: string[]) => (x: string) => p.includes(x);
+check('photo: the chosen model (Gemini by default) with its key', photoModel(keys('gemini', 'openai'), 'gemini-3.1-flash-image') === 'gemini-3.1-flash-image');
+check('photo: only an OpenAI key, Gemini chosen: the OpenAI model instead of a drawing', photoModel(keys('openai'), 'gemini-3.1-flash-image') === 'gpt-image-1');
+check('photo: no key: a drawing', photoModel(keys(), 'gemini-3.1-flash-image') === null);
+check('photo: only a Gemini key, OpenAI chosen: the Gemini model', photoModel(keys('gemini'), 'gpt-image-1') === 'gemini-3.1-flash-image');
 
 if (failures) process.exit(1);
 console.log('all tests passed');

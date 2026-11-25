@@ -8,9 +8,12 @@ read, before any code. `README.md` is for people who run OpenFolk.
 ## What we do not compromise on
 
 1. **The relay stays dumb.** It stores no messages, holds no model credentials and, with end-to-end encryption,
-   sees only routing. Whoever hosts the relay must never be able to read a chat. The one exception is push to the
-   mobile apps for backends without their own Apple and Google credentials; then the relay sees exactly what Apple
-   and Google see, reduced by the user's setting `pushPreview`. Do not add a second exception without a reason this strong.
+   sees only routing. Whoever hosts the relay must never be able to read a chat. Two exceptions, both push to the
+   mobile apps and both seeing exactly what Apple and Google see, reduced by the user's setting `pushPreview`: a relay
+   with APNs/FCM credentials delivers for the backends connected to it, and the push service of openfolk.app
+   (`PUSH_SERVICE=on`, `relay/src/push-service.ts`, decided by the user on 2026-11-22 for the store apps, whose
+   credentials only Flowdesk holds) delivers for every backend on any relay, limited per device and storing nothing;
+   a backend switches it off with `PUSH_SERVICE_URL=off`. Do not add a third exception without a reason this strong.
 2. **Everything else happens on the user's machine.** Sessions, history, knowledge, uploads, git and approvals
    belong to the backend. A client never substitutes its own view of files or state for the backend's.
 3. **One web app, every surface.** Browser (PWA), Windows, Linux and macOS (Electron) and iOS and Android (Capacitor) run
@@ -42,7 +45,9 @@ read, before any code. `README.md` is for people who run OpenFolk.
   processes by name or pattern, never delete `local/data/`, and never start a second backend against the same data
   folder. Restart with `npm run restart -w local -- <reason>`, which waits until no bot is working.
 - **Secrets stay out of the chat.** `.env`, keys and `local/data/` are never read into a conversation or handed
-  out by a tool. `.env.sample` (backend) and `relay/.env.sample` (relay) show the variables and may be read.
+  out by a tool. `.env.sample` (backend) and `relay/.env.sample` (relay) show the variables and may be read. The
+  vault's values (`local/src/vault.ts`) reach a bot only as environment variables and are blacked out of everything
+  that goes to the history or the app; never log them, never put them into a frame to a browser.
 - **The relay is deployed from `main`.** A push to `main` can reach the production relay. Do not push broken
   protocol changes; run the tests first.
 - **Deleting a folder can delete more.** On Windows under Node 24 (the desktop app's Node) `fs.rmSync` with
@@ -86,6 +91,9 @@ change done, walk this list and say which entries applied:
   and moving over. `first-device.ts`: the first device with the code from a container's log. `engine-login.ts`: the
   device-code sign-in of the first steps; which engines are ready comes from `queryModels` in `session.ts`. `history-index.ts`: the search over the
   history (web app and the bots' `search_history`), `history-tools.ts`: what the bots' history tools answer.
+  `missions.ts`: missions (Mission Control) and the two files of a mission's project, `mission-control.ts`: the cycle,
+  approvals, budget and kill switch, `mission-tools.ts`: the team's tools, `mission-builder.ts`: goal to proposal
+  (`docs/internals/missions.md`).
 - `relay/src/relay.ts`: `startRelay()`, HTTP, WebSocket upgrade, sign-in, pairing, claim; `server.ts` runs it on its
   own, `local/src/index.ts` inside the backend. `owner.ts`: the relay's tokens as hashes, the setup code.
   `bridge.ts`: routing between browsers and backends. `devices.ts`: device keys, pairing tokens, TOTP.

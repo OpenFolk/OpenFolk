@@ -124,6 +124,15 @@ export function markRead(chatId: string, id: string, ts: string): boolean {
     });
 }
 
+/** Sets or takes back the like on an entry; an older `at` than the stored one changes nothing. Returns the entry if it changed. */
+export function markLiked(chatId: string, id: string, on: boolean, at: string): HistoryEntry | undefined {
+    return changeEntry(chatId, id, (e) => {
+        if (e.like && e.like.at >= at) return false;
+        e.like = { on, at };
+        return true;
+    });
+}
+
 /** Notes that the message was moved into another conversation; returns the entry. */
 export function markMoved(chatId: string, id: string, to: string): HistoryEntry | undefined {
     return changeEntry(chatId, id, (e) => {
@@ -177,19 +186,28 @@ export function toolOutput(chatId: string, entryId: string, toolId: string): str
 }
 
 /**
- * Inserts entries of another machine: adds missing ones by id, sorted by time.
- * Returns the number of new entries.
+ * Inserts entries of another machine: adds missing ones by id, sorted by time, and takes over a newer like of the
+ * ones known. Returns the number of new or changed entries.
  */
 export function mergeHistory(chatId: string, others: HistoryEntry[]): number {
     const own = readAll(chatId);
-    const known = new Set(own.map((e) => e.id));
-    const fresh = others.map(withId).filter((e) => !known.has(e.id));
-    if (fresh.length === 0) return 0;
+    const known = new Map(own.map((e) => [e.id, e]));
+    const fresh: HistoryEntry[] = [];
+    let liked = 0;
+    for (const o of others.map(withId)) {
+        const e = known.get(o.id);
+        if (!e) fresh.push(o);
+        else if (o.like && typeof o.like.at === 'string' && (!e.like || o.like.at > e.like.at)) {
+            e.like = { on: o.like.on === true, at: o.like.at };
+            liked++;
+        }
+    }
+    if (fresh.length + liked === 0) return 0;
     const all = [...own, ...fresh].sort((a, b) => a.ts.localeCompare(b.ts));
     const p = file(chatId);
     fs.mkdirSync(path.dirname(p), { recursive: true });
     const tmp = p + '.tmp';
     fs.writeFileSync(tmp, all.map((e) => JSON.stringify(e)).join('\n') + '\n', { mode: PRIVATE });
     fs.renameSync(tmp, p);
-    return fresh.length;
+    return fresh.length + liked;
 }

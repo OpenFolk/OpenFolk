@@ -77,6 +77,20 @@ export default async function ({ start, check }) {
     const menu = await p.locator('#row-menu button').allTextContents();
     check('menu of a person chat: search, favorite, mute, delete; nothing of bots', menu.some((x) => /favorite/i.test(x)) && menu.some((x) => x.includes('Delete chat'))
         && !menu.some((x) => /session|Edit bot|conversation/i.test(x)), menu);
+    // … and the folder of the list, as for bots: the chooser, a new folder from there
+    check('… a person chat goes into a folder too', menu.includes('Folder'), menu);
+    await p.evaluate(() => {
+        document.getElementById('row-menu').hidden = true;
+        state.categories = [{ id: 'personen', name: 'Personen', createdAt: '', updatedAt: '' }];
+        openRowMenu('p:kunde', 50, 50);
+    });
+    await p.locator('#row-menu button', { hasText: 'Folder' }).click();
+    await h.wait(100);
+    await p.locator('#row-menu button', { hasText: 'Personen' }).click();
+    await h.wait(100);
+    const assign = h.sent.findLast((f) => f.type === 'category_assign');
+    check('… the chosen folder goes to the backend for the person chat', assign?.chatId === 'p:kunde' && assign.categoryId === 'personen', assign);
+    await p.evaluate(() => openRowMenu('p:kunde', 50, 50));
     await p.locator('#row-menu button', { hasText: 'Delete chat' }).click();
     await h.wait(200);
     const del = h.sent.find((f) => f.type === 'person_chat_delete');

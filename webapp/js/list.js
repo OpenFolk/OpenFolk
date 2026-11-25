@@ -1,16 +1,17 @@
 /* OpenFolk web app: sidebar: chat list, swiping in the overview, search across all chats. */
 import { locale, t, tn } from './i18n.js';
 import { el, node, state, closest } from './core.js';
-import { CHAT_DRAG, activePane, paneFor, visibleChats } from './panes.js';
+import { CHAT_DRAG, activePane, paneFor, panes, visibleChats } from './panes.js';
 import { bot, clockTime, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, modelsOfChat, openApprovals, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
 import { allChats, baseChats, categoryOf, collapsed, conversationsOf, isFavorite, isMuted, moveCategory, setCategory, sortedCategories, toggleCollapsed, toggleConversations, toggleFavorite } from './connection.js';
-import { loadingBar, openBeside, openChat, swipeBack } from './chat.js';
+import { loadingBar, openBeside, openChat, renderConversationTabs, swipeBack } from './chat.js';
 import { isUnread, toggleUnread } from './chat-features.js';
+import { draftOf } from './queue.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
-import { ICONS, archiveConversation, chatMenuAction, deleteCategory, fillChatMenu, gitOpenOf, menuButton, modelDisplay, openGitPage, renameCategory, withoutVersion } from './menus.js';
+import { ICONS, archiveConversation, chatMenuAction, deleteCategory, fillChatMenu, gitOpenOf, menuButton, modelDisplay, renameCategory, withoutVersion } from './menus.js';
 import { setBadge } from './platform.js';
-import { openInfo, openRoutineEditor } from './editors.js';
+import { openBotChanges, openInfo, openRoutineEditor } from './editors.js';
 import { RECENT_DAYS, renderPaletteResult } from './palette.js';
 import { renderStartSetup, setupCard } from './welcome.js';
 import { openOtherChat, otherLabel, otherRows, otherUnreadCount } from './others.js';
@@ -120,7 +121,7 @@ export function renderChatList() {
         setBadge(otherUnreadCount());
         return;
     }
-    // Order: finished chats with something unread (not muted), then running or waiting ones, then the
+    // Order: running or waiting chats, then finished ones with something unread (not muted), then the
     // folders by name and the rest (each newest message first); a bot counts as running or unread if one of its
     // conversations is, and takes them all along. A folder is listed even while nothing is in it.
     const cats = sortedCategories();
@@ -132,20 +133,24 @@ export function renderChatList() {
             const st = chatStatus(c).state;
             return st === 'thinking' || st === 'waiting' || backgroundOf(c).length > 0;
         });
-        if (running) return 1;
-        if (!isMuted(id) && chats.some(isUnread)) return 0;
+        if (running) return 0;
+        if (!isMuted(id) && chats.some(isUnread)) return 1;
         const k = cats.findIndex((c) => c.id === categoryOf(id));
         return k >= 0 ? 3 + k : REST;
     };
     const sorted = [
         ...ids.map((id, i) => ({ id, i, s: section(id), ts: latest(id), foreign: null })),
-        ...foreign.map((r, i) => ({ id: r.id, i: ids.length + i, s: r.section >= 2 ? REST : r.section, ts: r.ts, foreign: r })),
+        // others.js counts unread 0 and running 1, the list the other way round
+        ...foreign.map((r, i) => ({ id: r.id, i: ids.length + i, s: r.section >= 2 ? REST : 1 - r.section, ts: r.ts, foreign: r })),
     ].sort((x, y) => x.s - y.s || y.ts.localeCompare(x.ts) || x.i - y.i);
     // Favorites stand as large tiles at the very top as well; in the list they have no section of their own but stay
-    // where they belong (running, unread, their folder)
-    const favorites = ids.filter(isFavorite);
+    // where they belong (running, unread, their folder). The tiles move like the list: running or waiting ones first,
+    // then finished ones with something unread, then the rest, each newest message first
+    const favRank = (s) => Math.min(s, 2);
+    const favorites = sorted.filter((x) => !x.foreign && isFavorite(x.id))
+        .sort((x, y) => favRank(x.s) - favRank(y.s) || y.ts.localeCompare(x.ts) || x.i - y.i).map((x) => x.id);
     if (favorites.length) el.chatList.appendChild(favoriteStrip(favorites));
-    const titles = [t('list.unreadDone'), t('list.running'), t('list.favorites'), ...cats.map((c) => c.name), cats.length ? t('list.unfiled') : t('list.all')];
+    const titles = [t('list.running'), t('list.unreadDone'), t('list.favorites'), ...cats.map((c) => c.name), cats.length ? t('list.unfiled') : t('list.all')];
     const several = cats.length > 0 || new Set(sorted.map((x) => x.s)).size > 1;
     const rows = {};
     for (const x of sorted) (rows[x.s] = rows[x.s] || []).push(x);
@@ -192,6 +197,7 @@ export function renderChatList() {
                     : sleeping ? '💤 ' + (b.machine ? t('list.sleepingMachineOff', { machine: upper(b.machine) }) : t('list.sleepingNoMachine'))
                         : (state.last[id] || (g ? tn('list.bots', g.members.length) : shortFolder(b.folder))));
             if (sleeping) last.classList.add('sleeping');
+            showDraft(last, id);
             if (st === 'thinking' || behind.length) last.classList.add('working');
             if (st === 'waiting') last.classList.add('waiting');
             info.append(name, last);
@@ -233,6 +239,8 @@ export function renderChatList() {
         }
     }
     setBadge(allChats().filter(isUnread).length + otherUnreadCount());
+    // the tabs above an open bot chat show the same running and unread dots
+    for (const p of panes) if (p.chatId) renderConversationTabs(p);
 }
 
 /**
@@ -389,6 +397,33 @@ function foreignRow(r) {
 }
 
 /** .active: the chat of the active pane; .open: shown in another pane next to it. */
+/**
+ * Scrolls the chat list just far enough that the row of the chat shows (a chat opened from a tab, the palette, a
+ * notification or a favorite tile); a conversation hidden under its folded bot shows that bot's row. Nothing while the
+ * list itself is not on screen (the phone with a chat open).
+ */
+export function revealInList(id) {
+    const list = el.chatList;
+    if (!id || list.hidden || !list.clientHeight) return;
+    const rows = [...list.querySelectorAll(':scope > li[data-chat]')];
+    const b = bot(id);
+    const li = rows.find((r) => /** @type {HTMLElement} */ (r).dataset.chat === id) || (b ? rows.find((r) => /** @type {HTMLElement} */ (r).dataset.chat === b.id) : null);
+    if (!li) return;
+    const box = list.getBoundingClientRect();
+    const row = li.getBoundingClientRect();
+    if (row.top < box.top) list.scrollTop -= box.top - row.top;
+    else if (row.bottom > box.bottom) list.scrollTop += row.bottom - box.bottom;
+}
+
+/** A chat not open with something typed and not sent: "Draft: …" in its row instead of the last message (not while it works). */
+function showDraft(last, id) {
+    const text = draftOf(id);
+    const st = chatStatus(id).state;
+    if (!text || paneFor(id) || st === 'thinking' || st === 'waiting') return;
+    last.replaceChildren(node('span', 'draft-label', t('list.draft')), ' ' + text.replace(/\s+/g, ' ').trim());
+    last.classList.add('draft');
+}
+
 function markOpen(li, id) {
     if (id === activePane().chatId) li.classList.add('active');
     else if (visibleChats().includes(id)) li.classList.add('open');
@@ -522,7 +557,7 @@ function gitBadge(b, open) {
     m.appendChild(node('span', '', String(open.length)));
     m.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        openGitPage(b);
+        openBotChanges(b.id);
     });
     return m;
 }
@@ -618,8 +653,8 @@ export function setupFolderDrop() {
             return;
         }
         const chat = ev.dataTransfer.getData(CHAT_DRAG);
-        // Folders hold bots and groups; a conversation follows its bot, a person stays where it is
-        if (!chat || chat.includes('~') || isPerson(chat)) return;
+        // Folders hold bots, groups and people; a conversation follows its bot
+        if (!chat || chat.includes('~')) return;
         ev.preventDefault();
         if (categoryOf(chat) !== li.dataset.category) setCategory(chat, li.dataset.category || '');
     });
@@ -759,9 +794,9 @@ export function setupSearchBox() {
 
 // ---------------------------------------------------------- Search across all chats
 // The backend searches the whole history of all chats; hits replace the chat list, a tap opens
-// the chat and jumps to the message. On the phone chips above the hits choose what is searched: messages, bots
-// (names of the chats), files (names of attachments, in the backend too) or routines; the command palette
-// (palette.js) does all of them at once on larger screens.
+// the chat and jumps to the message. Chips above the hits choose what is searched: messages, bots (names of the
+// chats), files (names of attachments, in the backend too) or routines; the command palette (palette.js) does all of
+// them at once.
 let searchTimer = null;
 /** @type {'messages' | 'bots' | 'files' | 'routines'} */
 let searchFilter = 'messages';
@@ -770,15 +805,11 @@ let searchFilter = 'messages';
  * asked for, `hits` null while the backends are still answering.
  */
 const sidebar = { since: '', /** @type {any[] | null} */ hits: null };
-const narrow = window.matchMedia('(max-width: 760px)');
-
-/** What the sidebar's search looks for; the chips are shown on the phone only, elsewhere it is messages. */
-const sidebarFilter = () => (narrow.matches ? searchFilter : 'messages');
 
 export function onSearchInput() {
     clearTimeout(searchTimer);
     const text = el.search.value.trim();
-    const filter = sidebarFilter();
+    const filter = searchFilter;
     const local = filter === 'bots' || filter === 'routines';
     const active = text.length >= (local ? 1 : 2);
     el.searchResults.hidden = !active;
@@ -798,7 +829,7 @@ function searchOlderInSidebar() {
     send({ type: 'search', text: el.search.value.trim() });
 }
 
-/** A chip of the phone's search: what it looks for; the text stays and is searched again. */
+/** A chip of the search: what it looks for; the text stays and is searched again. */
 export function chooseSearchFilter(filter) {
     if (filter === searchFilter) return;
     searchFilter = filter;
@@ -998,7 +1029,7 @@ export function renderSearchResult(f) {
     }
     // the palette's searches (palette.js) answer through the same frame
     renderPaletteResult(f);
-    const filter = sidebarFilter();
+    const filter = searchFilter;
     if (f.text !== el.search.value.trim() || !!f.files !== (filter === 'files') || filter === 'bots' || filter === 'routines') return;
     // A backend from before `since` answers without it, over the whole history: still hits for the query
     if (!f.files && f.since && f.since !== sidebar.since) return;
@@ -1067,6 +1098,7 @@ function conversationRow(chatId) {
     const last = node('div', 'last',
         st === 'waiting' ? '⏳ ' + t('status.waitingForYou') : st === 'thinking' ? activity
             : behind.length ? backgroundText(behind) : (state.last[chatId] || t('list.noMessageYet')));
+    showDraft(last, chatId);
     if (st === 'thinking' || behind.length) last.classList.add('working');
     if (st === 'waiting') last.classList.add('waiting');
     info.appendChild(last);

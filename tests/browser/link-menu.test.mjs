@@ -23,7 +23,7 @@ export default async function ({ start, check }) {
     check('a link in a message: no system long-press preview', css.includes('.messages a { -webkit-touch-callout: none; }'));
 
     await p.click('.bubble[data-eid="a1"] .more');
-    check('the menu of a message with a link offers "Copy link"', (await menu()).endsWith('Copy|Copy link|Forward'), await menu());
+    check('the menu of a message with a link offers "Copy link"', (await menu()).endsWith('Copy|Copy link|Forward|Report'), await menu());
     await p.locator('#message-menu button', { hasText: 'Copy link' }).click();
     await h.wait(150);
     const copied = await p.evaluate(() => window.copied);

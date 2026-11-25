@@ -38,5 +38,11 @@ if (location.protocol === 'file:') {
         // While the app signs in out of sight (main.js signInAway): nothing to set up here, or the user is needed
         machineNone: () => ipcRenderer.invoke('machine-none'),
         signInNeeded: (message, code) => ipcRenderer.invoke('sign-in-needed', message, code),
+        // The app's update in the settings (desktop/updater.js): its state, a check, the switch, the restart
+        updateState: () => ipcRenderer.invoke('update-state'),
+        updateCheck: () => ipcRenderer.invoke('update-check'),
+        updateAuto: (on) => ipcRenderer.invoke('update-auto', on),
+        updateRestart: () => ipcRenderer.invoke('update-restart'),
+        onUpdateState: (handler) => ipcRenderer.on('update-state', (e, state) => handler(state)),
     });
 }

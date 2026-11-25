@@ -1,12 +1,12 @@
 /* OpenFolk web app: settings (appearance, language, autologin per machine, entry to notifications and devices). */
 import { BACKEND_LANGUAGE_KEY, LANGUAGE_KEY, i18n, isLanguage, locale, readSetting, resolveLanguage, setLanguage, t, writeSetting } from './i18n.js';
-import { BUBBLE_DEFAULT, BUBBLE_KEY, PROTOCOL_VERSION, THEME_KEY, el, md, node, state, storage, toast } from './core.js';
+import { BUBBLE_DEFAULT, BUBBLE_KEY, PROTOCOL_VERSION, SUPPORT_MAIL, THEME_KEY, el, md, node, state, storage, toast } from './core.js';
 import { clockTime, e2e, send, upper } from './e2e.js';
 import { askAutologon, machineCan } from './machines.js';
 import { setShowAllAccounts } from './others.js';
 import { qrSvg } from './qr-login.js';
 import { layoutPanes } from './panes.js';
-import { desktopVersion, iosBrowserTab, relayAddress } from './platform.js';
+import { desktopUpdates, desktopVersion, iosBrowserTab, relayAddress } from './platform.js';
 import { loadPushSettings } from './push.js';
 import { loadAccounts } from './accounts.js';
 import { relayClaimForm } from './relay-claim.js';
@@ -16,6 +16,7 @@ import { autoReadOn } from './read-aloud.js';
 import { dictationOn } from './voice.js';
 import { RELEASES, VERSION } from './release.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
+import { renderVault } from './vault.js';
 
 // ================================================================ Settings
 
@@ -68,6 +69,7 @@ export function openSettings() {
     send({ type: 'machine_tokens' });
     renderMachineJoin(null);
     renderSettings();
+    renderVault();
     loadPushSettings();
     loadDevices();
     loadAccounts();
@@ -179,11 +181,82 @@ export function renderAbout() {
         rows.push([t('about.backend', { machine: upper(machine) }), `${st.version ? `${st.version} · ` : ''}${protocol} · ${t('about.since', { time: clockTime(st.since) })}`]);
     }
     if (!machines.length) rows.push([t('about.backendNone'), '']);
+    const mail = node('a', '', SUPPORT_MAIL);
+    mail.href = `mailto:${SUPPORT_MAIL}`;
+    rows.push([t('about.support'), mail]);
     el.aboutList.replaceChildren(...rows.flatMap(([label, value]) => {
         const dd = node('dd', '');
         dd.append(value);
         return [node('dt', '', label), dd];
     }));
+    renderUpdate();
+}
+
+/** The desktop app's update as it last reported it (desktop/updater.js updateState); null until it has answered. */
+let update = /** @type {import('./platform.js').DesktopUpdate | null} */ (null);
+let updateWatched = false;
+
+/** Takes a state the app sent or answered with and shows it. */
+function showUpdate(s) {
+    if (!s) return;
+    update = s;
+    renderUpdate();
+}
+
+/**
+ * Below the versions, in the desktop app's own page only: where its update stands, "Check for updates" or, once a
+ * version is downloaded, "Restart now", and the switch for the automatic checks (the same as in the app's menus).
+ */
+function renderUpdate() {
+    const box = el.aboutUpdate;
+    box.hidden = !desktopUpdates;
+    if (!desktopUpdates) return;
+    if (!updateWatched) {
+        updateWatched = true;
+        desktopUpdates.changes(showUpdate);
+        void desktopUpdates.state().then(showUpdate);
+    }
+    const parts = [node('h4', '', t('about.updates'))];
+    const s = update;
+    if (s && !s.supported) parts.push(node('p', 'hint', t('about.updateNotHere')));
+    else if (s) {
+        const line = {
+            checking: t('about.updateChecking'),
+            none: t('about.updateNone', { version: s.current }),
+            downloading: t('about.updateDownloading', { version: s.version }),
+            ready: t('about.updateReady', { version: s.version }),
+            failed: t('about.updateFailed', { reason: s.message }),
+        }[s.phase];
+        if (line) parts.push(node('p', s.phase === 'failed' ? 'error about-update-state' : 'hint about-update-state', line));
+        const actions = node('div', 'actions left');
+        if (s.phase === 'ready') {
+            const restart = node('button', 'btn primary about-update-restart', t('about.updateRestart'));
+            restart.type = 'button';
+            restart.addEventListener('click', () => desktopUpdates.restart());
+            actions.append(restart);
+        } else {
+            const check = /** @type {HTMLButtonElement} */ (node('button', 'btn about-update-check', t('about.updateCheck')));
+            check.type = 'button';
+            check.disabled = s.phase === 'checking' || s.phase === 'downloading';
+            check.addEventListener('click', () => {
+                showUpdate({ ...s, phase: 'checking', message: '' });
+                void desktopUpdates.check().then(showUpdate);
+            });
+            actions.append(check);
+        }
+        parts.push(actions);
+        if (s.phase === 'ready') parts.push(node('p', 'hint', t('about.updateRestartHint')));
+        const label = node('label', 'check');
+        const auto = /** @type {HTMLInputElement} */ (node('input', 'about-update-auto'));
+        auto.type = 'checkbox';
+        auto.checked = s.auto;
+        auto.disabled = s.forced;
+        auto.addEventListener('change', () => void desktopUpdates.auto(auto.checked).then(showUpdate));
+        label.append(auto, ' ', node('span', '', t('about.updateAuto')));
+        parts.push(label);
+        if (s.forced) parts.push(node('p', 'hint', t('about.updateForced')));
+    }
+    box.replaceChildren(...parts);
 }
 
 const RELEASES_URL = 'https://github.com/OpenFolk/OpenFolk/releases';
@@ -648,11 +721,12 @@ export function renderSharedSettings() {
     const asleep = !state.online.length;
     el.settingsBotsAsleep.hidden = !asleep;
     el.settingsAiAsleep.hidden = !asleep;
-    for (const c of [el.settingsAvatarModel, el.settingsReadAloud, el.settingsVoiceLanguage, el.settingsPushPreview, el.settingsGitPull]) c.disabled = asleep;
+    for (const c of [el.settingsAvatarModel, el.settingsReadAloud, el.settingsVoiceLanguage, el.settingsBotApproval, el.settingsPushPreview, el.settingsGitPull]) c.disabled = asleep;
     el.settingsAvatarModel.value = s.avatarModel || 'gemini-3.1-flash-image';
     el.settingsReadAloud.value = s.readAloud || 'auto';
     el.settingsTalkMode.value = s.talkMode || 'app';
     el.settingsVoiceLanguage.value = s.voiceLanguage || '';
+    el.settingsBotApproval.value = s.botApproval || 'risky';
     el.settingsPushPreview.value = s.pushPreview || 'title';
     el.settingsGitPull.checked = s.gitAutoPull !== false;
     renderAiServices();

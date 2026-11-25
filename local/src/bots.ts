@@ -6,7 +6,7 @@ import { t } from './i18n.ts';
 import { personChat } from './people.ts';
 import { rememberable } from './policy.ts';
 import { readJson, readJsonCached, setTombstone, slug, writeJson } from './store.ts';
-import { APPROVALS, BOT_VOICES, VOICE_CATALOG, VOICE_PROVIDERS, botIdOf, type ApprovalPolicy, type Bot, type BotInput, type BotPlace, type BotVoice, type Category, type CategoryInput, type Group, type GroupInput } from '../../shared/protocol.ts';
+import { APPROVALS, BOT_VOICES, TALK_MODEL, VOICE_CATALOG, VOICE_PROVIDERS, botIdOf, type ApprovalPolicy, type Bot, type BotInput, type BotPlace, type BotVoice, type Category, type CategoryInput, type Group, type GroupInput } from '../../shared/protocol.ts';
 
 const POLICIES: readonly ApprovalPolicy[] = APPROVALS;
 
@@ -153,6 +153,8 @@ export function saveBot(input: BotInput, managed?: string): Bot {
             : input.canMessage === null ? undefined : [...new Set(input.canMessage)].filter((b) => b !== id && bots.some((x) => x.id === b)),
         machine,
         machineOnly: true,
+        // stored only when off; an app without the field leaves it as it is
+        talkFast: input.talkFast === undefined ? existing?.talkFast : input.talkFast ? undefined : false,
         // '' takes the contact off; an app without the field leaves it as it is
         contact: input.contact === undefined || input.contact === null ? existing?.contact : (String(input.contact).trim().toLowerCase() || undefined),
         // Written down by the bot's machine (setPlace); another folder needs a new one
@@ -244,6 +246,31 @@ export function createConversation(botId: string): string {
     b.updatedAt = now;
     saveBots(bots);
     return `${botId}~${id}`;
+}
+
+/**
+ * The bot's conversation for the voice conversation, made on first use: on TALK_MODEL, titled `title`. Its chatId;
+ * the caller starts it with fresh context.
+ */
+export function talkConversation(botId: string, title: string): string {
+    const bots = loadBots();
+    const b = botOrThrow(bots, botId);
+    const found = b.conversations?.find((c) => c.talk && !c.archived);
+    if (found) return `${botId}~${found.id}`;
+    const list = b.conversations ?? [];
+    let id: string;
+    do id = randomBytes(4).toString('hex'); while (list.some((c) => c.id === id));
+    const now = new Date().toISOString();
+    b.conversations = [...list, { id, title, model: TALK_MODEL, talk: true, createdAt: now }];
+    b.updatedAt = now;
+    saveBots(bots);
+    return `${botId}~${id}`;
+}
+
+/** Whether a chat is a bot's voice conversation. */
+export function isTalkConversation(chatId: string): boolean {
+    const [botId, id] = chatId.split('~');
+    return Boolean(id && findBot(botId)?.conversations?.some((c) => c.id === id && c.talk));
 }
 
 export function findConversation(chatId: string): { bot: Bot; title: string } | undefined {

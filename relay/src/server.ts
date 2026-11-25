@@ -29,6 +29,9 @@ try {
         totpSecret: env.TOTP_SECRET ?? '',
         trustProxy: parseTrustProxy(env.TRUST_PROXY),
         agentAllowedFrom: (env.AGENT_ALLOWED_FROM ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+        pushService: (env.PUSH_SERVICE ?? '').trim().toLowerCase() === 'on',
+        demoAccounts: (env.DEMO_ACCOUNTS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+        demoPassword: env.DEMO_PASSWORD ?? '',
         heartbeatMs: Number(env.HEARTBEAT_MS ?? 30_000),
     });
 } catch (e) {

@@ -32,6 +32,8 @@ services:
       APNS_TOPIC: ${APNS_TOPIC:-}
       APNS_ENV: ${APNS_ENV:-}
       FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
+      # only on the relay of openfolk.app: app push for every backend (relay/src/push-service.ts)
+      PUSH_SERVICE: ${PUSH_SERVICE:-}
     volumes:
       - relay-data:/data
 

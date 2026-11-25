@@ -1,12 +1,12 @@
 /* OpenFolk web app: @ mentions, / commands, history rendering, unread, pinned messages, replies (quote). */
 import { t } from './i18n.js';
-import { SEEN_KEY, el, mdCached, node, state, storage, closest, toast } from './core.js';
+import { SEEN_KEY, SUPPORT_MAIL, el, mdCached, node, state, storage, closest, toast } from './core.js';
 import { codeBlocks } from './code-blocks.js';
 import { paneFor, paneOf, panes, visibleChats } from './panes.js';
 import { bot, botIdOf, clockTime, colorOf, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, person, plain, responsibleMachine, send, senderName, upper } from './e2e.js';
 import { jumpToEntry, listTap, renderChatList } from './list.js';
 import { openChat } from './chat.js';
-import { allChats } from './connection.js';
+import { allChats, isBlocked } from './connection.js';
 import { attachmentBar, composerButtons, displayTime, getLive, isQueued, liveWrap, renderApprovals, renderLiveText, renderQueue, renderTools, speaker, textHeight, titleFrom, toolRow } from './queue.js';
 import { renderVoicePending, voicePlayer } from './voice.js';
 import { menuButton } from './menus.js';
@@ -296,6 +296,7 @@ export function renderEntry(p, e) {
         }
         b.appendChild(time);
         if (e.id) b.dataset.eid = e.id;
+        showLike(b, e, chatId);
         messages.appendChild(b);
         return;
     }
@@ -449,6 +450,36 @@ function moreButton() {
     k.title = t('message.moreTitle');
     k.setAttribute('aria-label', t('message.moreLabel'));
     return k;
+}
+
+// ---------------------------------------------------------- Likes
+// In a chat with a person, each side can like what the other wrote; both see the heart at the message.
+
+/** Puts the heart at a liked message's bubble, or takes it away. */
+function showLike(bubble, e, chatId) {
+    const old = bubble.querySelector('.like-mark');
+    if (old) old.remove();
+    const on = isPerson(chatId) && !!e.like && e.like.on;
+    bubble.classList.toggle('liked', on);
+    if (!on) return;
+    const s = node('span', 'like-mark');
+    s.title = !e.from || e.from === 'me' ? t('message.likedBy', { name: person(chatId).name }) : t('message.likedByMe');
+    s.setAttribute('role', 'img');
+    s.setAttribute('aria-label', s.title);
+    s.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.4A4.1 4.1 0 0 1 12 7.6a4.1 4.1 0 0 1 7.5 2.5c0 5.8-7.5 10.4-7.5 10.4z"/></svg>';
+    bubble.appendChild(s);
+}
+
+/** The backend's "liked": this account or the other person liked a message, or took the like back. */
+export function setLike(chatId, id, on) {
+    const e = (state.history[chatId] || []).find((x) => x.id === id);
+    if (!e) return;
+    e.like = { ...e.like, on };
+    const p = paneFor(chatId);
+    const b = p && p.el.messages.querySelector(`.bubble[data-eid="${CSS.escape(id)}"]`);
+    if (!b) return;
+    showLike(b, e, chatId);
+    scroll(p);
 }
 
 // ---------------------------------------------------------- Pinned messages
@@ -635,6 +666,80 @@ function forwardTo(id) {
     setReply(p, isPerson(id) ? { id: q.id, from: q.from, text: q.text, forwarded: true } : q);
 }
 
+// ---------------------------------------------------------- Reporting
+// "Report" in the menu of a bot's answer or a person's message (the app stores' rules for AI content and content of
+// other people): the backend quotes the stored message into the person chat with each admin of the relay, who gets a
+// push and can answer there. Without an admin (a relay of one's own) the report goes by mail to the support address.
+
+/** The message being reported while the page is open. */
+let reporting = null;
+
+/** The admins a report reaches: the people this account can chat with, except itself and those it blocked. */
+function reportAdmins() {
+    const me = state.account ? state.account.id : 'main';
+    return state.people.filter((x) => x.admin && x.id !== me && !isBlocked('p:' + x.id));
+}
+
+function openReport(chatId, e, from) {
+    const text = e.text || (e.attachments || []).map((a) => a.name).join(', ') || t('message.noText');
+    reporting = { chatId, id: e.id, from, text };
+    el.reportQuote.textContent = plain(text).slice(0, 600);
+    el.reportReason.value = 'offensive';
+    el.reportNote.value = '';
+    el.reportError.hidden = true;
+    el.reportSend.disabled = false;
+    const admins = reportAdmins();
+    el.reportSend.hidden = !admins.length;
+    el.reportMail.className = admins.length ? 'btn' : 'primary';
+    el.reportTo.textContent = admins.length
+        ? t('report.toAdmins', { names: admins.map((x) => x.name).join(', '), mail: SUPPORT_MAIL })
+        : t('report.toSupport', { mail: SUPPORT_MAIL });
+    el.report.hidden = false;
+}
+
+/** The mail to the support address with what the page holds; made on the tap, so it has the reason and note chosen. */
+function reportMailHref() {
+    const r = reporting;
+    if (!r) return `mailto:${SUPPORT_MAIL}`;
+    const model = !isGroup(r.chatId) && !isPerson(r.chatId) ? modelOf(r.chatId) : '';
+    const body = [
+        t('report.mailReason', { reason: t(`report.reason.${el.reportReason.value}`) }),
+        t('report.mailFrom', { name: senderName(r.from), chat: chatName(r.chatId) }),
+        ...(model ? [t('report.mailModel', { model })] : []),
+        '', el.reportNote.value.trim(), '', '> ' + plain(r.text).slice(0, 1500).replace(/\n/g, '\n> '),
+    ].join('\n');
+    return `mailto:${SUPPORT_MAIL}?subject=${encodeURIComponent(t('report.mailSubject'))}&body=${encodeURIComponent(body)}`;
+}
+
+export function setupReport() {
+    el.reportMail.addEventListener('click', () => { el.reportMail.href = reportMailHref(); });
+    el.reportForm.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        if (!reporting) return;
+        el.reportError.hidden = true;
+        el.reportSend.disabled = true;
+        const note = el.reportNote.value.trim();
+        send({ type: 'report', chatId: reporting.chatId, entryId: reporting.id, reason: /** @type {any} */ (el.reportReason.value), ...(note ? { note } : {}) });
+    });
+}
+
+/** The backend's answer: the report is in the chats with these admins. */
+export function reportSent(f) {
+    if (!reporting || reporting.id !== f.entryId) return;
+    reporting = null;
+    el.report.hidden = true;
+    const names = (f.admins || []).map((id) => (person('p:' + id) || {}).name || id).join(', ');
+    toast(t('report.sent', { names }));
+}
+
+export function reportFailed(message) {
+    if (el.report.hidden) return false;
+    el.reportSend.disabled = false;
+    el.reportError.textContent = message;
+    el.reportError.hidden = false;
+    return true;
+}
+
 /** @param {Pane} p */
 function openMessageMenu(p, bubble, x, y) {
     const chatId = p.chatId;
@@ -651,6 +756,11 @@ function openMessageMenu(p, bubble, x, y) {
     const from = e.role === 'user' ? (e.from || 'me') : (e.botId || botIdOf(chatId));
     // The pane may show another chat by the time the entry is chosen
     item('reply', t('message.reply'), () => { if (p.chatId === chatId) setReply(p, { id: e.id, from, text: quoteText(e) }); });
+    // What the other person wrote; the heart appears once the backend has stored it
+    if (isPerson(chatId) && from.startsWith('person:')) {
+        const liked = !!e.like && e.like.on;
+        item(liked ? 'unlike' : 'like', t(liked ? 'message.unlike' : 'message.like'), () => send({ type: 'like', chatId, entryId: e.id, on: !liked }));
+    }
     item(pinned ? 'unpin' : 'pin', pinned ? t('message.unpin') : t('message.pin'), () => sendPin(chatId, {
         id: e.id, text: e.text || (e.attachments || []).map((a) => a.name).join(', '), ts: e.ts, from,
     }, !pinned));
@@ -660,6 +770,8 @@ function openMessageMenu(p, bubble, x, y) {
     const links = [...new Set([...bubble.querySelectorAll('.content a[href]')].map((x) => /** @type {HTMLAnchorElement} */ (x).href).filter((h) => /^https?:/.test(h)))];
     if (links.length) item('link', t(links.length > 1 ? 'message.copyLinks' : 'message.copyLink'), () => { if (navigator.clipboard) navigator.clipboard.writeText(links.join('\n')).then(() => toast(t('message.linkCopied')), () => undefined); });
     item('forward', t('message.forward'), () => openForward(chatId, e, from));
+    // What others wrote: a bot's answer, a person's message; not the user's own
+    if (e.role === 'assistant' || from.startsWith('person:')) item('flag', t('message.report'), () => openReport(chatId, e, from));
     m.hidden = false;
     fx.openSince = Date.now();
     // at the finger or mouse pointer, but inside the window

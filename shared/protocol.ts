@@ -127,6 +127,8 @@ export interface Bot {
     machine: string;
     /** Always true when `machine` is set; only for apps before 0.2, which let bots move to any machine awake. */
     machineOnly?: boolean;
+    /** false: the voice conversation runs in the chat itself on the bot's model; missing = in a fast conversation of its own. */
+    talkFast?: boolean;
     /** Session id of the CLI on this machine (not synced; sessions are per machine). */
     sessionId?: string;
     /** Further conversations besides the main chat, each with its own session. */
@@ -169,6 +171,10 @@ export interface SetupBot {
     /** User name for the token (Forgejo, GitHub); '' = 'git' */
     gitUser: string;
     model?: ModelChoice;
+    /** One of the admin's own bots whose profile picture this bot shows; a new picture there reaches the account. */
+    avatarFrom?: string;
+    /** That picture (a data URL), filled in by the admin's backend when it sends the setup; not stored with it. */
+    avatar?: string;
 }
 
 /**
@@ -199,8 +205,13 @@ export interface Conversation {
     model?: ModelChoice;
     /** Archived since: hidden from the overview; history and session stay for restoring. */
     archived?: string;
+    /** The bot's voice conversation (talk_start): one per bot, on TALK_MODEL, every dialog starts with fresh context. */
+    talk?: boolean;
     createdAt: string;
 }
+
+/** The fast model of the voice conversation's own conversation; heavy work goes to the main chat (message_bot). */
+export const TALK_MODEL = 'sonnet';
 
 /** `canMessage`: null = all bots; missing (apps before it existed) keeps what the bot has. */
 /** A bot's folder relative to its machine's folder for bots (MachineSettings.botFolder), with '/' between the parts. */
@@ -236,10 +247,22 @@ export interface PersonChat {
     id: string;
     favorite?: boolean;
     muted?: boolean;
+    /** Folder of the chat list the chat is in (Category.id); missing = none. */
+    category?: string;
     /** Deleted here at this time: entries up to it stay away, also when another machine still has them. */
     cleared?: string;
+    /** Blocked by this account: their messages and hand-overs are dropped, nothing goes to them. */
+    blocked?: boolean;
     updatedAt: string;
 }
+
+/**
+ * Why a message is reported (the app stores' rules for AI content and content of other people). The report goes as
+ * a message into the person chat with each admin of the relay; without one, the app offers the support address.
+ */
+export const REPORT_REASONS = ['offensive', 'harmful', 'sexual', 'false', 'other'] as const;
+export type ReportReason = (typeof REPORT_REASONS)[number];
+export const REPORT_NOTE_MAX = 1000;
 
 export interface Group {
     id: string;
@@ -298,6 +321,33 @@ export type PushPreview = (typeof PUSH_PREVIEWS)[number];
 /** API keys kept in the shared settings; the keys themselves never reach a browser. */
 export const SHARED_API_KEYS = ['gemini', 'openai'] as const;
 export type SharedApiKey = (typeof SHARED_API_KEYS)[number];
+
+// ---- The vault: credentials for the bots' work (vault.ts), kept per account, managed by admins only
+
+/** A vault entry's name is the environment variable the bots see it as. */
+export const VAULT_NAME = /^[A-Z][A-Z0-9_]{1,63}$/;
+export const VAULT_NOTE_MAX = 200;
+/** Shorter values are not kept: the redaction of the bots' output would mangle ordinary text. */
+export const VAULT_VALUE_MIN = 6;
+export const VAULT_VALUE_MAX = 4000;
+export const VAULT_ENTRIES_MAX = 200;
+/** What a browser learns of an entry: everything but the value. `bots`: null = every bot of the account. */
+export interface VaultEntryView {
+    id: string;
+    name: string;
+    note: string;
+    bots: string[] | null;
+    createdAt: string;
+    updatedAt: string;
+}
+/** A new or changed entry; `id` empty for a new one, `value` missing keeps the stored one. */
+export interface VaultEntryInput {
+    id: string;
+    name: string;
+    note: string;
+    bots: string[] | null;
+    value?: string;
+}
 /** Voice for reading messages aloud: the first cloud voice with a key (else the machine's own), the device's own, the
  *  bot's machine (Piper), or one provider. */
 export const READ_ALOUD_VOICES = ['auto', 'device', 'local', 'openai', 'gemini'] as const;
@@ -372,13 +422,15 @@ export interface SharedSettings {
     readAloud?: ReadAloudVoice;
     /** How the voice conversation runs (default 'app'). */
     talkMode?: TalkMode;
+    /** Approval level every new bot starts with (default 'risky'). */
+    botApproval?: ApprovalPolicy;
     /** Which API keys are stored (only in what goes to browsers). */
     apiKeys?: Partial<Record<SharedApiKey, boolean>>;
     updatedAt: string;
 }
 
 /** What a browser may change of the shared settings. */
-export type SharedSettingsInput = Partial<Pick<SharedSettings, 'language' | 'avatarModel' | 'voiceLanguage' | 'gitAutoPull' | 'pushPreview' | 'readAloud' | 'talkMode'>>;
+export type SharedSettingsInput = Partial<Pick<SharedSettings, 'language' | 'avatarModel' | 'voiceLanguage' | 'gitAutoPull' | 'pushPreview' | 'readAloud' | 'talkMode' | 'botApproval'>>;
 
 /** Faster-whisper models for voice messages; '' = automatic (large-v3-turbo, small without a graphics card). */
 export const VOICE_MODELS = ['', 'large-v3-turbo', 'medium', 'small', 'base'] as const;
@@ -561,6 +613,11 @@ export interface HistoryEntry {
     replyTo?: Quote;
     /** event of a hand-over in the bot's chat: the account whose person chat continues it (a link there). */
     person?: string;
+    /**
+     * Person chats: the reader of this message likes it (the other person for one of 'me', this account for one of
+     * theirs); both halves carry it. A like taken back stays with `on` false, so the newer `at` wins between machines.
+     */
+    like?: { on: boolean; at: string };
 }
 
 /** Quoted message: copy of sender and (truncated) text, so the quote stays readable without the message. */
@@ -914,7 +971,9 @@ export type ClientFrame =
     | { type: 'tool_output'; chatId: string; entryId: string; toolId: string }
     | { type: 'send'; chatId: string; text: string; attachments?: UploadInput[]; replyTo?: Quote;
         /** From the voice conversation (webapp/js/talk.js): the bot gets the note to answer briefly, for being read aloud. */
-        spoken?: boolean }
+        spoken?: boolean;
+        /** While the bot works: after its job instead of folded into it (the composer's "Afterwards"). */
+        later?: boolean }
     | { type: 'interrupt'; chatId: string }
     /** A job between bots (Job): stop waiting for its result, with `cancel` also stop it at the target. To its source's machine. */
     | { type: 'job_stop'; id: string; cancel?: boolean }
@@ -937,6 +996,8 @@ export type ClientFrame =
     | { type: 'queue_to_conversation'; chatId: string; entryId: string }
     /** Delete a waiting message from the queue (only while the bot has not started it). */
     | { type: 'queue_delete'; chatId: string; entryId: string }
+    /** Like a message of the other person in a person chat (on) or take the like back; answer "liked" to all browsers. */
+    | { type: 'like'; chatId: string; entryId: string; on: boolean }
     /** Pin a message at the top of the chat (on) or unpin it. */
     | { type: 'pin'; chatId: string; entry: PinnedEntry; on: boolean }
     /** Read state of changed chats from this device (applies to all devices). */
@@ -998,6 +1059,13 @@ export type ClientFrame =
     | { type: 'people' }
     /** Deletes this account's half of a person chat (the other person keeps theirs); answer "people" to all browsers. */
     | { type: 'person_chat_delete'; account: string }
+    /** Blocks or unblocks a person for this account (PersonChat.blocked); answer "people" to all browsers. */
+    | { type: 'person_block'; account: string; on: boolean }
+    /**
+     * Reports a message of a chat (a bot's answer, a person's message) to the admins of the relay: the backend quotes
+     * the stored entry into the person chat with each admin it reaches. Answer "report_sent", or an error.
+     */
+    | { type: 'report'; chatId: string; entryId: string; reason: ReportReason; note?: string }
     /**
      * A link that signs in one more device without the password: the backend has the relay mint a one-time token
      * and adds the end-to-end key when it has one. Answer "pair_link" (only to the asking browser). With `token`: the
@@ -1050,7 +1118,33 @@ export type ClientFrame =
      * Answer "setup_link" to the asking browser.
      */
     | { type: 'setup_link'; account: string; revoke?: boolean }
-    | { type: 'ping' };
+    /**
+     * The voice conversation starts (webapp/js/talk.js): the bot's talk conversation with fresh context on TALK_MODEL,
+     * or its main chat when the bot wants it there or runs on another engine. Answer "talk_started" to the asking browser.
+     */
+    | { type: 'talk_start'; botId: string }
+    /** The voice conversation in `chatId` ended: what was said goes to the main chat with its next message. */
+    | { type: 'talk_end'; chatId: string }
+    /** The vault's entries without their values (admins only); answer "vault". */
+    | { type: 'vault' }
+    /** Create or change a vault entry (admins only); answer "vault" to all browsers of the account, an error to the asking one. */
+    | { type: 'vault_save'; entry: VaultEntryInput }
+    /** Delete a vault entry; answer "vault". */
+    | { type: 'vault_delete'; id: string }
+    | { type: 'ping' }
+    // Missions (local/src/missions.ts): every frame about one mission goes to the mission's machine (Mission.machine)
+    | { type: 'missions' }
+    /** The events and the project's metrics of one mission; answered with mission_detail. */
+    | { type: 'mission_open'; id: string }
+    /** The Mission Builder: a goal in plain words becomes a proposal (mission_proposal). */
+    | { type: 'mission_propose'; text: string; folder?: string }
+    /** A new mission (id '') or the user's change of one; `start` starts it right after saving. */
+    | { type: 'mission_save'; mission: MissionInput; start?: boolean }
+    | { type: 'mission_control'; id: string; action: MissionAction }
+    | { type: 'mission_approval_reply'; missionId: string; id: string; allow: boolean; message?: string }
+    /** A task the user adds or changes (id '' = new); status 'cancelled' takes it off the plan. */
+    | { type: 'mission_task_save'; missionId: string; task: MissionTaskInput }
+    | { type: 'mission_delete'; id: string };
 
 /** What the browser sends: frame plus optionally the target machine (without: the first machine awake). */
 export type ClientMessage = (ClientFrame | E2eFrame) & { machine?: string };
@@ -1154,6 +1248,11 @@ export interface RelayAccount {
     machines?: string[];
     /** Profile picture as a small image data URL (isAccountAvatar); missing = initials. */
     avatar?: string;
+    /**
+     * An account for the app stores' reviewers (DEMO_ACCOUNTS on the relay): its name and password are fixed, and the
+     * relay creates it again after it was deleted.
+     */
+    demo?: boolean;
 }
 
 /** Longest profile picture of an account the relay keeps (a 256 px JPEG is about 20,000 characters). */
@@ -1181,6 +1280,8 @@ export interface Person {
     contacts?: string[];
     /** Profile picture (RelayAccount.avatar); missing = initials. */
     avatar?: string;
+    /** RelayAccount.demo: the backend gives it the demo bot (DEMO_BOT). */
+    demo?: boolean;
 }
 
 /** May account `a` chat with account `b`? Symmetric; a 'listed' account on either side has to name the other. */
@@ -1297,6 +1398,8 @@ export type AgentFrame =
     | { type: 'conversation_created'; chatId: string }
     /** Pinned messages: one chat after a change, all on connect (chatId missing). */
     | { type: 'pinned'; chatId?: string; entries?: PinnedEntry[]; all?: Record<string, PinnedEntry[]> }
+    /** A message of a person chat was liked or the like taken back, by this account or by the other person. */
+    | { type: 'liked'; chatId: string; entryId: string; on: boolean }
     /** Read state: changed chats, all on connect (`all`). */
     | { type: 'seen'; state: Record<string, SeenEntry>; all?: boolean }
     /** Shared settings (language), on connect and after every change. */
@@ -1312,6 +1415,13 @@ export type AgentFrame =
     | { type: 'approval'; approval: Approval }
     /** The open jobs this machine's bots gave other bots (all of them, on every change and to a new browser). */
     | { type: 'jobs'; jobs: Job[] }
+    /** All missions of the account, after every change (from the mission's machine) and on request. */
+    | { type: 'missions'; missions: Mission[] }
+    /** `metricsError`: the project's metrics.json exists but cannot be read. */
+    | { type: 'mission_detail'; id: string; events: MissionEvent[]; metrics: MissionMetrics | null; metricsError?: string }
+    | { type: 'mission_proposal'; proposal: MissionProposal }
+    /** Answer to mission_save: the mission's id, also for a new one. */
+    | { type: 'mission_saved'; id: string }
     /** `expired`: nobody answered in time; the web app leaves the card in place, marked, until the chat is drawn anew. */
     | { type: 'approval_done'; id: string; chatId: string; result: string; expired?: boolean }
     /** The answer to "transcribe": the text, or why there is none. */
@@ -1383,6 +1493,10 @@ export type AgentFrame =
      * only travels encrypted.
      */
     | { type: 'setup_link'; account: string; url?: string; expiresAt?: string }
+    /** The vault's entries without their values, to the admin's browsers on connect and after every change. */
+    | { type: 'vault'; entries: VaultEntryView[] }
+    /** The chat the voice conversation runs in (talk_start). */
+    | { type: 'talk_started'; botId: string; chatId: string }
     /**
      * Settings of this machine, to the main account's browsers on connect and after every change. `anthropicKey`,
      * `gitPushToken`, `engineKeys`: such a secret is stored. `offers`: what this machine can do at all, whatever the settings say (the settings page greys out
@@ -1410,6 +1524,8 @@ export type AgentFrame =
      * after every change. Empty list: a relay without person chats or nobody else on it.
      */
     | { type: 'people'; list: Person[]; chats: PersonChat[] }
+    /** A report went out (ClientFrame `report`): the admins (account ids) whose person chat it is in. */
+    | { type: 'report_sent'; chatId: string; entryId: string; admins: string[] }
     /**
      * Pairing link for a new device (`<relay>/#pair=<token>&e2e=<key>`), valid until `expiresAt`, with the QR code
      * as SVG. The link carries the end-to-end key, so it only ever travels encrypted.
@@ -1544,6 +1660,8 @@ export interface TurnSpec {
     routineId?: string;
     /** History entry of the message, marked as read when the job starts. */
     entryId?: string;
+    /** After the running job instead of folded into it (the composer's "Afterwards"). */
+    later?: boolean;
 }
 
 export interface TurnResultData {
@@ -1580,6 +1698,232 @@ export interface Snapshot {
     seen?: Record<string, SeenEntry>;
     /** Favorite, mute and deletion of the person chats */
     personChats?: PersonChat[];
+    /** The vault with its values; only in encrypted sync (E2E), never otherwise. Tombstones 'vault:<id>'. */
+    vault?: { entries: (VaultEntryView & { value: string })[]; updatedAt: string };
+    /** Missions; missing from backends before them. Tombstones 'mission:<id>'. */
+    missions?: Mission[];
+}
+
+// ------------------------------------------------------------------ Missions
+
+/**
+ * A mission: a long-term goal a team of bots pursues on its own, led by one of them (the supervisor). OpenFolk knows
+ * no field of work: what a mission does lies in its folder (the project) and in its bots; `type` is a label only.
+ */
+export const MISSION_STATUSES = ['draft', 'planning', 'running', 'waiting_approval', 'paused', 'blocked', 'completed', 'failed', 'cancelled'] as const;
+export type MissionStatus = (typeof MISSION_STATUSES)[number];
+/** 1 assisted, 2 supervised, 3 autonomous, 4 continuous. */
+export const MISSION_AUTONOMY = [1, 2, 3, 4] as const;
+export type MissionAutonomy = (typeof MISSION_AUTONOMY)[number];
+export const MISSION_PRIORITIES = ['low', 'normal', 'high'] as const;
+export type MissionPriority = (typeof MISSION_PRIORITIES)[number];
+export const MISSION_ACTIONS = ['start', 'pause', 'resume', 'cancel', 'complete', 'kill', 'tick'] as const;
+export type MissionAction = (typeof MISSION_ACTIONS)[number];
+export const MISSION_TASK_STATUSES = ['open', 'delegated', 'running', 'blocked', 'done', 'failed', 'cancelled'] as const;
+export type MissionTaskStatus = (typeof MISSION_TASK_STATUSES)[number];
+export const MISSION_RISK_LEVELS = ['low', 'medium', 'high'] as const;
+
+export interface MissionRisk {
+    text: string;
+    level: (typeof MISSION_RISK_LEVELS)[number];
+    mitigation?: string;
+}
+
+/**
+ * Which kind of action needs the user's approval: while the mission's autonomy is at most `upTo`. The backend enforces
+ * 'delegate' and 'status' itself; other kinds ('external', 'money', 'limit' …) are for the bots and the project.
+ */
+export interface MissionApprovalRule {
+    kind: string;
+    label: string;
+    upTo: MissionAutonomy;
+}
+
+export interface MissionMilestone {
+    id: string;
+    title: string;
+    dueAt?: string;
+    status: 'open' | 'done';
+    doneAt?: string;
+}
+
+export interface MissionTask {
+    id: string;
+    title: string;
+    detail: string;
+    /** Bot id of a team member; '' = nobody yet */
+    assignee: string;
+    milestoneId?: string;
+    /** Tasks that must be done first */
+    dependsOn: string[];
+    status: MissionTaskStatus;
+    /** The job between bots it was delegated with (jobs.ts) and the conversation it runs in */
+    jobId?: string;
+    chatId?: string;
+    /** The result, or why it failed; a note while it runs */
+    result?: string;
+    createdBy: 'supervisor' | 'user';
+    createdAt: string;
+    updatedAt: string;
+}
+
+/** A request for the user's decision; open ones stay in the mission and survive restarts. */
+export interface MissionApproval {
+    id: string;
+    /** 'delegate', 'budget', 'status' or a kind a bot names ('external', 'money' …) */
+    kind: string;
+    title: string;
+    detail: string;
+    /** Bot id, or 'system' for the backend's own (budget) */
+    requestedBy: string;
+    createdAt: string;
+    /** What happens on "allow" for the kinds the backend carries out */
+    taskId?: string;
+    action?: Exclude<MissionAction, 'tick' | 'start' | 'resume' | 'kill'> | 'fail';
+}
+
+/** Limits of what the mission may use; missing = no limit. */
+export interface MissionBudget {
+    costUsd?: number;
+    turns?: number;
+    turnsPerDay?: number;
+    /** Money the project may work with (capital, ad budget): a guardrail for the project, not booked by OpenFolk */
+    money?: { amount: number; currency: string };
+}
+
+export interface MissionSpent {
+    costUsd: number;
+    turns: number;
+    /** The day turnsToday counts for (YYYY-MM-DD, local time of the mission's machine) */
+    day: string;
+    turnsToday: number;
+}
+
+export interface MissionLoop {
+    ticks: number;
+    /** Failed cycles in a row; three block the mission */
+    errors: number;
+    lastTick?: string;
+    /** Start of the cycle running now */
+    running?: string;
+    /** Why a cycle is due, collected while one runs or the pause between two lasts */
+    pending: string[];
+}
+
+export interface Mission {
+    id: string;
+    name: string;
+    description: string;
+    /** A label (e.g. "Trading", "SaaS launch"); OpenFolk has no code per type */
+    type: string;
+    goal: string;
+    successCriteria: string[];
+    abortCriteria: string[];
+    risks: MissionRisk[];
+    priority: MissionPriority;
+    startAt?: string;
+    dueAt?: string;
+    status: MissionStatus;
+    /** 0 to 100 */
+    progress: number;
+    autonomy: MissionAutonomy;
+    approvalRules: MissionApprovalRule[];
+    budget: MissionBudget;
+    spent: MissionSpent;
+    /** Cron (5 fields, local time of the machine) for scheduled cycles; '' = only on events */
+    cadence: string;
+    /** The project's limits as key and value; only the user changes them */
+    guardrails: Record<string, string | number | boolean>;
+    /** Set: nothing of the mission runs until the user resumes it */
+    killSwitch: boolean;
+    /** The project folder on `machine`; the mission runs only there */
+    folder: string;
+    machine: string;
+    /** Bot id of the supervisor and the chat its cycles run in (a conversation of its own) */
+    supervisor: string;
+    chatId: string;
+    team: { botId: string; role: string }[];
+    milestones: MissionMilestone[];
+    tasks: MissionTask[];
+    approvals: MissionApproval[];
+    results: { ts: string; botId: string; text: string; file?: string }[];
+    loop: MissionLoop;
+    /** List folder of the team in the chat list (a Category id) */
+    category?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export const MISSION_EVENT_KINDS = ['status', 'tick', 'decision', 'plan', 'task', 'delegation', 'feedback', 'approval', 'budget', 'result', 'error', 'user', 'event'] as const;
+export type MissionEventKind = (typeof MISSION_EVENT_KINDS)[number];
+
+/** One line of the mission's log (decision history included); kept on the mission's machine. */
+export interface MissionEvent {
+    id: string;
+    ts: string;
+    kind: MissionEventKind;
+    /** Bot id, 'user' or 'system' */
+    by: string;
+    text: string;
+    /** What a decision was based on, a task id, numbers */
+    data?: string;
+    /** Shown as critical in Mission Control */
+    critical?: boolean;
+}
+
+/** What the project writes into <folder>/.openfolk/metrics.json; Mission Control shows it without knowing it. */
+export interface MissionMetrics {
+    updatedAt?: string;
+    kpis?: Record<string, { label: string; value: number | string; unit?: string; target?: number; good?: 'up' | 'down' }>;
+    series?: Record<string, { label: string; unit?: string; points: [string, number][] }>;
+    tables?: Record<string, { label: string; columns: string[]; rows: (string | number)[][] }>;
+}
+
+/** A team member in the builder: an existing bot of the mission's machine, or a new one made from the fields. */
+export interface MissionTeamInput {
+    botId?: string;
+    name: string;
+    area?: string;
+    role: string;
+    tone?: string;
+    voice?: BotVoice;
+    supervisor?: boolean;
+}
+
+/** What the user edits of a mission; status, spending, tasks and the log stay the backend's. */
+export interface MissionInput {
+    id: string;
+    name: string;
+    description: string;
+    type: string;
+    goal: string;
+    successCriteria: string[];
+    abortCriteria: string[];
+    risks: MissionRisk[];
+    priority: MissionPriority;
+    startAt?: string;
+    dueAt?: string;
+    autonomy: MissionAutonomy;
+    approvalRules: MissionApprovalRule[];
+    budget: MissionBudget;
+    cadence: string;
+    guardrails: Record<string, string | number | boolean>;
+    folder: string;
+    team: MissionTeamInput[];
+    milestones: { id?: string; title: string; dueAt?: string }[];
+}
+
+/** The builder's proposal: a mission without folder, for the user to edit. */
+export type MissionProposal = Omit<MissionInput, 'id' | 'folder'> & { folder?: string };
+
+export interface MissionTaskInput {
+    id: string;
+    title: string;
+    detail: string;
+    assignee: string;
+    milestoneId?: string;
+    dependsOn?: string[];
+    status?: 'open' | 'cancelled';
 }
 
 /** Task a bot runs in the background (sub-agent, shell); ends with its process. */
@@ -1647,6 +1991,8 @@ export type PeerData =
     | { kind: 'person_message'; entry: HistoryEntry; message: 'message' | 'handover';
         /** The attachments' files (path on the sending machine -> base64), which the other machine cannot fetch */
         files?: Record<string, string> }
+    /** Person route: account `from` likes a message this account wrote to it (the same entry id in both halves), or no longer. */
+    | { kind: 'person_like'; entryId: string; on: boolean; at: string }
     /** Person route, admin -> account set up: its setup with the token per bot key; the account's machine applies it. */
     | { kind: 'setup'; setup: AccountSetup; tokens: Record<string, string> }
     /** Person route, account set up -> its admin: send my setup (on connecting). */

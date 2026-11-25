@@ -1,5 +1,5 @@
 // The open changes of a bot's repos in the chat's header: shown with their count as in the list, a tap opens them;
-// gone once the repos are clean, never in a group's header.
+// gone once the repos are clean, never in a group's header. On a tablet a tap shows them in the side panel.
 import { bot } from './harness.mjs';
 
 const DIRTY = { name: 'skool', path: '', branch: 'main', ahead: 1, behind: 0, files: [{ path: 'a.ts', status: 'M' }], more: 0 };
@@ -40,5 +40,18 @@ export default async function ({ start, check }) {
     await h.push({ type: 'git_status', machine: 'desk', status: { skool: [] } });
     await h.wait(150);
     check('clean again: the badge goes', (await badge()) === '');
+
+    // A tablet: the changes in the side panel, as the bot's page scrolled to them (like "Edit bot"), not a page over all
+    await p.setViewportSize({ width: 1100, height: 820 });
+    await h.push({ type: 'git_status', machine: 'desk', status: { skool: [DIRTY] } });
+    await h.wait(200);
+    await p.click('.pane:not([hidden]) [data-el=chat-git]');
+    await h.wait(300);
+    const side = await p.evaluate(() => {
+        const g = document.getElementById('info-git').getBoundingClientRect();
+        return { info: !document.getElementById('info').hidden, page: !document.getElementById('git-page').hidden, inView: g.top >= document.querySelector('#info-panel .panel-top').getBoundingClientRect().bottom - 1 && g.top < window.innerHeight, right: Math.round(document.getElementById('info-panel').getBoundingClientRect().right) };
+    });
+    check('tablet: the badge opens the bot page in the side panel at its open changes', side.info && !side.page && side.inView && side.right === 1100, side);
+    check('tablet: the changes are asked for', h.sent.filter((f) => f.type === 'git_changes' && f.botId === 'skool').length >= 2);
     check('no page errors', h.errors.length === 0, h.errors);
 }

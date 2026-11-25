@@ -136,6 +136,8 @@ npm run smoke            # the app with a profile of its own: "on this computer"
 npm run build            # Windows: dist/OpenFolk-Setup-0.1.0.exe (NSIS one-click, English/German, asks for
                          # admin rights once and installs for all users in C:\Program Files\OpenFolk, then starts)
 npm run build:portable   # Windows: a single EXE without installation
+npm run desktop:install  # Windows, from the repository root: build and install over the installed app, to try
+                         # the current state before a release (--no-build installs the last build again)
 npm run build:linux      # Linux: dist/OpenFolk-0.1.0-x86_64.AppImage and dist/OpenFolk-0.1.0-amd64.deb
 npm run build:mac        # macOS: dist/OpenFolk-0.1.0-arm64.dmg and .zip on Apple Silicon, -x64.dmg on an Intel Mac
 ```
@@ -164,6 +166,9 @@ then the new version is installed and, after "Restart now", started. "Check for 
 "Help" and, on the Mac, in the "OpenFolk" menu; a check from there says what it found, the automatic ones stay quiet.
 "Check for updates automatically" right below it switches the automatic checks and downloads off and on at once,
 without a restart, stored as `autoUpdate` in `config.json`; a check from the menu works either way.
+The settings of the app's own page have the same under "About" (`update-*` in `main.js`, `desktopUpdates` in
+`webapp/js/platform.js`): where the update stands (checking, up to date, downloading, ready, failed with the reasons),
+"Check for updates" or, once a version is downloaded, "Restart now", and the switch for the automatic checks.
 Not updated: a build started from source, the portable EXE, a Mac app without a Developer ID signature (Squirrel.Mac
 installs only signed apps), and the smoke test (`OPENFOLK_NO_UPDATE=1`); there the entry is shown off and disabled.
 

@@ -11,7 +11,8 @@
     "sync": "node scripts/copy-web.mjs && cap sync",
     "android": "npm run sync && cap open android",
     "ios": "npm run sync && cap open ios",
-    "run:android": "npm run sync && cap run android"
+    "run:android": "npm run sync && cap run android",
+    "assets": "node scripts/make-assets.mjs && capacitor-assets generate --ios --android --iconBackgroundColor \"#d97757\" --iconBackgroundColorDark \"#d97757\" --splashBackgroundColor \"#d97757\" --splashBackgroundColorDark \"#1f1e1d\""
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",
@@ -25,7 +26,9 @@
     "openfolk-native": "file:./plugin"
   },
   "devDependencies": {
-    "@capacitor/cli": "8.5.3"
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "8.5.3",
+    "sharp": "^0.35.5"
   },
   "engines": {
     "node": ">=22"

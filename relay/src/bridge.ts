@@ -22,6 +22,7 @@
 import { randomUUID } from 'node:crypto';
 import type WebSocket from 'ws';
 import { MAIN } from './accounts.ts';
+import { cleanPush } from './push-service.ts';
 import type { MachinesSeen } from './machines-seen.ts';
 import {
     reaches, type AgentInbound, type AgentOutbound, type ClientFrame, type ClientMessage, type E2eFrame, type NativePushChannel, type NativePushMessage,
@@ -246,20 +247,9 @@ export class Bridge {
 
     /** Push for the apps from a backend: only to channels the relay has credentials for, at most 100 devices. */
     private forwardPush(ws: WebSocket, machine: string, push: unknown): void {
-        const p = push as { subscriptions?: unknown; message?: Partial<NativePushMessage> } | null;
-        const m = p?.message;
-        if (!p || !Array.isArray(p.subscriptions) || !m || typeof m.title !== 'string' || typeof m.url !== 'string') return;
-        const subscriptions = p.subscriptions.filter((s): s is NativePushSubscription =>
-            !!s && typeof s === 'object' && this.pushChannels.includes((s as NativePushSubscription).channel)
-            && typeof (s as NativePushSubscription).token === 'string').slice(0, 100);
-        if (!subscriptions.length) return;
-        const priority = m.priority === 'quiet' || m.priority === 'high' ? m.priority : 'normal';
-        const message: NativePushMessage = {
-            title: m.title.slice(0, 200), body: typeof m.body === 'string' ? m.body.slice(0, 500) : '', url: m.url.slice(0, 500),
-            ...(typeof m.tag === 'string' ? { tag: m.tag.slice(0, 64) } : {}), priority,
-            ttlSeconds: typeof m.ttlSeconds === 'number' ? Math.min(Math.max(60, m.ttlSeconds), 7 * 24 * 3600) : 3600,
-        };
-        this.onPush(subscriptions, message).then(
+        const p = cleanPush(push, this.pushChannels, 100);
+        if (!p) return;
+        this.onPush(p.subscriptions, p.message).then(
             (gone) => { if (gone.length) this.toAgent(ws, { type: 'push_result', gone }); },
             (e: Error) => this.log(`Push for ${machine} failed: ${e.message}`),
         );

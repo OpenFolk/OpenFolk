@@ -108,6 +108,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   waiting notification lives in the backend's memory; a restart in those three minutes drops it. Sent directly from your machine:
   Web Push/VAPID to browsers (on iPhone only from the installed PWA), APNs and FCM to the mobile apps
   (`mobile/README.md`).
+- **Messages while a bot works.** On Claude a message (typed or spoken) goes into the running job, as in the
+  terminal: the bot reads it at its next step and takes it into its plan; the chat says so. "Afterwards" next to the
+  input field queues it behind the job instead. Jobs of other bots, routines, groups and the other engines queue as before.
 - **Activity.** Tool calls as expandable rows with result and duration; the list shows what a bot is working on.
 - **Usage.** Five-hour and weekly window of the subscription; Codex limits are shown separately.
 - **Routines.** Scheduled prompts (daily, weekdays, weekly, hourly or cron) on the bot's page: a row each with when
@@ -139,11 +142,30 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   restart, a job to a sleeping machine goes out once it wakes, and a result for a sleeping machine waits on the
   target's machine. Loops are refused. Which bots a bot can reach is set in its settings under "Can give jobs to"
   (all, selected or none, each with all its conversations); group chats are not limited by it.
+- **Missions.** The tab "Missions" (Mission Control) gives a team of bots a long-term goal it pursues on its own. The
+  builder turns a goal in plain words into a proposal (success and abort criteria, a team with portraits and one
+  supervisor, milestones, risks, autonomy, approval rules, budget, guardrails, a schedule) that you edit before anything
+  is made; new bots get the mission's folder and a list folder of their own. The supervisor runs the mission in cycles,
+  each one turn in its mission chat: it plans tasks, delegates them as jobs to the team, checks results and records its
+  decisions with reason and data. A result, your decision, a report of the team or the schedule starts the next cycle;
+  nothing waits inside a turn. Four autonomy levels decide what asks you first (from every delegation at level 1 to
+  only changes of limits at level 4); budget, autonomy, rules and guardrails change only in the app, never through a
+  bot. One cycle per mission at a time, two minutes between cycles, the budget checked before each, three failed cycles
+  block the mission, and the kill switch stops cycles and delegated jobs until you resume. The mission page shows goal,
+  progress, the team at work, the tasks with who gave them to whom, your open decisions, the log, the resources and
+  the figures of the project. OpenFolk knows no field of work: what a mission does lives in its folder. The project
+  reads its limits from `.openfolk/mission.json` (written by the backend, refused to bots, put back if changed) and
+  reports figures in `.openfolk/metrics.json` (`kpis`, `series`, `tables`), which the page shows as tiles, charts and
+  tables.
 - **Chats with people.** "+" → "Person" opens a chat with someone on the same relay, a team member or a customer
   (see Accounts). Text, files and voice messages go both ways, with notifications, unread, favorite, mute and search
-  like any chat. A bot with "Hand over to" set in its settings gets the tool `hand_over`: it sends that person its
+  like any chat. "Like" in the ⋯ menu of a message the other person wrote puts a heart on it that both of you see;
+  "Unlike" takes it back. A bot with "Hand over to" set in its settings gets the tool `hand_over`: it sends that person its
   summary, they get a notification, and the user gets a "Continue with …" button in the bot's chat. Bots do not read
-  the chats between people.
+  the chats between people. "Block" in the chat's menu stops their messages and yours until "Unblock".
+- **Reporting.** "Report" in the ⋯ menu of a bot's answer or a person's message sends it with a reason to the admins
+  of the relay, into your chat with them. On a relay without another admin, the report goes by mail to the app's
+  publisher (support@openfolk.app, also under Settings › About).
 - **Files.** Attach, paste or drop files; images and PDFs go straight to the model. Bots send files with
   `send_file`. Pictures show in the chat (also those a bot sends, fetched from its machine) and open large with a tap;
   videos (MP4, WebM, MOV) play in the app. Files go through the relay end-to-end encrypted, up to 20 MB each.
@@ -168,8 +190,13 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   loaded by the setup or with the first use; a little flatter than the cloud voices.
 - **Voice conversation.** The button next to the microphone opens a page where you talk with a bot hands-free: the
   recording goes out by itself after a pause, the transcript and what the bot is doing are shown, the answer is read
-  aloud (what the bot says before a tool runs right away) and the microphone opens again. A tap on the picture sends
-  at once or stops the voice; the bot is asked to answer briefly, in spoken language. The page keeps the screen on
+  aloud sentence by sentence while the bot still writes it (a code block once it is closed) and the microphone opens again. A tap on the picture sends
+  at once or stops the voice; the bot is asked to answer briefly, in spoken language. In the app the dialog runs in
+  the bot's conversation "Voice conversation" on a fast model (Sonnet) with fresh context: the first message gets the
+  last messages of the main chat, heavy work (code, longer research, earlier decisions, "think it through") goes to
+  the main chat on the bot's own model with all its context, and when the dialog ends, what was said goes along with
+  the main chat's next message. "Voice conversation on a fast model" in the bot editor switches this off for a bot;
+  bots on another engine than Claude talk in their chat as before. The page keeps the screen on
   where the browser allows it; in the background it pauses and reads a waiting answer when you come back. Bot chats
   only, and it needs voice messages set up on the bot's machine.
   With "OpenAI Realtime" in the settings (and an OpenAI key) the conversation runs like ChatGPT's instead: OpenAI's
@@ -194,7 +221,8 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   list, Ctrl+, the settings, Ctrl+/ the overview of all keys. A browser tab keeps Ctrl+N, Ctrl+Shift+N and Ctrl+1 to 9
   for itself; the desktop app has them all and lists them in its menu "Go". On the phone the search above the list
   has chips instead: messages, bots, files, routines; messages there too from the last four weeks first, newest first.
-- **Tabs.** Floating at the bottom of the list: Bots, Repos (open changes of all bots, with a badge), Status
+- **Tabs.** Floating at the bottom of the list: Bots, Repos (open changes of all bots, with a badge), Missions (with
+  the number of decisions waiting for you), Status
   (the machines with their bots, engines and backend, waking and shutting down, the plans' quota with the 5-hour and weekly windows, a separate one for Fable, and when
   each resets) and Settings.
 - **Open changes.** Uncommitted files and unpushed or unpulled commits of the git repos in a bot's folder, with
@@ -229,7 +257,7 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
 - **Settings.** Language, theme, notifications, devices and security; per device whether the microphone sends voice
   messages (the default) or dictates into the input field, and whether the answer to a voice message is read aloud
   by itself once it is done (on by default). Shared by all machines: the AI services (the API
-  keys of OpenAI and Google Gemini as a list), the image model for profile pictures, how the voice conversation runs (in the app or over OpenAI Realtime), the voice for reading answers aloud (with one of those keys an OpenAI or Gemini
+  keys of OpenAI and Google Gemini as a list), the vault (credentials for the bots' work, see "Security"), the image model for profile pictures, how the voice conversation runs (in the app or over OpenAI Realtime), the voice for reading answers aloud (with one of those keys an OpenAI or Gemini
   voice, else the bot's machine where voice messages are set up, otherwise the device's own; with a cloud voice the text goes to that provider), the language of voice messages, what app
   notifications show, keeping the repos current. Per machine (main account only): the AI providers that run there, each on its subscription or a key,
   shutting down with its countdown and
@@ -469,7 +497,9 @@ What the binding means: a machine joined by a setup link serves only its account
 your machines for that account (you can tick some again under "Edit"). Your bots, chats and machines never reach it, and its chats do not reach your machines: person chats and
 the setup travel between the machines through the relay, which stores nothing (a message waits on the sending
 machine until the other one is online, for up to a week). The person cannot change or delete the bots of the setup;
-you change them in the same dialog, and the change reaches their computer the next time it is online. The tokens lie
+you change them in the same dialog, and the change reaches their computer the next time it is online. A bot of the setup
+can show the picture of one of your own bots ("Profile picture": "Like my bot …"); a new picture there reaches their
+computer by itself. The tokens lie
 in the account's data on their computer, outside the bots' folders, in files the bots' tools refuse; still, a write
 token is on their computer, so give each person a token of their own for that one repository. A support bot's clone
 follows the repository: it fetches and fast-forwards before answering, at most every five minutes.
@@ -516,6 +546,19 @@ What the host of the relay can and cannot do, with end-to-end encryption on (the
   frames apart from the relay's own. `E2E_KEY=off` switches the encryption off, then the relay host can read every
   chat. Limitation: whoever controls the relay could serve manipulated JavaScript; the mobile apps bring the web app
   along and are not affected by that. They keep the key in the iOS Keychain or the Android Keystore.
+- **The vault:** credentials the bots need for their work (an API token of your hosting provider, the password of a
+  mail account) go into the vault under Settings › "Vault", admins only, instead of into a `.env` or the chat. Each
+  entry has a name shaped like an environment variable, a note, a value and the bots that may use it (all or ticked
+  ones). A bot gets its entries as environment variables of its engine process and of every command it runs, and its
+  system prompt names them; so it writes `curl -H "Authorization: Bearer $HETZNER_API_TOKEN"` without ever seeing the
+  value. A value is write-only in the app (replace or delete, never shown) and is blacked out as `[vault:NAME]` from
+  everything a bot says, its tool calls and results, approval cards and the history. On disk the vault is encrypted
+  with a key of the machine (`local/data/vault-key`); it travels to the other machines only in the encrypted sync,
+  like the API keys. Names the engines sign in with (`ANTHROPIC_*`, `OPENAI_API_KEY`, `GH_TOKEN`, …) are refused, so an
+  entry can never change whose subscription a bot runs on. In the approval level "risky" a command that prints the
+  whole environment (`printenv`, `env`, `Get-ChildItem Env:`) asks first. Limits: the engines' own transcript files
+  under their config folders keep raw tool output, and a value split over two streamed chunks shows in the live text
+  until the finished answer replaces it.
 - **Files:** the app downloads files only from the bots' folders and the uploads, never secrets (`.env`, keys), the
   backend's data or the dot folders under your home folder (the CLIs' logins). A bot's folder is checked against
   `ALLOWED_ROOTS` of the machine that runs it, before every job; links and junctions are resolved first.
@@ -524,8 +567,10 @@ What the host of the relay can and cannot do, with end-to-end encryption on (the
 - **Push to the mobile apps** is not end-to-end encrypted: Apple and Google see what a notification contains.
   The setting "App notifications show" limits it to the title (default; it names the bot, the group or the machine) or
   nothing but "OpenFolk". A relay with Apple and Google
-  credentials delivers for backends that have none; it then sees that preview too and nothing else. That is the
-  only case in which the relay sees any content (`docs/internals/push.md`).
+  credentials delivers for backends that have none; it then sees that preview too and nothing else. For a backend on
+  any other relay the push service of openfolk.app delivers (`PUSH_SERVICE_URL`, `off` switches it off): it sees the
+  device token and the same preview, stores nothing and limits each device. Those are the only cases in which a relay
+  sees any content (`docs/internals/push.md`).
 - Report vulnerabilities privately, not in public issues.
 
 ## Development

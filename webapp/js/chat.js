@@ -1,14 +1,16 @@
 /* OpenFolk web app: open a chat in a pane, header, status line. */
+import { missionsBack } from './missions.js';
 import { t, tn } from './i18n.js';
 import { $, el, node, state, closest } from './core.js';
 import { activePane, capacity, closeSettings, createPane, isWide, layoutPanes, paneFor, panes, removePane, savePanes, setActivePane } from './panes.js';
 import { bot, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, modelsOfChat, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
-import { backgroundOf, backgroundText, chatStatus, closeChatSearch, renderChatList } from './list.js';
+import { backgroundOf, backgroundText, chatStatus, closeChatSearch, renderChatList, revealInList } from './list.js';
 import { renderMembers } from './machines.js';
-import { closeMention, markSeen, renderHistory, renderPinned, setReply } from './chat-features.js';
+import { closeMention, isUnread, markSeen, renderHistory, renderPinned, setReply } from './chat-features.js';
 import { rec, renderUploads, stopRecording } from './voice.js';
 import { closeGitPage, gitOpenOf, gitPageFromChat, modelDisplay, renderInfoChat, tokensShort } from './menus.js';
-import { allChats } from './connection.js';
+import { allChats, conversationsOf, isBlocked } from './connection.js';
+import { draftOf, loadDraft, saveDraft } from './queue.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -39,7 +41,11 @@ export function openChat(id, jumpTo, searchWord, target) {
     // A voice message belongs to the chat it was started in
     if (rec.pane === p && p.chatId !== id) stopRecording(false);
     p.jumpTo = jumpTo || null;
+    // What was typed stays with the chat it was typed in; this chat brings its own draft, or an empty field
+    const switching = p.chatId !== id;
+    if (switching) saveDraft(p);
     p.chatId = id;
+    if (switching) loadDraft(p);
     el.gitPage.hidden = true;
     p.uploads = [];
     renderUploads(p);
@@ -86,6 +92,8 @@ export function dropChat(id, target) {
     if (!from) return openChat(id, undefined, undefined, target);
     const other = target.chatId;
     // free both panes first: openChat would otherwise only focus the pane that shows the chat
+    saveDraft(from);
+    saveDraft(target);
     from.chatId = null;
     target.chatId = null;
     openChat(id, undefined, undefined, target);
@@ -129,6 +137,7 @@ export function paneActivated() {
     layoutPanes();
     renderChatList();
     const id = activePane().chatId;
+    revealInList(id);
     noteVisited(id);
     try { history.replaceState(null, '', id ? '?chat=' + encodeURIComponent(id) : location.pathname); } catch { /* ignore */ }
 }
@@ -213,8 +222,12 @@ export function closeChat(p = activePane()) {
     markSeen(p.chatId);
     if (rec.pane === p) stopRecording(false);
     loadingBar(p, false);
+    saveDraft(p);
     if (panes.length > 1) removePane(p);
-    else p.chatId = null;
+    else {
+        p.chatId = null;
+        loadDraft(p);
+    }
     savePanes();
     renderWorking();
     paneActivated();
@@ -232,6 +245,7 @@ export function setupSwipeBack() {
         // the list lies underneath, unless the git page goes back to its chat
         moving: (on) => el.app.classList.toggle('swiping', on && !gitPageFromChat()),
         close: () => {
+            if (missionsBack()) return;
             if (!el.gitPage.hidden) closeGitPage();
             else closeChat();
         },
@@ -296,8 +310,46 @@ export function swipeBack(area, o) {
 }
 
 /** @param {Pane} p */
+/**
+ * The tabs above a bot's chat: its main chat, then its conversations in the order they were started, and "+" for a new
+ * one. Only for a bot with conversations; a dot for something running or unread in a tab that is not open.
+ * @param {import('./panes.js').Pane} p
+ */
+export function renderConversationTabs(p) {
+    const id = p.chatId;
+    const b = id && !isGroup(id) && !isPerson(id) ? bot(id) : null;
+    const subs = b ? conversationsOf(b) : [];
+    p.el.convTabs.hidden = !subs.length;
+    if (!subs.length) {
+        p.el.convTabs.replaceChildren();
+        return;
+    }
+    const tabs = [b.id, ...subs].map((cid) => {
+        const k = node('button', 'conv-tab' + (cid === id ? ' on' : ''), cid === b.id ? t('chat.tabMain') : conversationTitle(cid));
+        k.type = 'button';
+        k.dataset.chat = cid;
+        k.setAttribute('role', 'tab');
+        k.setAttribute('aria-selected', String(cid === id));
+        const st = chatStatus(cid).state;
+        if (cid !== id && (st === 'thinking' || st === 'waiting' || backgroundOf(cid).length)) k.appendChild(node('i', 'dot ' + (st === 'waiting' ? 'waiting' : 'thinking')));
+        else if (cid !== id && isUnread(cid)) k.appendChild(node('i', 'dot new'));
+        return k;
+    });
+    const add = node('button', 'conv-tab conv-new', '+');
+    add.type = 'button';
+    add.title = t('conversation.new');
+    add.setAttribute('aria-label', add.title);
+    add.disabled = !responsibleMachine(b);
+    add.dataset.new = b.id;
+    p.el.convTabs.setAttribute('role', 'tablist');
+    p.el.convTabs.replaceChildren(...tabs, add);
+    const on = /** @type {HTMLElement | null} */ (p.el.convTabs.querySelector('.on'));
+    if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
 export function renderChatHeader(p) {
     const id = p.chatId;
+    renderConversationTabs(p);
     if (isPerson(id)) {
         renderPersonHeader(p);
         return;
@@ -348,14 +400,14 @@ function renderPersonHeader(p) {
     const who = person(p.chatId);
     fillAvatar(p.el.chatAvatar, who, p.chatId);
     p.el.chatName.textContent = who.name;
-    p.el.chatSub.textContent = who.gone ? t('people.unreachableShort') : t('people.badge');
+    p.el.chatSub.textContent = who.gone ? t('people.unreachableShort') : isBlocked(p.chatId) ? t('people.blocked') : t('people.badge');
     p.el.chatModel.hidden = true;
     p.el.chatMachine.hidden = true;
     p.el.chatGit.hidden = true;
     // a person has no settings page: their menu sits behind the name
     p.el.chatSettings.hidden = true;
     p.el.btnStop.hidden = true;
-    p.el.text.placeholder = t('people.placeholder', { name: who.name });
+    p.el.text.placeholder = t(isBlocked(p.chatId) ? 'people.blockedPlaceholder' : 'people.placeholder', { name: who.name });
     renderSleepHint(p);
     updateSendAllowed();
 }
@@ -407,5 +459,5 @@ function renderSleepHint(p) {
 
 /** Send buttons of all panes: only with a connection and an awake machine for the chat. */
 export function updateSendAllowed() {
-    for (const p of panes) p.el.btnSend.disabled = !state.agentOnline || !!machineToWake(p.chatId) || (isPerson(p.chatId) && !!person(p.chatId).gone);
+    for (const p of panes) p.el.btnSend.disabled = !state.agentOnline || !!machineToWake(p.chatId) || (isPerson(p.chatId) && (!!person(p.chatId).gone || isBlocked(p.chatId)));
 }

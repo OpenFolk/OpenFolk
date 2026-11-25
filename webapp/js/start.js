@@ -3,31 +3,31 @@ import { applyI18n, t } from './i18n.js';
 import { $, AVATAR_EDGE, deviceAccounts, deviceRelays, loadedAccount, relayEntry, relayScope, SIDEBAR_WIDTH_KEY, THEME_KEY, el, node, state, storage, closest, control, toast } from './core.js';
 import { adoptKey, adoptPairingLink, askForKey, bot, e2eStart, fillAvatar, forgetKey, group, isGroup, isPerson, responsibleMachine, send } from './e2e.js';
 import { allChats, checkConnection, checkTotp, connect, credentials, renderAccount, setAgentStatus, showLogin } from './connection.js';
-import { bundled, platformKind, onNotificationOpen, parsePairingLink, relayAddress, requestPushPermission, setRelayAddress } from './platform.js';
+import { bundled, fitToKeyboard, platformKind, onNotificationOpen, parsePairingLink, relayAddress, requestPushPermission, setRelayAddress } from './platform.js';
 import { CHAT_DRAG, SIDEBAR_PX, activePane, closeSettings, createPane, layoutPanes, paneOf, panes, setActivePane, setSidebarWidth, visibleChats } from './panes.js';
 import { chooseSearchFilter, closeChatSearch, listTap, onChatSearchInput, onSearchInput, openRowMenu, renderChatList, renderUsage, setupFolderDrop, setupListLongPress, setupListSwipe, setupSearchBox, stepChatSearch } from './list.js';
 import { addEmptyPane, closeChat, dropChat, openChat, paneActivated, renderChatHeader, setupSwipeBack, swipeBack } from './chat.js';
 import { renderMachines, wake } from './machines.js';
-import { checkMention, closeMention, markSeen, mentionKey, renderForwardList, renderHistory, renderPinned, scroll, setReply, setupMessageMenu, tapPinned, unpinShown } from './chat-features.js';
-import { renderQueue, sendMessage, setupQueueSwipe, textHeight } from './queue.js';
+import { checkMention, closeMention, markSeen, mentionKey, renderForwardList, renderHistory, renderPinned, scroll, setReply, setupMessageMenu, setupReport, tapPinned, unpinShown } from './chat-features.js';
+import { composerButtons, renderQueue, saveDraft, sendMessage, setupQueueSwipe, textHeight } from './queue.js';
 import { autoReadOn, setAutoRead, primeReadAloud, readWaitingAnswer, setupSpeechBar } from './read-aloud.js';
 import { addFiles, dictationOn, finishDictation, pauseRecording, rec, setDictation, shrinkImage, startRecording, stopRecording } from './voice.js';
 import { endTalk, startTalk, talkVisibility, tapTalk, toggleTalkMic } from './talk.js';
 import {
-    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, newCategory, openGitPage, openMachinesPage,
-    renderGitTotal, renderPageTitle, submitText, toggleHeaderSwitch,
+    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, newCategory, openGitPage, openMachinesPage, openMissionsPage,
+    renameConversation, renderGitTotal, renderPageTitle, submitText, toggleHeaderSwitch,
 } from './menus.js';
 import { adoptVscodeSession, openVscode, renderVscodeAdoptButton, renderVscodeSub, showInVscode, showVscodeList, vs } from './vscode.js';
 import {
     canMessageChanged, chooseFolder, createPickerFolder, folderChanged, folderTyped, knowledgeSection, machineChanged, newGroup, openEditor, openFolderPicker, openGroupEditor,
-    openAvatarPicker, openInfo, openKnowledgeEditor, openRoutineEditor, renderEditorAvatar, renderKnowledge, renderRoutines,
+    openAvatarPicker, openBotChanges, openInfo, openKnowledgeEditor, openRoutineEditor, renderEditorAvatar, renderKnowledge, renderRoutines,
     repoChanged, repoTyped, requestSuggestion, roleChanged, routineCron, routineFields, submitEditor, renderVoiceChoice, chooseVoiceName, listenToVoice,
 } from './editors.js';
 import { checkPush, renderPushSettings, setPushAlways, subscribePush } from './push.js';
 import { noteInput, reportPresence } from './activity.js';
 import { askMachineJoin, chooseAllAccounts, chooseBubble, chooseLanguage, chooseShared, closeAiForm, openAiForm, openReleaseNotes, openSettings, renderAiServices, renderSettings, saveAiKey, showE2eStatus } from './settings.js';
 import {
-    backToChooser, cancelAddAccount, closeChooserMenus, createAccount, joinAny, newAccount, openAccountMenu, openAccounts, redeemLink, saveOwnAccount, scanAny, showAccountField, showLoginForm,
+    backToChooser, cancelAddAccount, deleteOwnAccount, closeChooserMenus, createAccount, joinAny, newAccount, openAccountMenu, openAccounts, redeemLink, saveOwnAccount, scanAny, showAccountField, showLoginForm,
     showNewAccountForm, signOut, switchAccount,
 } from './accounts.js';
 import { openRelay, switchRelay } from './relays.js';
@@ -35,9 +35,13 @@ import { renewQrLogin, scanToApprove, scanToSignIn, showScanButtons, signInWithL
 import { VERSION } from './release.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
 import { showSetupLanding, takeSetupLink } from './setups.js';
+import { closeVaultForm, openVaultForm, renderVault, saveVaultEntry, vaultBotsChanged } from './vault.js';
 import { applyMethod, focusMethod } from './login-method.js';
 import { onShortcutKey, runCommand, setupPalette } from './palette.js';
 import { closeVideo } from './media.js';
+import { missionsBack } from './missions.js';
+// iOS: the app above the keyboard instead of a window that jumps
+fitToKeyboard();
 
 // The first pane exists from the start; on phones and laptops it stays the only one
 createPane();
@@ -152,6 +156,7 @@ for (const field of [el.accountsOwnName, el.accountsPassword]) {
     field.addEventListener('change', saveOwnAccount);
     field.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') field.blur(); });
 }
+el.accountsDeleteOwn.addEventListener('click', () => void deleteOwnAccount());
 el.accountsCreate.addEventListener('click', createAccount);
 el.accountsLinkGo.addEventListener('click', redeemLink);
 el.accountsLink.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); redeemLink(); } });
@@ -300,6 +305,7 @@ setupFolderDrop();
 setupQueueSwipe();
 setupSearchBox();
 setupMessageMenu();
+setupReport();
 setupSpeechBar();
 const releaseList = (ms) => {
     clearTimeout(listTap.timer);
@@ -326,12 +332,14 @@ el.tabBar.addEventListener('click', (ev) => {
     closeAllMenus();
     if (tab === 'repos') return openGitPage();
     if (tab === 'machines') return openMachinesPage();
+    if (tab === 'missions') return openMissionsPage();
     // On wide screens the settings are a pane, and the panes hide behind the page
     if (!el.gitPage.hidden) closeGitPage();
     if (tab === 'settings') openSettings();
     else if (!el.settings.hidden) closeSettings();
 });
-el.gitBack.addEventListener('click', closeGitPage);
+// In Mission Control "back" goes from a mission or the builder to the overview first
+el.gitBack.addEventListener('click', () => { if (!missionsBack()) closeGitPage(); });
 setupSwipeBack();
 document.addEventListener('click', closeAllMenus);
 // No zooming with a two-finger gesture: Safari on iPhone/iPad ignores user-scalable=no in the viewport
@@ -368,7 +376,7 @@ const PANE_CLICKS = {
     'chat-settings': (p, ev) => openChatSettings(p, ev),
     'chat-model': (p, ev) => { ev.stopPropagation(); toggleHeaderSwitch(p, 'model'); },
     'chat-machine': (p, ev) => { ev.stopPropagation(); toggleHeaderSwitch(p, 'machine'); },
-    'chat-git': (p, ev) => { ev.stopPropagation(); const b = bot(p.chatId); if (b) openGitPage(b, true); },
+    'chat-git': (p, ev) => { ev.stopPropagation(); openBotChanges(p.chatId, true); },
     'rb-cancel': (p) => setReply(p, null),
     'cs-older': (p) => stepChatSearch(p, 1),
     'cs-newer': (p) => stepChatSearch(p, -1),
@@ -384,6 +392,7 @@ const PANE_CLICKS = {
     'rec-send': () => { primeReadAloud(); stopRecording(true); },
     'rec-done': () => { void finishDictation(); },
     'btn-talk': (p) => startTalk(p),
+    'btn-later': (p) => { p.later = !p.later; composerButtons(p); },
     'btn-stop': (p) => { if (p.chatId) send({ type: 'interrupt', chatId: p.chatId }); },
     'btn-attach': (p) => p.el.fileInput.click(),
     'to-bottom': (p) => scroll(p, true),
@@ -396,10 +405,67 @@ el.panes.addEventListener('click', (ev) => {
     const p = paneOf(ev);
     if (!p) return;
     if (closest(ev, '.pane-empty-close')) { closeChat(p); return; }
+    // A tab above a bot's chat: that chat in this pane, "+" a new conversation (it opens once the machine made it)
+    const tab = /** @type {HTMLButtonElement | null} */ (closest(ev, '.conv-tab'));
+    if (tab) {
+        // the tap that ended a long press (renaming) opens nothing
+        if (tabHeld) { tabHeld = false; return; }
+        if (tab.dataset.new) { const b = bot(tab.dataset.new); if (b) send({ type: 'conversation_new', botId: b.id }, responsibleMachine(b) || undefined); }
+        else if (tab.dataset.chat && tab.dataset.chat !== p.chatId) openChat(tab.dataset.chat, undefined, undefined, p);
+        return;
+    }
     // the innermost element with a handler: a tap on the name in the title means the title button
     const target = control(ev, PANE_CLICK_TARGETS);
     const handler = target && PANE_CLICKS[target.dataset.el];
     if (handler) handler(p, /** @type {MouseEvent} */ (ev));
+});
+// A long press (or a right click) on a conversation's tab renames it, as its menu does
+const conversationTab = (ev) => {
+    const k = /** @type {HTMLElement | null} */ (closest(ev, '.conv-tab[data-chat]'));
+    return k && /** @type {string} */ (k.dataset.chat).includes('~') ? k : null;
+};
+let tabHeld = false;
+let tabPress = null;
+let tabPointer = 'mouse';
+el.panes.addEventListener('pointerdown', (ev) => { tabPointer = ev.pointerType; }, true);
+el.panes.addEventListener('touchstart', (ev) => {
+    clearTimeout(tabPress?.timer);
+    tabPress = null;
+    tabHeld = false;
+    const k = conversationTab(ev);
+    if (!k || ev.touches.length !== 1) return;
+    const touch = ev.touches[0];
+    // the timer only notes the long press; the dialog opens as the finger lifts, so iOS lets its field take the focus
+    // and opens the keyboard (a focus from a timer is refused)
+    tabPress = { x: touch.clientX, y: touch.clientY, chat: /** @type {string} */ (k.dataset.chat), timer: setTimeout(() => { tabHeld = true; if (navigator.vibrate) navigator.vibrate(15); }, 500) };
+}, { passive: true });
+el.panes.addEventListener('touchmove', (ev) => {
+    const touch = ev.touches[0];
+    if (tabPress && (Math.abs(touch.clientX - tabPress.x) > 10 || Math.abs(touch.clientY - tabPress.y) > 10)) { clearTimeout(tabPress.timer); tabPress = null; }
+}, { passive: true });
+el.panes.addEventListener('touchend', (ev) => {
+    clearTimeout(tabPress?.timer);
+    if (tabPress && tabHeld) {
+        // no click follows (prevented), so the mark goes here
+        if (ev.cancelable) { ev.preventDefault(); tabHeld = false; }
+        renameConversation(tabPress.chat);
+    }
+    setTimeout(() => { tabPress = null; }, 0);
+});
+// iOS may still cancel the touch of a long press: then the dialog opens all the same, the field a tap away
+el.panes.addEventListener('touchcancel', () => {
+    clearTimeout(tabPress?.timer);
+    if (tabPress && tabHeld) renameConversation(tabPress.chat);
+    tabPress = null;
+    tabHeld = false;
+});
+el.panes.addEventListener('contextmenu', (ev) => {
+    const k = conversationTab(ev);
+    if (!k) return;
+    ev.preventDefault();
+    // a finger on it: lifting it renames (touchend above), where iOS lets the field take the focus; the long press
+    // reported as contextmenu (Android, iPadOS) would open the dialog without a keyboard
+    if (!tabPress && !tabHeld && tabPointer !== 'touch') renameConversation(/** @type {string} */ (k.dataset.chat));
 });
 el.panes.addEventListener('submit', (ev) => {
     const p = paneOf(ev);
@@ -410,7 +476,7 @@ el.panes.addEventListener('submit', (ev) => {
 el.panes.addEventListener('input', (ev) => {
     const p = paneOf(ev);
     if (!p) return;
-    if (ev.target === p.el.text) { textHeight(p); checkMention(p); }
+    if (ev.target === p.el.text) { textHeight(p); checkMention(p); saveDraft(p); }
     if (ev.target === p.el.csText) onChatSearchInput(p);
 });
 el.panes.addEventListener('click', (ev) => {
@@ -546,13 +612,15 @@ el.sidebarResize.addEventListener('keydown', (ev) => {
 
 // Dialogs: "Cancel"/"×", Escape and a click on the backdrop close them. The backdrop only counts if the pointer
 // was also pressed there – otherwise selecting text that ends outside would close it.
-for (const o of [el.editor, el.folderPicker, el.avatarPicker, el.gEditor, el.info, el.rEditor, el.kEditor, el.keyDialog, el.vscode, el.archive, el.forward, el.textDialog, el.settingsDialog, el.settings, el.palette, el.shortcuts]) {
+for (const o of [el.editor, el.folderPicker, el.avatarPicker, el.gEditor, el.info, el.rEditor, el.kEditor, el.keyDialog, el.vscode, el.archive, el.forward, el.report, el.textDialog, el.settingsDialog, el.settings, el.palette, el.shortcuts, el.docView]) {
     let pressedOnBackdrop = false;
     o.addEventListener('pointerdown', (ev) => { pressedOnBackdrop = ev.target === o; });
     o.addEventListener('click', (ev) => {
         const backdrop = ev.target === o && pressedOnBackdrop;
         pressedOnBackdrop = false;
         if (backdrop || control(ev, '[data-close]')) closeDialog(o);
+        // The editor in the side panel lets clicks through to the bot page below: a click beside both closes both
+        if (backdrop && o === el.info && !el.editor.hidden && el.editor.classList.contains('side-edit')) closeDialog(el.editor);
     });
 }
 document.addEventListener('keydown', (ev) => {
@@ -563,7 +631,7 @@ document.addEventListener('keydown', (ev) => {
     if (closeVideo()) return;
     // the docked info panel is a column, not a dialog: Escape closes it only from inside
     const docked = el.app.classList.contains('info-docked') && !el.info.contains(document.activeElement);
-    for (const o of [el.palette, el.shortcuts, el.textDialog, el.keyDialog, el.settingsDialog, el.settings, el.rEditor, el.kEditor, el.folderPicker, el.avatarPicker, el.editor, el.gEditor, el.info, el.vscode, el.archive, el.forward]) {
+    for (const o of [el.docView, el.palette, el.shortcuts, el.textDialog, el.keyDialog, el.settingsDialog, el.settings, el.rEditor, el.kEditor, el.folderPicker, el.avatarPicker, el.editor, el.gEditor, el.info, el.vscode, el.archive, el.forward, el.report]) {
         if (o.hidden || (o === el.info && docked)) continue;
         closeDialog(o);
         return;
@@ -594,7 +662,7 @@ el.infoActions.addEventListener('click', (ev) => {
 // "New conversation", "Move to a conversation" and "Rename conversation" stand above the switches (the switches handle
 // their own taps)
 el.infoSwitches.addEventListener('click', (ev) => {
-    const k = closest(ev, '[data-action="conversation_new"], [data-action="main_to_conversation"], [data-action="rename"]');
+    const k = closest(ev, '[data-action="conversation_new"], [data-action="main_to_conversation"], [data-action="rename"], [data-action="restart"]');
     if (k) infoAction(k.dataset.action);
 });
 el.gActions.addEventListener('click', async (ev) => {
@@ -746,12 +814,19 @@ el.settingsTalkMode.addEventListener('change', () => {
 // The voice conversation: the picture sends or stops, the microphone button holds, the end button ends
 el.talkAvatarButton.addEventListener('click', tapTalk);
 el.talkMic.addEventListener('click', toggleTalkMic);
-el.talkEnd.addEventListener('click', endTalk);
+el.talkEnd.addEventListener('click', () => endTalk());
 el.aiAdd.addEventListener('click', () => openAiForm());
 el.aiCancel.addEventListener('click', closeAiForm);
 el.aiSave.addEventListener('click', saveAiKey);
 el.aiKey.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); saveAiKey(); } });
+// The vault: a form per entry, Enter in the value field saves
+el.vaultAdd.addEventListener('click', () => openVaultForm());
+el.vaultCancel.addEventListener('click', closeVaultForm);
+el.vaultSave.addEventListener('click', saveVaultEntry);
+el.vaultBots.addEventListener('change', vaultBotsChanged);
+el.vaultValue.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); saveVaultEntry(); } });
 el.settingsVoiceLanguage.addEventListener('change', () => chooseShared('voiceLanguage', el.settingsVoiceLanguage.value));
+el.settingsBotApproval.addEventListener('change', () => chooseShared('botApproval', el.settingsBotApproval.value));
 el.settingsPushPreview.addEventListener('change', () => chooseShared('pushPreview', el.settingsPushPreview.value));
 el.settingsGitPull.addEventListener('change', () => chooseShared('gitAutoPull', el.settingsGitPull.checked));
 
@@ -844,6 +919,7 @@ function rerenderLanguage() {
     if (!el.settings.hidden) {
         renderSettings();
         renderPushSettings();
+        renderVault();
         showE2eStatus();
     }
     showScanButtons();

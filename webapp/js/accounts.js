@@ -568,9 +568,15 @@ export function accountError(message) {
 function openOwnAccount() {
     if (!state.account) return;
     accountError('');
+    // A demo account of the stores' reviewers keeps its name and password (the relay refuses changes)
+    const demo = !!relayAccounts.find((a) => a.id === state.account.id)?.demo;
     el.accountsOwnName.value = state.account.name;
+    el.accountsOwnName.readOnly = demo;
     el.accountsPassword.value = '';
-    el.accountsPasswordField.hidden = state.account.id === 'main';
+    el.accountsPasswordField.hidden = state.account.id === 'main' || demo;
+    // 'main' owns the relay and cannot go; everyone else deletes their own account here
+    el.accountsDeleteOwnRow.hidden = state.account.id === 'main';
+    el.accountsDeleteOwnHint.hidden = state.account.id === 'main';
     // The own picture: every account sets its own (the relay's list carries it)
     const own = relayAccounts.find((a) => a.id === state.account.id) || { ...state.account };
     el.accountsOwnAvatar.replaceChildren(accountAvatarField(own));
@@ -595,6 +601,16 @@ export function saveOwnAccount() {
     send({ type: 'account_update', id: state.account.id, ...change });
     el.accountsPassword.value = '';
     toast(t('accounts.saved'));
+}
+
+/** Deletes the signed-in account after asking twice; the relay closes its connections, and the app goes to the next account or the sign-in. */
+export async function deleteOwnAccount() {
+    const a = state.account;
+    if (!a || a.id === 'main') return;
+    if (!(await confirmDialog(t('accounts.deleteOwnConfirm', { name: a.name })))) return;
+    if (!(await confirmDialog(t('accounts.deleteOwnFinal')))) return;
+    accountError('');
+    send({ type: 'account_delete', id: a.id });
 }
 
 /** The admin's form behind "Add" (a link to redeem, a new person) in the settings dialog; an invitation on display goes away with it. */

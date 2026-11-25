@@ -26,8 +26,19 @@ channels to the relay (`push` in `AgentOutbound`) with the text already reduced 
 them without storing anything and reports device tokens the push services no longer know (`push_result`), so the
 backend can drop them.
 
-This is the single exception to "the relay sees no contents", and it is bounded: only app push, only when the
+This is the first exception to "the relay sees no contents", and it is bounded: only app push, only when the
 backend has no credentials of its own, and only the preview. Own credentials always win, channel by channel.
+
+## The push service of openfolk.app
+
+The store apps' credentials belong to Flowdesk, so a backend on any other relay (its own, a customer's, the desktop
+app's embedded one) could not reach the apps at all. The relay of openfolk.app therefore runs with `PUSH_SERVICE=on`
+and answers `POST /push` from any backend (`relay/src/push-service.ts`, decided by the user on 2026-11-22): the same
+`{ subscriptions, message }` as the `push` frame, at most 20 devices, the answer `{ gone, throttled }` names the tokens
+to drop. It is the second exception, bounded like the first: app push only, the preview only, nothing stored, and a
+limit per device token (30 per 10 minutes, 400 per day) and per sending address (2000 per hour), so a token that
+leaked cannot be flooded. A backend uses it last, after its own credentials and its relay's channels, at
+`PUSH_SERVICE_URL` (default `https://push.openfolk.app`; `off` switches it off, then the apps get no push from it).
 
 ## Subscriptions
 

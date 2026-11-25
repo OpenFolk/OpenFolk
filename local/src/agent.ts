@@ -10,21 +10,23 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { forkSession, getSessionInfo, type McpServerConfig, type PermissionResult, type PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
-import { AVATAR_MAX, botToolServer, engineToolsFor, foldersText, toolText, type BotProfile, type RoutineChange, type ToolHost, type ToolText } from './bot-tools.ts';
+import { AVATAR_MAX, botToolServer, engineToolsFor, foldersText, toolText, type BotProfile, type NewBot, type RoutineChange, type ToolHost, type ToolText } from './bot-tools.ts';
 import { e2eEnabled, e2eKeyForLink } from './e2e.ts';
 import { joinDone, joinPending } from './join.ts';
 import { appUrl, newMachineInvite, newPairingLink, newSetupLink, pairingSvg, pairingUrl } from './pairing.ts';
-import { applySetup, deleteSetup, freshen, loadSetups, saveSetup, setupMessage, setupViews } from './setups.ts';
+import { applySetup, deleteSetup, freshen, loadSetups, saveSetup, setupMessage, setupPictures, setupViews } from './setups.ts';
 import { startClaudeLogin, startDeviceLogin } from './engine-login.ts';
 import { claudeSignInCommand, engineAvailable } from './engine-home.ts';
 import { checkFolderDeletion, deleteBotFolder } from './folder-delete.ts';
 import { cloneRepository, createFolder, inspectFolder, listFolder, needsCredentials, originOf, placeOf, planMove, prepareMove, proposeFolder } from './folders.ts';
 import type { WarningCode } from './relay-client.ts';
 import type { PersonInbox } from './accounts.ts';
-import { allPeople, canReach, clearPersonChat, contactsOf, loadPersonChats, personName, setPersonFlag } from './people.ts';
+import { seedDemoBot } from './demo-bot.ts';
+import { allPeople, canReach, clearPersonChat, contactsOf, dropPersonCategory, isBlocked, loadPersonChats, personName, setPersonCategory, setPersonFlag } from './people.ts';
 import {
-    archiveConversation, botSessionIds, clearMainChat, createConversation, deleteBot, deleteGroup, findBot, findConversation, findGroup, isMuted, isUnder, loadBots, loadGroups, mayMessage,
+    archiveConversation, botSessionIds, clearMainChat, createConversation, isTalkConversation, talkConversation, deleteBot, deleteGroup, findBot, findConversation, findGroup, isMuted, isUnder, loadBots, loadGroups, mayMessage,
     readSessionId, refusalOf, removeConversation, renameConversation, roleLine, saveBot, duplicateBot, saveBots, saveGroup, saveCategory, deleteCategory, setCategory, loadCategories, orderCategories, allowTool, setFavorite, setModel, setMuted, setPlace, setSessionId, underAllowedRoot,
+    checkFolder,
 } from './bots.ts';
 import { autologon, canAutologon, type AutologonState } from './autologon.ts';
 import { BACKEND_VERSION, config } from './config.ts';
@@ -35,7 +37,7 @@ import { commitAndPush, listChanges, openRepos, overlaps, pullRepo, pullRepos, p
 import { changedSince, requestRestart, requested } from './restart.ts';
 import { canRestart, canShutdown, shutdown } from './shutdown.ts';
 import {
-    appendEntry, countEntries, deleteHistory, dropUntil, markDeleted, markDiscarded, markMoved, markRead, readEntry, readHistory, readVisible, searchHistory, toolOutput,
+    appendEntry, countEntries, deleteHistory, dropUntil, markDeleted, markDiscarded, markLiked, markMoved, markRead, readEntry, readHistory, readVisible, searchHistory, toolOutput,
     withoutToolOutput,
 } from './history.ts';
 import { claudeMdExcerpt, readFile, saveUploads, skillsFor } from './files.ts';
@@ -45,7 +47,7 @@ import {
 } from './knowledge.ts';
 import type { CodexLimits, EngineTool } from './codex.ts';
 import { approvalText, needsApproval, rememberable } from './policy.ts';
-import { apiKey, gitAutoPull, loadSettings, saveApiKeys, saveLanguage, saveSettings, settingsForBrowser, talkMode, voiceLanguage } from './settings.ts';
+import { apiKey, botApproval, gitAutoPull, loadSettings, saveApiKeys, saveLanguage, saveSettings, settingsForBrowser, talkMode, voiceLanguage } from './settings.ts';
 import { connectRealtime, realtimeSession } from './realtime.ts';
 import { claudeOnKey, keyFallbackState, onKeyFallbackChange, resetKeyFallback, subscriptionLimit } from './key-fallback.ts';
 import { checkAnthropicKey } from './anthropic-key.ts';
@@ -67,6 +69,7 @@ import { pendingTransfers, scheduleTransfer, TransferReceiver, transferParts } f
 import { applyWork, packWork, pendingWork, scheduleWork, stashWork, WorkReceiver, workParts } from './work-transfer.ts';
 import { accountPath, currentAccount, DEFAULT_ACCOUNT, machineBinding, ownerAccount, PRIVATE, readJson, writeJson } from './store.ts';
 import { merge, snapshot } from './sync.ts';
+import { deleteVaultEntry, redact, saveVaultEntry, VaultError, vaultErrorText, vaultViews } from './vault.ts';
 import { keywordTitle } from './title.ts';
 import { avatarDataUrl, suggest } from './suggestions.ts';
 import { synthesize } from './speech.ts';
@@ -81,10 +84,16 @@ import {
     FORWARD_TEXT_MAX, QUOTE_TEXT_MAX,
     type KnowledgeLocation, type BotInfo, type EngineStatuses, type HandoverTarget,
     type AgentFrame, type Approval, type PushKind, type Attachment, type Bot, type BotState, type ClientFrame, type GitRepo, type Group,
-    type HistoryEntry, type PushGap, type LiveTurn, type NativePushSubscription, type PeerData, type Question, type Routine, type TurnSpec, type UploadInput, type Usage, type WakeEntry, type Quote,
+    type HistoryEntry, type PushGap, type LiveTurn, type NativePushSubscription, type PeerData, type Question, type Routine, type TurnSpec, type UploadInput, type Usage, type WakeEntry, type Quote, type ReportReason,
     type JobOrigin, type TurnResultData,
 } from '../../shared/protocol.ts';
 import { addJob, closeJob, endedHere, keepResult, openJobs, dropResult, findJob, resultsFor, startedHere, takeInterrupted, updateJob, waitsForJob, type StoredJob } from './jobs.ts';
+import { MissionControl, type MissionHost } from './mission-control.ts';
+import { MAX_TEAM, portraitFor, propose } from './mission-builder.ts';
+import {
+    addMission, appendEvent, cleanInput, deleteMission, findMission, folderTaken, loadMissions, newId, readEvents, readMetrics, TERMINAL, writeGuardrails,
+} from './missions.ts';
+import type { Mission, MissionInput } from '../../shared/protocol.ts';
 
 
 export type Sender = (frame: AgentFrame, cid?: string) => void;
@@ -203,6 +212,8 @@ export class BotManager implements SessionHooks {
     }
 
     start(): void {
+        // Before the interrupted jobs: their results may belong to mission tasks
+        this.missions.start();
         this.scheduler = startScheduler((r) => {
             // Only the responsible machine runs the routine
             const bot = findBot(r.botId);
@@ -210,6 +221,7 @@ export class BotManager implements SessionHooks {
         });
         this.reportWakeSchedule();
         this.refreshModels();
+        this.seedDemoBot();
         this.rememberPlaces();
         this.interruptedJobs();
         // Claude on subscription and key: sessions change sides on their next turn, the browsers see on which
@@ -501,7 +513,32 @@ export class BotManager implements SessionHooks {
         return r;
     }
 
+    /** The pictures the set-up accounts show of this admin's bots, as last sent; null until the first look. */
+    private sentPictures: Map<string, string> | null = null;
+
+    /**
+     * A bot whose picture a setup follows got a new one (the editor, set_avatar, another machine's sync): the setup goes
+     * to that account again. Looked at with every list of bots; the first look after a start sends every setup that
+     * follows pictures once, since one may have changed while this backend was off (the receiver takes it as often
+     * as it comes).
+     */
+    private resendChangedPictures(): void {
+        if (!this.isAdmin()) return;
+        const now = setupPictures();
+        const before = this.sentPictures ?? new Map<string, string>();
+        this.sentPictures = now;
+        for (const [account, pictures] of now) {
+            if (before.get(account) === pictures) continue;
+            const m = setupMessage(account);
+            if (m) {
+                console.log(`setup for ${account}: a picture changed, sent again`);
+                this.toAccount(account, m, true);
+            }
+        }
+    }
+
     private sendBots(cid?: string): void {
+        if (!cid) this.resendChangedPictures();
         this.send({
             type: 'bots', bots: loadBots(), groups: loadGroups(), categories: loadCategories(), states: this.states(), activity: this.activity(), activeChats: this.activeChats(),
             approvals: [...this.approvals.values()].map((f) => f.approval), context: readJson<Record<string, number>>('context.json', {}),
@@ -689,11 +726,13 @@ export class BotManager implements SessionHooks {
                         this.sendRoutines();
                         this.reportWakeSchedule();
                     }
+                    if (result.missions) this.sendMissions();
                     if (result.pushSettings) this.send({ type: 'push_settings', settings: pushSettings() });
                     if (result.settings) this.settingsChanged();
                     if (result.pinned) this.send({ type: 'pinned', all: pinnedForBrowser() });
                     if (result.seen) this.send({ type: 'seen', state: loadSeen() });
                     if (result.personChats) this.sendPeople();
+                    if (result.vault) this.vaultChanged(false);
                     if (result.config || result.history.length) console.log(`sync: from ${from}${result.config ? ', configuration' : ''}${result.history.length ? `, history of ${result.history.length} chats` : ''}`);
                     break;
                 }
@@ -855,6 +894,7 @@ export class BotManager implements SessionHooks {
         this.clients.set(cid, { visible: false, at: Date.now() });
         this.sendBots(cid);
         this.sendRoutines(cid);
+        this.sendMissions(cid);
         this.sendSettings(cid);
         this.send({ type: 'push_settings', settings: pushSettings() }, cid);
         this.send({ type: 'pinned', all: pinnedForBrowser() }, cid);
@@ -874,6 +914,7 @@ export class BotManager implements SessionHooks {
         this.gitStatusSoon(1000);
         this.sendBackendStatus(cid);
         this.sendSetupStatus(cid);
+        this.sendVault(cid);
         try {
             this.send({ type: 'push_key', publicKey: publicKey(), channels: pushChannels() }, cid);
         } catch (e) {
@@ -1354,6 +1395,21 @@ export class BotManager implements SessionHooks {
                     this.shareConfig();
                     break;
                 }
+                case 'person_block':
+                    setPersonFlag(frame.account, 'blocked', frame.on);
+                    this.sendPeople();
+                    this.shareConfig();
+                    break;
+                case 'report': {
+                    // The error goes to the report's page, which stays open with what the user typed
+                    try {
+                        const admins = this.report(frame.chatId, frame.entryId, frame.reason, frame.note?.trim() ?? '');
+                        this.send({ type: 'report_sent', chatId: frame.chatId, entryId: frame.entryId, admins }, cid);
+                    } catch (e) {
+                        this.send({ type: 'error', request: frame.type, message: (e as Error).message }, cid);
+                    }
+                    break;
+                }
                 case 'group_delete':
                     deleteGroup(frame.groupId);
                     deleteHistory(`g:${frame.groupId}`);
@@ -1367,11 +1423,17 @@ export class BotManager implements SessionHooks {
                     break;
                 case 'category_delete':
                     deleteCategory(frame.categoryId);
+                    dropPersonCategory(frame.categoryId);
+                    this.sendPeople();
                     this.sendBots();
                     this.shareConfig();
                     break;
                 case 'category_assign':
-                    setCategory(frame.chatId, frame.categoryId);
+                    if (isPerson(frame.chatId)) {
+                        if (frame.categoryId && !loadCategories().some((c) => c.id === frame.categoryId)) throw new Error(t('bots.categoryNotFound'));
+                        setPersonCategory(personOf(frame.chatId), frame.categoryId);
+                        this.sendPeople();
+                    } else setCategory(frame.chatId, frame.categoryId);
                     this.sendBots();
                     this.shareConfig();
                     break;
@@ -1395,11 +1457,11 @@ export class BotManager implements SessionHooks {
                     }
                     if (uploads.some((u) => u.type.startsWith('audio/'))) {
                         // Voice message: first turn it into text locally, then continue like a text message
-                        void this.voiceMessage(frame.chatId, frame.text, uploads, frame.replyTo, frame.spoken === true).catch((e: Error) => {
+                        void this.voiceMessage(frame.chatId, frame.text, uploads, frame.replyTo, frame.spoken === true, frame.later === true).catch((e: Error) => {
                             this.send({ type: 'error', chatId: frame.chatId, message: e.message });
                         });
                     } else {
-                        this.messageFromUser(frame.chatId, frame.text, uploads, undefined, frame.replyTo, frame.spoken === true);
+                        this.messageFromUser(frame.chatId, frame.text, uploads, undefined, frame.replyTo, frame.spoken === true, frame.later === true);
                     }
                     break;
                 }
@@ -1434,6 +1496,14 @@ export class BotManager implements SessionHooks {
                     this.sendBots();
                     break;
                 }
+                case 'talk_start': {
+                    const chatId = this.startTalk(frame.botId);
+                    this.send({ type: 'talk_started', botId: frame.botId, chatId }, cid);
+                    break;
+                }
+                case 'talk_end':
+                    this.endTalk(frame.chatId);
+                    break;
                 case 'conversation_new': {
                     const chatId = createConversation(frame.botId);
                     this.sendBots();
@@ -1493,6 +1563,9 @@ export class BotManager implements SessionHooks {
                     }
                     break;
                 }
+                case 'like':
+                    this.like(frame.chatId, frame.entryId, frame.on);
+                    break;
                 case 'pin': {
                     const entries = pin(frame.chatId, frame.entry, frame.on);
                     this.send({ type: 'pinned', chatId: frame.chatId, entries });
@@ -1661,6 +1734,16 @@ export class BotManager implements SessionHooks {
                 case 'approval_reply':
                     this.answerApproval(frame);
                     break;
+                case 'missions':
+                case 'mission_open':
+                case 'mission_propose':
+                case 'mission_save':
+                case 'mission_control':
+                case 'mission_approval_reply':
+                case 'mission_task_save':
+                case 'mission_delete':
+                    this.handleMission(frame, cid);
+                    break;
                 case 'routines':
                     this.sendRoutines(cid);
                     break;
@@ -1736,10 +1819,31 @@ export class BotManager implements SessionHooks {
                 case 'setups':
                     this.send({ type: 'setups', list: this.isAdmin() ? setupViews() : [] }, cid);
                     break;
+                case 'vault':
+                    this.sendVault(cid);
+                    break;
+                case 'vault_save': {
+                    if (!this.mayVault()) throw new Error(t('vault.adminOnly'));
+                    try {
+                        const e = saveVaultEntry(frame.entry);
+                        console.log(`vault: ${e.name} saved (${e.bots ? `${e.bots.length} bot(s)` : 'all bots'})`);
+                    } catch (e) {
+                        throw e instanceof VaultError ? new Error(vaultErrorText(e)) : e;
+                    }
+                    this.vaultChanged();
+                    break;
+                }
+                case 'vault_delete':
+                    if (!this.mayVault()) throw new Error(t('vault.adminOnly'));
+                    if (deleteVaultEntry(frame.id)) this.vaultChanged();
+                    else this.sendVault(cid);
+                    break;
                 case 'setup_save': {
                     if (!this.isAdmin()) throw new Error(t('setup.adminOnly'));
                     if (frame.setup.account === this.accountId) throw new Error(t('setup.adminOnly'));
                     const setup = saveSetup(frame.setup);
+                    // sent below as it is now; no second send for its pictures on the next list of bots
+                    this.sentPictures?.set(setup.account, setupPictures().get(setup.account) ?? '');
                     console.log(`setup for ${setup.account} saved (${setup.bots.length} bot(s))`);
                     this.send({ type: 'setups', list: setupViews() });
                     // To the account's machine now, or whenever it wakes (person-route.ts)
@@ -1824,8 +1928,16 @@ export class BotManager implements SessionHooks {
 
     // ------------------------------------------------------------------ Messages
 
-    /** Store a history entry and pass it to the other machines; with `show` also to the browsers. */
+    /**
+     * Store a history entry and pass it to the other machines; with `show` also to the browsers. A value of the vault
+     * never gets in, whoever wrote it (vault.ts).
+     */
     private record(chatId: string, e: HistoryEntry, show: boolean): HistoryEntry {
+        if (e.text) e.text = redact(e.text);
+        for (const c of e.tools ?? []) {
+            c.summary = redact(c.summary);
+            if (c.result) c.result = redact(c.result);
+        }
         const stored = appendEntry(chatId, e);
         if (show) this.send({ type: 'user', chatId, entry: stored });
         if (this.online.length > 1) this.peer({ kind: 'history', chatId, entries: [stored] });
@@ -1845,6 +1957,13 @@ export class BotManager implements SessionHooks {
 
     peopleChanged(): void {
         this.sendPeople();
+        this.seedDemoBot();
+    }
+
+    /** A demo account of the stores' reviewers without a bot gets the one from DEMO_BOT (demo-bot.ts). */
+    private seedDemoBot(): void {
+        const bot = seedDemoBot(this.accountId);
+        if (bot) this.botSaved(undefined, bot);
     }
 
     /**
@@ -1854,6 +1973,7 @@ export class BotManager implements SessionHooks {
     private messageToPerson(chatId: string, text: string, uploads: UploadInput[], quote?: Quote): void {
         const other = personOf(chatId);
         if (!canReach(this.accountId, other)) throw new Error(t('people.unreachable', { name: personName(other) }));
+        if (isBlocked(other)) throw new Error(t('people.blockedSend', { name: personName(other) }));
         text = text.trim();
         const replyTo = storedQuote(quote);
         if (!text && !uploads.length && !replyTo?.forwarded) return;
@@ -1872,6 +1992,8 @@ export class BotManager implements SessionHooks {
      * files copied into this account's uploads (the sender's are out of reach of this account's devices), a push.
      */
     fromPerson(from: string, entry: HistoryEntry, kind: 'message' | 'handover' = 'message', files?: Record<string, string>): void {
+        // Blocked: dropped without a word, the sender's half keeps it as unread
+        if (isBlocked(from)) return;
         const chatId = `p:${from}`;
         const flip = (who: string) => (who === 'me' ? `person:${from}` : who === `person:${this.accountId}` ? 'me' : who);
         const attachments = entry.attachments?.map((a) => {
@@ -1903,6 +2025,69 @@ export class BotManager implements SessionHooks {
         else this.push(n, 'message', chatId);
     }
 
+    /**
+     * A like on a message of the other person, or taking it back: noted in this account's half and, by the same entry
+     * id, in theirs. No push and no unread mark: the heart on the message is all there is to it.
+     */
+    private like(chatId: string, entryId: string, on: boolean): void {
+        const other = personOf(chatId);
+        const e = isPerson(chatId) ? readEntry(chatId, entryId) : undefined;
+        if (!e || e.deletedAt || e.role !== 'user' || e.from !== `person:${other}`) throw new Error(t('people.cannotLike'));
+        if (!canReach(this.accountId, other)) throw new Error(t('people.unreachable', { name: personName(other) }));
+        if (isBlocked(other)) throw new Error(t('people.blockedSend', { name: personName(other) }));
+        const at = new Date().toISOString();
+        this.liked(chatId, entryId, on, at);
+        const me = this.accountId;
+        if (!this.otherAccount(other, (m) => m.likeFromPerson(me, entryId, on, at))) this.toAccount(other, { kind: 'person_like', entryId, on, at });
+    }
+
+    /** Stores a like; the browsers and this account's other machines learn of it if it changed anything. */
+    private liked(chatId: string, entryId: string, on: boolean, at: string): void {
+        const e = markLiked(chatId, entryId, on, at);
+        if (!e) return;
+        this.send({ type: 'liked', chatId, entryId, on });
+        if (this.online.length > 1) this.peer({ kind: 'history', chatId, entries: [e] });
+    }
+
+    /** The other half of a like, called in this account's context: only on what this account wrote to `from`. */
+    likeFromPerson(from: string, entryId: string, on: boolean, at: string): void {
+        if (isBlocked(from)) return;
+        const chatId = `p:${from}`;
+        const e = readEntry(chatId, entryId);
+        if (!e || e.role !== 'user' || (e.from ?? 'me') !== 'me') return;
+        // A time ahead of this machine's clock would keep every later change away
+        const now = new Date().toISOString();
+        this.liked(chatId, entryId, on, at > now ? now : at);
+    }
+
+    /**
+     * A report of a message (the stores' rules for AI answers and content of other people): a message quoting the
+     * stored entry into the person chat with each admin this account reaches, so it arrives with a push on every
+     * machine of the admin, and the admin can answer there. Returns the admins.
+     */
+    private report(chatId: string, entryId: string, reason: ReportReason, note: string): string[] {
+        const e = readEntry(chatId, entryId);
+        if (!e || e.deletedAt || e.role === 'event') throw new Error(t('report.notFound'));
+        const admins = contactsOf(this.accountId).filter((p) => p.admin && p.id !== this.accountId && !isBlocked(p.id)).map((p) => p.id);
+        if (!admins.length) throw new Error(t('report.noAdmin'));
+        const b = isGroup(chatId) || isPerson(chatId) ? undefined : findBot(botIdOf(chatId));
+        const where = isGroup(chatId) ? findGroup(chatId.slice(2))?.name ?? chatId
+            : isPerson(chatId) ? personName(personOf(chatId))
+                : isConversation(chatId) ? `${b?.name ?? chatId} · ${findConversation(chatId)?.title ?? ''}` : b?.name ?? chatId;
+        // A name, not an id: the admin does not know this account's bots, and the quote shows `from` as it is then
+        const author = e.role === 'assistant' ? findBot(e.botId ?? botIdOf(chatId)) : undefined;
+        const from = e.role === 'assistant' ? author?.name ?? e.botId ?? botIdOf(chatId) : e.from ?? 'me';
+        const model = author ? modelDisplayName(author.model ?? 'default', readJson<ModelInfo[]>('models.json', [])) : '';
+        const text = [
+            t('report.message', { reason: t(`report.reason.${reason}`) }),
+            ...(model ? [t('report.model', { model })] : []),
+            ...(note ? ['', note] : []),
+        ].join('\n');
+        const quote: Quote = { id: entryId, from, text: e.text || (e.attachments ?? []).map((a) => a.name).join(', '), forwarded: true, origin: where, originChat: chatId };
+        for (const admin of admins) this.messageToPerson(`p:${admin}`, text, [], quote);
+        return admins;
+    }
+
     /** Person route: from account `from` on another machine (the relay checked who may reach whom). */
     personInbound(from: string, data: PeerData): void {
         switch (data.kind) {
@@ -1912,6 +2097,9 @@ export class BotManager implements SessionHooks {
                     return;
                 }
                 this.fromPerson(from, data.entry, data.message, data.files);
+                return;
+            case 'person_like':
+                if (canReach(this.accountId, from)) this.likeFromPerson(from, data.entryId, data.on, data.at);
                 return;
             case 'setup_request': {
                 // The account set up asks its admin, this account, for its setup
@@ -1928,6 +2116,83 @@ export class BotManager implements SessionHooks {
     /** Whether this account may manage others (an admin on the relay); only admins keep setups. */
     private isAdmin(): boolean {
         return allPeople().some((p) => p.id === this.accountId && p.admin);
+    }
+
+    // ------------------------------------------------------------------ Voice conversation (webapp/js/talk.js)
+    // It runs in a conversation of its own on a fast model, with fresh context each time: the first message gets the
+    // last messages of the main chat, and heavy work goes to the main chat with message_bot, on the bot's own model
+    // with all its context. When the dialog ends, what was said goes to the main chat with its next message.
+
+    /** Talk conversations started here, with the time each dialog began; `seeded`: its first message had the context. */
+    private talks = new Map<string, { since: string; seeded: boolean }>();
+
+    /** The chat the voice conversation runs in; a new dialog in the talk conversation starts with fresh context. */
+    private startTalk(botId: string): string {
+        const bot = findBot(botId);
+        if (!bot) throw new Error(t('errors.botNotFoundId', { bot: botId }));
+        if (bot.talkFast === false || engineOf(bot.model) !== 'claude') return bot.id;
+        const chatId = talkConversation(bot.id, t('talk.conversationTitle'));
+        const s = this.sessions.get(chatId);
+        if (!s || !working(s)) {
+            s?.restart();
+            setSessionId(chatId, undefined);
+        }
+        this.talks.set(chatId, { since: new Date().toISOString(), seeded: false });
+        this.sendBots();
+        this.shareConfig();
+        return chatId;
+    }
+
+    /** What goes in front of a message: in a fresh dialog the main chat's last messages, in the main chat a dialog's recap. */
+    private talkContext(bot: Bot, chatId: string): string {
+        const talk = this.talks.get(chatId);
+        if (talk && !talk.seeded) {
+            talk.seeded = true;
+            const excerpt = transcript(readHistory(bot.id, 12));
+            return `${t('prompt.talkStart', { main: bot.id })}${excerpt ? `\n\n${t('prompt.talkMain')}\n${excerpt}` : ''}\n\n---\n\n`;
+        }
+        if (chatId !== bot.id) return '';
+        const recaps = readJson<Record<string, string>>('talk-recaps.json', {});
+        const recap = recaps[bot.id];
+        if (!recap) return '';
+        delete recaps[bot.id];
+        writeJson('talk-recaps.json', recaps);
+        return `${t('prompt.talkRecap')}\n${recap}\n\n---\n\n`;
+    }
+
+    /** The dialog ended: its messages wait for the main chat's next message, and the main chat says so. */
+    private endTalk(chatId: string): void {
+        // only a dialog started here: after a restart its beginning is unknown, and a second end must not repeat it
+        const talk = this.talks.get(chatId);
+        if (!talk || !isTalkConversation(chatId)) return;
+        this.talks.delete(chatId);
+        const said = readHistory(chatId, 80).filter((e) => e.ts >= talk.since && (e.role === 'user' || e.role === 'assistant') && e.text?.trim());
+        if (!said.length) return;
+        const botId = botIdOf(chatId);
+        const recaps = readJson<Record<string, string>>('talk-recaps.json', {});
+        recaps[botId] = [recaps[botId], transcript(said)].filter(Boolean).join('\n\n').slice(-12_000);
+        writeJson('talk-recaps.json', recaps);
+        this.entry(botId, { role: 'event', text: t('events.talkDone', { count: String(said.length) }), ts: new Date().toISOString() });
+    }
+
+    /** Admins manage the vault; 'main' is one on every relay, also on one without accounts (its people list is empty). */
+    private mayVault(): boolean {
+        return this.accountId === DEFAULT_ACCOUNT || this.isAdmin();
+    }
+
+    /** The vault's entries without their values; another account gets an empty list. */
+    private sendVault(cid?: string): void {
+        this.send({ type: 'vault', entries: this.mayVault() ? vaultViews() : [] }, cid);
+    }
+
+    /**
+     * The vault changed, here or on another machine: the sessions start anew with the new environment and names as
+     * soon as they are idle (both are fixed per process), the browsers get the list, the other machines the vault.
+     */
+    private vaultChanged(local = true): void {
+        for (const s of this.sessions.values()) s.reload();
+        this.sendVault();
+        if (local) this.shareConfig();
     }
 
     /** This machine is bound to this account by a setup link: ask the admin for the setup (again). */
@@ -1992,7 +2257,7 @@ export class BotManager implements SessionHooks {
      * Stores the recording, turns it into text with Whisper and passes it on as a message.
      * If the transcription fails, the recording stays in the history (playable), the bot gets nothing.
      */
-    private async voiceMessage(chatId: string, text: string, uploads: UploadInput[], replyTo?: Quote, spoken = false): Promise<void> {
+    private async voiceMessage(chatId: string, text: string, uploads: UploadInput[], replyTo?: Quote, spoken = false, later = false): Promise<void> {
         const audio = uploads.filter((u) => u.type.startsWith('audio/'));
         const rest = uploads.filter((u) => !u.type.startsWith('audio/'));
         const saved = saveUploads(chatId, audio).map((g) => g.attachment);
@@ -2013,7 +2278,7 @@ export class BotManager implements SessionHooks {
             this.entry(chatId, { role: 'user', text: '', ts: new Date().toISOString(), from: 'me', voice: true, attachments: saved });
             throw new Error(t('errors.voiceEmpty'));
         }
-        this.messageFromUser(chatId, text, rest, { transcript, attachments: saved }, replyTo, spoken);
+        this.messageFromUser(chatId, text, rest, { transcript, attachments: saved }, replyTo, spoken, later);
     }
 
     /**
@@ -2052,7 +2317,7 @@ export class BotManager implements SessionHooks {
         return [...words].filter(Boolean).join(', ').slice(0, 300);
     }
 
-    private messageFromUser(chatId: string, text: string, uploads: UploadInput[], voice?: { transcript: string; attachments: Attachment[] }, quote?: Quote, spoken = false): void {
+    private messageFromUser(chatId: string, text: string, uploads: UploadInput[], voice?: { transcript: string; attachments: Attachment[] }, quote?: Quote, spoken = false, later = false): void {
         text = text.trim();
         const replyTo = storedQuote(quote);
         // A forward may go without a word of its own: the forwarded message is the content
@@ -2104,11 +2369,11 @@ export class BotManager implements SessionHooks {
             const first = display || (replyTo?.forwarded ? replyTo.text : '');
             if (!c.title && first) this.nameConversation(chatId, first);
         }
-        const note = command ? '' : delegationContext(mentioned(display, loadBots().filter((b) => b.id !== bot.id)));
+        const note = command ? '' : this.talkContext(bot, chatId) + delegationContext(mentioned(display, loadBots().filter((b) => b.id !== bot.id)));
         const { content, attachments: more } = this.content(chatId, note + forClaude, uploads);
         const attachments = [...firstAttachments, ...more];
         const { id: entryId } = this.record(chatId, { role: 'user', text: display, ts, from: 'me', voice: voice ? true : undefined, attachments: attachments.length ? attachments : undefined, replyTo }, true);
-        this.startTurn(bot, { chatId, from: 'me', text: display, content, entryId });
+        this.startTurn(bot, { chatId, from: 'me', text: display, content, entryId, ...(later ? { later } : {}) });
     }
 
     private rememberRound(round: string, bots: string[]): Set<string> {
@@ -2241,6 +2506,10 @@ export class BotManager implements SessionHooks {
         this.send({ type: 'context', botId: key, tokens });
     }
 
+    folded(s: BotSession, turn: Turn): void {
+        this.record(turn.chatId, { role: 'event', text: t('events.folded', { bot: s.bot.name }), ts: new Date().toISOString() }, true);
+    }
+
     started(_s: BotSession, turn: Turn): void {
         if (!turn.entryId) return;
         const ts = new Date().toISOString();
@@ -2263,19 +2532,26 @@ export class BotManager implements SessionHooks {
         for (const [chatId, entryIds] of per) this.send({ type: 'discarded', chatId, entryIds, ts });
     }
 
+    // What the engine produces passes the vault's redaction before the app sees it (a value split over two deltas
+    // shows until the finished answer replaces the live text); the tool calls are changed in place, so the finished
+    // turn carries them redacted too.
     delta(s: BotSession, turn: Turn, text: string): void {
-        this.send({ type: 'delta', chatId: turn.chatId, botId: s.bot.id, text });
+        this.send({ type: 'delta', chatId: turn.chatId, botId: s.bot.id, text: redact(text) });
     }
 
     tool(s: BotSession, turn: Turn, call: Parameters<SessionHooks['tool']>[2]): void {
+        call.summary = redact(call.summary);
         this.send({ type: 'tool', chatId: turn.chatId, botId: s.bot.id, tool: call });
     }
 
     toolResult(s: BotSession, turn: Turn, call: Parameters<SessionHooks['toolResult']>[2]): void {
+        if (call.result) call.result = redact(call.result);
         this.send({ type: 'tool_result', chatId: turn.chatId, botId: s.bot.id, id: call.id, ok: call.ok ?? true, result: call.result ?? '', durationMs: call.durationMs ?? 0 });
     }
 
     done(s: BotSession, turn: Turn, e: TurnResult): void {
+        e.text = redact(e.text);
+        if (e.error) e.error = redact(e.error);
         const ts = new Date().toISOString();
         let entry: HistoryEntry = {
             role: 'assistant', text: e.text, ts, botId: s.bot.id,
@@ -2329,11 +2605,11 @@ export class BotManager implements SessionHooks {
         if (state === 'idle' && pendingTransfers()[s.bot.id]) setTimeout(() => this.checkTransfer(s.bot.id), 1000);
         if (state === 'idle' && pendingWork()[s.bot.id]) setTimeout(() => this.checkWork(s.bot.id), 1000);
         // botId is the session key here (as in states/activity/activeChats), for conversations their chatId
-        this.send({ type: 'state', botId: s.key, state, detail, activity: s.activity, chatId: s.currentTurn?.chatId, queue: s.waitingPerChat() });
+        this.send({ type: 'state', botId: s.key, state, detail: detail && redact(detail), activity: s.activity && redact(s.activity), chatId: s.currentTurn?.chatId, queue: s.waitingPerChat() });
     }
 
     error(s: BotSession, turn: Turn | null, message: string): void {
-        this.send({ type: 'error', chatId: turn?.chatId, botId: s.bot.id, message });
+        this.send({ type: 'error', chatId: turn?.chatId, botId: s.bot.id, message: redact(message) });
     }
 
     account(_s: BotSession, info: AccountInfo): void {
@@ -2405,6 +2681,8 @@ export class BotManager implements SessionHooks {
 
         const isQuestion = toolName === 'AskUserQuestion';
         const texts = approvalText(toolName, input);
+        texts.summary = redact(texts.summary);
+        texts.detail = redact(texts.detail);
         const approval: Approval = {
             id: randomUUID().slice(0, 12),
             chatId: turn.chatId,
@@ -2511,10 +2789,16 @@ export class BotManager implements SessionHooks {
         setAvatar: (s, avatar) => this.setOwnAvatar(s, avatar),
         setProfile: (s, profile) => this.setOwnProfile(s, profile),
         setRoutine: (s, change) => this.setOwnRoutine(s, change),
+        createBot: (s, bot) => this.createBotFor(s, bot),
         listFolders: () => toolText(foldersText()),
         setFolder: (s, folder, chats) => this.setFolder(s, folder, chats),
         makeAvatar: (s, wish) => this.makeOwnAvatar(s, wish),
         knowledgeChanged: (locations, by) => this.knowledgeChanged(locations, by),
+        inMission: (botId) => this.missions.missionsOf(botId).length > 0,
+        missionTool: (s, name, args) => {
+            const r = this.missions.tool(s.bot.id, s.currentTurn?.chatId ?? s.key, name, args);
+            return toolText(r.text, r.error);
+        },
     };
 
     /** set_avatar: only the bot's own picture; the chat it works in says so, and the change goes to every machine. */
@@ -2580,6 +2864,30 @@ export class BotManager implements SessionHooks {
     }
 
     /**
+     * create_bot: a new bot of this account on this machine, saved and set up like one from "New bot" in the app (its
+     * first turn asks the user and fills in its profile). Without a level it gets the one of the settings for new bots,
+     * but never "never": that stays the user's.
+     */
+    private createBotFor(s: BotSession, n: NewBot): ToolText {
+        const name = n.name.trim();
+        if (loadBots().some((b) => b.name.toLowerCase() === name.toLowerCase())) return toolText(`There is a bot "${name}" already; choose another name.`, true);
+        let bot: Bot;
+        try {
+            bot = saveBot({
+                id: '', name, folder: n.folder.trim(), area: n.area?.trim() || undefined, role: n.role?.trim() ?? '', tone: n.tone?.trim() ?? '',
+                model: 'default', avatar: '', approval: n.approval ?? (botApproval() === 'never' ? 'risky' : botApproval()), machine: config.machine,
+            });
+        } catch (e) {
+            return toolText((e as Error).message, true);
+        }
+        this.botSaved(undefined, bot);
+        if (n.folder_of_list?.trim()) this.setFolder(s, n.folder_of_list, [bot.id]);
+        this.entry(s.currentTurn?.chatId ?? s.bot.id, { role: 'event', text: t('events.botCreated', { name: s.bot.name, bot: bot.name }), ts: new Date().toISOString() });
+        this.startSetup(bot);
+        return toolText(`Bot "${bot.name}" (${bot.id}) created on ${config.machine.toUpperCase()} in ${bot.folder}; it sets itself up in its own chat now and asks the user there.`);
+    }
+
+    /**
      * set_folder: bots and groups of this account into a folder of the chat list, by id or name; a folder by its name
      * (any case) or created. Every name is resolved first, so a typo changes nothing.
      */
@@ -2593,8 +2901,10 @@ export class BotManager implements SessionHooks {
             const lower = n.toLowerCase();
             const b = bots.find((x) => x.id === n) ?? bots.find((x) => x.name.toLowerCase() === lower);
             const g = n.startsWith('g:') ? groups.find((x) => x.id === n.slice(2)) : groups.find((x) => x.id === n || x.name.toLowerCase() === lower);
+            const p = !b && !g ? contactsOf(this.accountId).find((x) => x.id === n.replace(/^p:/, '') || x.name.toLowerCase() === lower) : undefined;
             if (b) ids.push(b.id);
             else if (g) ids.push(`g:${g.id}`);
+            else if (p) ids.push(`p:${p.id}`);
             else unknown.push(n);
         }
         if (unknown.length) return toolText(`Not found: ${unknown.join(', ')}. Use the ids or names from list_bots (groups by name or g:<id>); nothing was changed.`, true);
@@ -2607,10 +2917,14 @@ export class BotManager implements SessionHooks {
             created = !existing;
         }
         const unique = [...new Set(ids)];
-        for (const id of unique) setCategory(id, target);
+        for (const id of unique) {
+            if (isPerson(id)) setPersonCategory(personOf(id), target);
+            else setCategory(id, target);
+        }
+        if (unique.some((id) => isPerson(id))) this.sendPeople();
         this.sendBots();
         this.shareConfig();
-        const names = unique.map((id) => (id.startsWith('g:') ? groups.find((g) => `g:${g.id}` === id)?.name : bots.find((b) => b.id === id)?.name) ?? id);
+        const names = unique.map((id) => (id.startsWith('g:') ? groups.find((g) => `g:${g.id}` === id)?.name : isPerson(id) ? personName(personOf(id)) : bots.find((b) => b.id === id)?.name) ?? id);
         const shown = target ? loadCategories().find((c) => c.id === target)?.name ?? name : '';
         this.entry(s.currentTurn?.chatId ?? s.bot.id, {
             role: 'event', ts: new Date().toISOString(),
@@ -2699,14 +3013,19 @@ export class BotManager implements SessionHooks {
         let targetBot: Bot | undefined;
         let chatId = '';
         const wanted = conversation.trim();
-        if (wanted) {
+        // "new": a fresh conversation of the bot named, or of the asking bot itself (a side job of its own)
+        const fresh = wanted.toLowerCase() === 'new';
+        if (fresh) {
+            targetBot = target.trim() ? loadBots().find((b) => b.id === target || norm(b.name) === norm(target) || norm(b.id) === norm(target)) : s.bot;
+            if (!targetBot) return text(`There is no bot "${target}". Use list_bots.`, true);
+        } else if (wanted) {
             targetBot = findBot(botIdOf(wanted));
             if (!targetBot || (wanted !== targetBot.id && !findConversation(wanted))) return text(`There is no conversation "${wanted}". Use list_conversations.`, true);
             chatId = wanted;
         } else {
             targetBot = loadBots().find((b) => b.id === target || norm(b.name) === norm(target) || norm(b.id) === norm(target));
             if (!targetBot) return text(`There is no bot "${target}". Use list_bots.`, true);
-            if (targetBot.id === s.bot.id) return text('You cannot give yourself a job in this chat. Another conversation of yours takes one with conversation=<id> (list_conversations).', true);
+            if (targetBot.id === s.bot.id) return text('You cannot give yourself a job in this chat. A conversation of yours takes one: conversation="new" opens a new one, conversation=<id> an existing one (list_conversations).', true);
         }
         if (chatId === here) return text('That is the conversation you are in.', true);
         if (targetBot.id !== s.bot.id && !mayMessage(s.bot, targetBot)) return text(`You may not give ${targetBot.name} jobs; the user decides in your settings which bots you can reach. Solve the task yourself or tell the user.`, true);
@@ -2714,13 +3033,17 @@ export class BotManager implements SessionHooks {
         const chats = [...(turn?.chats ?? []), here];
         if (chain.length > MAX_CHAIN) return text('Too many hand-offs in a row.', true);
         // A chat waiting for the result of this very chain would wait for itself
-        if (chats.includes(chatId || targetBot.id)) {
+        if (!fresh && chats.includes(chatId || targetBot.id)) {
             return text(`${targetBot.name} is itself waiting for the result of this job. Hand in your result; it then arrives at ${targetBot.name}.`, true);
         }
 
         const machine = responsibleMachine(targetBot, this.online);
         let where = '';
-        if (!chatId) {
+        if (fresh) {
+            chatId = createConversation(targetBot.id);
+            this.nameConversation(chatId, job, targetBot.id === s.bot.id ? '' : `${s.bot.name}: `);
+            where = ` (in a new conversation, ${chatId})`;
+        } else if (!chatId) {
             // A bot that works, has a queue or waits for a job of its own gets the job in a conversation of its own
             const main = this.sessions.get(targetBot.id);
             const busy = (machine === config.machine && !!main && (!!main.currentTurn || main.waiting() > 0)) || waitsForJob(targetBot.id);
@@ -2832,6 +3155,16 @@ export class BotManager implements SessionHooks {
         const outcome = stopped ? t('jobs.stopped', { bot: name }) : r.error ? t('jobs.failed', { bot: name, error: r.error }) : r.text || t('jobs.noText', { bot: name });
         const chatId = job.from.chatId;
         const there = Boolean(source && (chatId === source.id || isGroup(chatId) || findConversation(chatId)));
+        // A task of a mission: the result goes into the mission's chat and on to the mission, whose next cycle carries on
+        if (this.missions.ownsJob(id)) {
+            if (source && there) {
+                const ts = new Date().toISOString();
+                this.entry(chatId, { role: 'event', text: t(stopped ? 'events.jobStopped' : r.error ? 'events.jobFailed' : 'events.jobAnswered', { bot: name, after, error: r.error ?? '' }), ts });
+                if (!stopped && !r.error && (r.text || r.attachments.length)) this.entry(chatId, { role: 'user', text: r.text, ts, from: targetBotId, ...(r.attachments.length ? { attachments: r.attachments } : {}) });
+            }
+            this.missions.jobResult(id, targetBotId, r, stopped);
+            return;
+        }
         if (source) {
             const to = there ? chatId : source.id;
             this.push({ title: `${source.name} · ${t('push.jobFeedback', { bot: name })}`, body: plain(outcome).slice(0, 300), url: `/?chat=${encodeURIComponent(to)}`, tag: `job:${id}` }, 'done', to);
@@ -2858,6 +3191,7 @@ export class BotManager implements SessionHooks {
         this.jobWaiters.get(id)?.(failed(t('jobs.released')));
         this.jobWaiters.delete(id);
         this.entry(job.from.chatId, { role: 'event', text: t(cancel ? 'events.jobCancelled' : 'events.jobReleased', { bot: name }), ts: new Date().toISOString() });
+        this.missions.jobStopped(id);
         if (!cancel || job.state !== 'running') return;
         if (job.to.machine === config.machine) this.interruptLocally(job.to.chatId);
         else this.peer({ kind: 'job_cancel', id, chatId: job.to.chatId }, job.to.machine);
@@ -2894,6 +3228,7 @@ export class BotManager implements SessionHooks {
         const name = personName(contact);
         if (contact === this.accountId) return toolText(`${name} is the user you are talking to; there is nobody to hand over to.`, true);
         if (!canReach(this.accountId, contact)) return toolText(`${name} cannot be reached from this account. Tell the user.`, true);
+        if (isBlocked(contact)) return toolText(`The user blocked ${name}; nothing goes to them. Tell the user.`, true);
         if (!summary.trim()) return toolText('The summary is empty.', true);
         const last = this.handovers.get(chatId) ?? 0;
         if (Date.now() - last < HANDOVER_INTERVAL_MS) return toolText(`${name} was told a moment ago already; do not call hand_over again now.`, true);
@@ -3059,8 +3394,231 @@ export class BotManager implements SessionHooks {
         return message;
     }
 
+    // ------------------------------------------------------------------ Missions (mission-control.ts)
+
+    private readonly missionHost: MissionHost = {
+        machine: config.machine,
+        bot: (id) => findBot(id),
+        awake: (bot) => responsibleMachine(bot, this.online) === config.machine,
+        // A cycle is a turn without a message of the user in the chat; from 'mission:<id>' keeps its answer from pushing
+        runCycle: (m, bot, content, onDone) => this.startTurn(bot, { chatId: m.chatId, from: `mission:${m.id}`, text: m.name, content },
+            (e) => onDone({ costUsd: e.costUsd, error: e.error, stopped: e.stopped })),
+        delegate: (m, task, bot, text) => this.delegateTask(m, task.title, bot, text),
+        cancelJob: (id) => this.stopJob(id, true),
+        interrupt: (chatId) => this.interruptLocally(chatId),
+        chatEvent: (chatId, text) => this.entry(chatId, { role: 'event', text, ts: new Date().toISOString() }),
+        changed: () => {
+            this.sendMissions();
+            this.shareConfig();
+        },
+        approvalPush: (m, a) => this.push({ title: `${m.name} · ${t('missions.pushApproval')}`, body: a.title, url: `/?chat=${encodeURIComponent(m.chatId)}`, tag: `mission:${a.id}` }, 'approval', m.chatId),
+        reloadBots: (ids) => { for (const id of ids) for (const s of this.sessionsOf(id)) s.reload(); },
+    };
+    private readonly missions = new MissionControl(this.missionHost);
+
+    private sendMissions(cid?: string): void {
+        this.send({ type: 'missions', missions: loadMissions() }, cid);
+    }
+
+    private sendMissionDetail(id: string, cid: string): void {
+        const m = findMission(id);
+        if (!m) throw new Error(t('missions.notFound'));
+        const { metrics, error } = m.machine === config.machine && m.folder ? readMetrics(m.folder) : { metrics: null };
+        this.send({ type: 'mission_detail', id, events: readEvents(id, 300), metrics, ...(error ? { metricsError: error } : {}) }, cid);
+    }
+
+    /**
+     * A task of a mission as a job between bots: into a new conversation of the assignee, given by the supervisor from
+     * the mission's chat, so the result comes back there like any job's (deliverFeedback) and on to the mission.
+     */
+    private delegateTask(m: Mission, title: string, bot: Bot, text: string): { jobId: string; chatId: string; send: () => void } | { error: string } {
+        const supervisor = findBot(m.supervisor);
+        if (!supervisor) return { error: t('bots.botNotFound') };
+        const machine = responsibleMachine(bot, this.online);
+        const chatId = createConversation(bot.id);
+        renameConversation(chatId, `${m.name}: ${title}`);
+        const id = randomUUID();
+        const origin: JobOrigin = { id, machine: config.machine, botId: supervisor.id, chatId: m.chatId, chain: [supervisor.id], chats: [m.chatId] };
+        const ts = new Date().toISOString();
+        const stored: StoredJob = {
+            id, from: origin, to: { machine: machine ?? bot.machine, botId: bot.id, chatId }, text: title.slice(0, 200), ts, state: 'queued',
+            content: `${t('prompt.jobFromBot', { name: supervisor.name, id: supervisor.id })}\n\n${text}`, full: text,
+        };
+        return {
+            jobId: id, chatId,
+            send: () => {
+                addJob(stored);
+                this.entry(chatId, { role: 'user', text, ts, from: supervisor.id });
+                this.sendBots();
+                if (machine) this.dispatchJob(stored);
+                else this.sendJobs();
+            },
+        };
+    }
+
+    /**
+     * mission_save: a new mission from the builder (its new bots made in the mission's folder, with portraits, in a
+     * list folder of their own, allowed to reach each other) or the user's change of one. What the backend keeps
+     * (status, spending, tasks, the log) is not taken from the frame; every change of a limit goes into the log.
+     */
+    private saveMission(input: MissionInput): Mission {
+        const clean = cleanInput(input);
+        const existing = input.id ? findMission(input.id) : undefined;
+        if (input.id && !existing) throw new Error(t('missions.notFound'));
+        if (existing && existing.machine !== config.machine) throw new Error(t('missions.otherMachine', { machine: existing.machine.toUpperCase() }));
+        if (existing && TERMINAL.has(existing.status)) throw new Error(t('missions.over'));
+        const draft = !existing || existing.status === 'draft';
+        let folder = existing?.folder ?? '';
+        if (draft) {
+            const wanted = input.folder.trim();
+            if (!wanted) throw new Error(t('missions.folderMissing'));
+            if (!fs.existsSync(wanted) && underAllowedRoot(path.resolve(wanted))) fs.mkdirSync(wanted, { recursive: true });
+            folder = checkFolder(wanted);
+            const taken = folderTaken(folder, existing?.id);
+            if (taken) throw new Error(t('missions.folderTaken', { name: taken.name }));
+        }
+        // The team: checked as a whole before anything is made
+        const team = input.team.filter((x) => x.botId || x.name.trim()).slice(0, MAX_TEAM);
+        if (!team.length) throw new Error(t('missions.teamMissing'));
+        for (const x of team) {
+            if (!x.botId) continue;
+            const b = findBot(x.botId);
+            if (!b) throw new Error(t('bots.botNotFound'));
+            if (b.machine !== config.machine) throw new Error(t('missions.botElsewhere', { bot: b.name, machine: b.machine.toUpperCase() }));
+        }
+        const used = new Set(loadBots().map((b) => b.avatar).filter(Boolean));
+        const approval = botApproval() === 'never' ? 'risky' : botApproval();
+        const made: Bot[] = [];
+        const members = team.map((x) => {
+            if (x.botId) return { botId: x.botId, role: x.role.trim() || findBot(x.botId)!.role, supervisor: !!x.supervisor };
+            const bot = saveBot({
+                id: '', name: x.name.trim(), area: x.area?.trim() || undefined, role: x.role.trim(), tone: x.tone?.trim() ?? '', folder, model: 'default',
+                avatar: portraitFor(x.voice ?? 'female', used), approval, machine: config.machine, voice: x.voice,
+            });
+            made.push(bot);
+            return { botId: bot.id, role: bot.role, supervisor: !!x.supervisor };
+        });
+        const ids = [...new Set(members.map((x) => x.botId))];
+        const supervisor = draft ? (members.find((x) => x.supervisor) ?? members[0]).botId : existing!.supervisor;
+        if (!ids.includes(supervisor)) ids.unshift(supervisor);
+        // The team may reach each other; the supervisor keeps whom it could reach before
+        const bots = loadBots();
+        for (const b of bots) {
+            if (!ids.includes(b.id) || !b.canMessage) continue;
+            const wanted = [...new Set([...b.canMessage, ...ids.filter((id) => id !== b.id)])];
+            if (wanted.length !== b.canMessage.length) Object.assign(b, { canMessage: wanted, updatedAt: new Date().toISOString() });
+        }
+        for (const b of made) {
+            const own = bots.find((x) => x.id === b.id);
+            if (own) own.canMessage = ids.filter((id) => id !== b.id);
+        }
+        saveBots(bots);
+        // Its own conversation of the supervisor for the cycles; a new one when a draft gets another supervisor
+        let chatId = existing?.chatId ?? '';
+        if (!existing || existing.supervisor !== supervisor) {
+            chatId = createConversation(supervisor);
+            renameConversation(chatId, clean.name);
+        }
+        let category = existing?.category;
+        if (!existing && made.length) {
+            category = saveCategory({ id: '', name: clean.name.slice(0, 40) }).id;
+            for (const b of made) setCategory(b.id, category);
+        }
+        const now = new Date().toISOString();
+        const milestones = input.milestones.filter((x) => x.title?.trim()).slice(0, 30).map((x) => {
+            const old = x.id ? existing?.milestones.find((y) => y.id === x.id) : undefined;
+            return { id: old?.id ?? newId(), title: x.title.trim().slice(0, 200), dueAt: x.dueAt?.slice(0, 10) || undefined, status: old?.status ?? 'open' as const, doneAt: old?.doneAt };
+        });
+        const mission: Mission = {
+            ...clean, id: existing?.id ?? newId(), status: existing?.status ?? 'draft', progress: existing?.progress ?? 0,
+            spent: existing?.spent ?? { costUsd: 0, turns: 0, day: '', turnsToday: 0 }, killSwitch: existing?.killSwitch ?? false,
+            folder, machine: config.machine, supervisor, chatId, team: members.map(({ botId, role }) => ({ botId, role })).filter((x, i, l) => l.findIndex((y) => y.botId === x.botId) === i),
+            milestones, tasks: existing?.tasks ?? [], approvals: existing?.approvals ?? [], results: existing?.results ?? [],
+            loop: existing?.loop ?? { ticks: 0, errors: 0, pending: [] }, category, createdAt: existing?.createdAt ?? now, updatedAt: now,
+        };
+        addMission(mission);
+        writeGuardrails(mission);
+        const changes = existing ? missionChanges(existing, mission) : [];
+        if (!existing) appendEvent(mission.id, { kind: 'status', by: 'user', text: t('missions.ev.created', { n: String(ids.length) }) });
+        else if (changes.length) appendEvent(mission.id, { kind: 'user', by: 'user', text: t('missions.ev.changed'), data: changes.join('\n'), critical: changes.some((c) => c.startsWith('!')) });
+        for (const b of made) this.botSaved(undefined, b);
+        // The team's sessions start again with the mission tools after their turn
+        this.missionHost.reloadBots(ids);
+        this.sendBots();
+        this.sendMissions();
+        this.shareConfig();
+        return mission;
+    }
+
+    private deleteMission(id: string): void {
+        const m = findMission(id);
+        if (!m) throw new Error(t('missions.notFound'));
+        if (m.machine !== config.machine) throw new Error(t('missions.otherMachine', { machine: m.machine.toUpperCase() }));
+        if (!TERMINAL.has(m.status) && m.status !== 'draft') this.missions.control(id, 'cancel');
+        deleteMission(id);
+        this.missionHost.reloadBots([m.supervisor, ...m.team.map((x) => x.botId)]);
+        this.sendMissions();
+        this.shareConfig();
+    }
+
+    /** The frames of Mission Control; an error goes back with the request's type, so the page shows it where it was asked. */
+    private handleMission(frame: Extract<ClientFrame, { type: `mission${string}` }>, cid: string): void {
+        const fail = (message: string) => this.send({ type: 'error', request: frame.type, message }, cid);
+        try {
+            switch (frame.type) {
+                case 'missions':
+                    this.sendMissions(cid);
+                    break;
+                case 'mission_open':
+                    this.sendMissionDetail(frame.id, cid);
+                    break;
+                case 'mission_propose': {
+                    const begin = Date.now();
+                    propose(frame.text, frame.folder?.trim() ?? '').then(
+                        (proposal) => {
+                            console.log(`mission proposal: done after ${((Date.now() - begin) / 1000).toFixed(1)} s`);
+                            this.send({ type: 'mission_proposal', proposal }, cid);
+                        },
+                        (e: Error) => fail(e.message),
+                    );
+                    break;
+                }
+                case 'mission_save': {
+                    const m = this.saveMission(frame.mission);
+                    this.send({ type: 'mission_saved', id: m.id }, cid);
+                    if (frame.start && m.status === 'draft') {
+                        const error = this.missions.control(m.id, 'start');
+                        if (error) fail(error);
+                    }
+                    break;
+                }
+                case 'mission_control': {
+                    const error = this.missions.control(frame.id, frame.action);
+                    if (error) fail(error);
+                    break;
+                }
+                case 'mission_approval_reply': {
+                    const error = this.missions.answer(frame.missionId, frame.id, frame.allow, frame.message ?? '');
+                    if (error) fail(error);
+                    break;
+                }
+                case 'mission_task_save': {
+                    const error = this.missions.saveTask(frame.missionId, frame.task);
+                    if (error) fail(error);
+                    break;
+                }
+                case 'mission_delete':
+                    this.deleteMission(frame.id);
+                    break;
+            }
+        } catch (e) {
+            fail(e instanceof Error ? e.message : String(e));
+        }
+    }
+
     /** Ends this account's sessions and timers; what the machine shares (voice, engine sign-ins) stops in index.ts. */
     close(): void {
+        this.missions.close();
         if (this.scheduler) clearInterval(this.scheduler);
         for (const i of this.intervals) clearInterval(i);
         this.offKeyFallback?.();
@@ -3091,6 +3649,33 @@ function inBotFolder(cwd: string, folder: string, otherBots: string[]): boolean 
 }
 
 // ------------------------------------------------------------------ Helpers
+
+/**
+ * What the user changed of a mission, one line each for its log; lines about limits (autonomy, budget, rules,
+ * guardrails) start with "!" and mark the event as critical, since they decide what the team may do.
+ */
+export function missionChanges(before: Mission, after: Mission): string[] {
+    const out: string[] = [];
+    const show = (v: unknown) => (v === undefined || v === '' ? '–' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+    const field = (key: keyof Mission, label: string, limit = false) => {
+        if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) out.push(`${limit ? '!' : ''}${label}: ${show(before[key])} → ${show(after[key])}`);
+    };
+    field('autonomy', t('missions.field.autonomy'), true);
+    field('budget', t('missions.field.budget'), true);
+    field('approvalRules', t('missions.field.rules'), true);
+    field('guardrails', t('missions.field.guardrails'), true);
+    field('cadence', t('missions.field.cadence'));
+    field('goal', t('missions.field.goal'));
+    field('successCriteria', t('missions.field.success'));
+    field('abortCriteria', t('missions.field.abort'));
+    field('name', t('missions.field.name'));
+    field('priority', t('missions.field.priority'));
+    field('dueAt', t('missions.field.due'));
+    if (JSON.stringify(before.team.map((x) => x.botId)) !== JSON.stringify(after.team.map((x) => x.botId))) {
+        out.push(`${t('missions.field.team')}: ${before.team.map((x) => x.botId).join(', ')} → ${after.team.map((x) => x.botId).join(', ')}`);
+    }
+    return out;
+}
 
 /** Bots addressed with @ (id or name, case-insensitive); @all (and the German @alle) hits everyone. */
 export function mentioned(text: string, candidates: Bot[]): Bot[] {
@@ -3205,4 +3790,11 @@ function filesOf(entry: HistoryEntry): { files?: Record<string, string> } {
         }
     }
     return Object.keys(files).length ? { files } : {};
+}
+
+/** Messages as lines for a prompt: who and what, each shortened; the newest last. */
+function transcript(entries: HistoryEntry[]): string {
+    return entries.filter((e) => (e.role === 'user' || e.role === 'assistant') && e.text?.trim())
+        .map((e) => `${e.role === 'assistant' ? 'You' : e.from === 'me' ? 'User' : e.from}: ${e.text.trim().replace(/\s+/g, ' ').slice(0, 600)}`)
+        .join('\n');
 }

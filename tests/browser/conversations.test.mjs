@@ -23,8 +23,8 @@ export default async function ({ start, check }) {
     await h.wait(200);
     const top = (await p.locator('#info-actions > button').allTextContents()).slice(0, 2);
     check('the conversation\'s page: "New conversation", then "Rename conversation" at the top of the entries below the switches', JSON.stringify(top) === '["New conversation","Rename conversation"]', top);
-    const items = await p.locator('#info-actions button').allTextContents();
-    check('the conversation\'s page: its title and entries', (await p.locator('#info-switches .menu-info strong').first().textContent()) === 'Webstore release' && ['To the main chat of Skool Sven', 'New session (clear context)', 'Archive', 'Delete permanently'].every((x) => items.includes(x)), items);
+    const items = await p.locator('#info-switches button, #info-actions button').allTextContents();
+    check('the conversation\'s page: its title and entries', (await p.locator('#info-switches .menu-info strong').first().textContent()) === 'Webstore release' && ['To the main chat of Skool Sven', 'Archive', 'Delete permanently'].every((x) => items.includes(x)), items);
     await p.click('#info-actions button[data-action="conversation_new"]');
     await h.wait(300);
     check('new conversation created and opened, the page left', (await head()).startsWith('New conversation') && await p.isHidden('#info'), await head());

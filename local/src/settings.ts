@@ -1,5 +1,6 @@
 // Settings shared by all devices and machines of an account: the language of the UI and the bots' answers, the image
-// model for profile pictures, the language of voice messages, the git fast-forward and what app notifications show.
+// model for profile pictures, the language of voice messages, the git fast-forward, what app notifications show and the
+// approval level of new bots.
 // Stored in settings.json, synced in the snapshot; the newer `updatedAt` wins. The API keys for the image models
 // live apart in api-keys.json: a browser only learns whether one is stored, and they travel to the other machines
 // only in encrypted sync.
@@ -8,8 +9,8 @@ import { e2eEnabled } from './e2e.ts';
 import { setLanguageSource } from './i18n.ts';
 import { currentAccount, readJson, writeJson } from './store.ts';
 import {
-    AVATAR_MODELS, LANGUAGES, PUSH_PREVIEWS, READ_ALOUD_VOICES, SHARED_API_KEYS, TALK_MODES, type AvatarModel, type Language, type PushPreview, type ReadAloudVoice, type SharedApiKey,
-    type TalkMode,
+    APPROVALS, AVATAR_MODELS, LANGUAGES, PUSH_PREVIEWS, READ_ALOUD_VOICES, SHARED_API_KEYS, TALK_MODES, type AvatarModel, type Language, type PushPreview, type ReadAloudVoice, type SharedApiKey,
+    type ApprovalPolicy, type TalkMode,
     type SharedSettings, type SharedSettingsInput, type Snapshot,
 } from '../../shared/protocol.ts';
 
@@ -32,6 +33,7 @@ function clean(s: Partial<SharedSettings>): SharedSettings {
     if (oneOf(PUSH_PREVIEWS, s.pushPreview)) r.pushPreview = s.pushPreview;
     if (oneOf(READ_ALOUD_VOICES, s.readAloud)) r.readAloud = s.readAloud;
     if (oneOf(TALK_MODES, s.talkMode)) r.talkMode = s.talkMode;
+    if (oneOf(APPROVALS, s.botApproval)) r.botApproval = s.botApproval;
     return r;
 }
 
@@ -81,6 +83,8 @@ export function settingsForBrowser(): SharedSettings {
 export const avatarModel = (): AvatarModel => loadSettings().avatarModel ?? 'gemini-3.1-flash-image';
 export const voiceLanguage = (): '' | Language => loadSettings().voiceLanguage ?? '';
 export const talkMode = (): TalkMode => loadSettings().talkMode ?? 'app';
+/** The approval level a new bot starts with. */
+export const botApproval = (): ApprovalPolicy => loadSettings().botApproval ?? 'risky';
 export const gitAutoPull = (): boolean => loadSettings().gitAutoPull ?? true;
 export const pushPreview = (): PushPreview => loadSettings().pushPreview ?? 'title';
 export const readAloudVoice = (): ReadAloudVoice => loadSettings().readAloud ?? 'auto';

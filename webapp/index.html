@@ -117,7 +117,7 @@
         </header>
         <div class="search-box closed" id="search-box">
             <span class="field-x"><input type="search" id="search" data-i18n-placeholder="search.allChats" autocomplete="off" enterkeyhint="search" data-i18n-aria-label="search.allChats"><button type="button" class="field-clear" data-i18n-title="search.clear" data-i18n-aria-label="search.clear" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M8 8l8 8M16 8l-8 8"/></svg></button></span>
-            <!-- What the search looks for; phone only (list.js), larger screens have the command palette (palette.js) -->
+            <!-- What the search looks for (list.js); the command palette (palette.js) searches everything at once -->
             <div class="search-filters" id="search-filters" role="radiogroup" data-i18n-aria-label="search.filters">
                 <button type="button" class="chip" role="radio" aria-checked="true" data-filter="messages" data-i18n="search.filterMessages"></button>
                 <button type="button" class="chip" role="radio" aria-checked="false" data-filter="bots" data-i18n="search.filterBots"></button>
@@ -160,6 +160,8 @@
                 <p class="empty-small" id="usage-none" data-i18n="status.noUsage"></p>
                 <p class="account-line" id="account"></p>
             </div>
+            <!-- The tab "Missions": the overview, one mission and the builder, drawn by missions.js -->
+            <div class="git-page-content missions-page" id="missions-page" hidden></div>
         </div>
         <div class="panes" id="panes"></div>
         <button type="button" class="pane-add" id="pane-add" data-i18n-title="pane.add" data-i18n-aria-label="pane.add" hidden>
@@ -196,6 +198,8 @@
                         <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
                     </button>
                 </header>
+                <!-- A bot's main chat and its conversations as tabs, "+" starts a new one (chat.js) -->
+                <nav class="conv-tabs" data-el="conv-tabs" data-i18n-aria-label="chat.tabs" hidden></nav>
                 <div class="chat-search" data-el="chat-search" hidden>
                     <span class="field-x"><input type="search" data-el="cs-text" data-i18n-placeholder="search.thisChat" autocomplete="off" enterkeyhint="search" data-i18n-aria-label="search.thisChat"><button type="button" class="field-clear" data-i18n-title="search.clear" data-i18n-aria-label="search.clear" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M8 8l8 8M16 8l-8 8"/></svg></button></span>
                     <span class="cs-count" data-el="cs-count"></span>
@@ -247,6 +251,7 @@
                     </button>
                     <input type="file" data-el="file-input" multiple hidden>
                     <textarea data-el="text" rows="1" data-i18n-placeholder="composer.placeholder" enterkeyhint="send"></textarea>
+                    <button type="button" class="later" data-el="btn-later" aria-pressed="false" data-i18n="composer.later" data-i18n-title="composer.laterTitle" hidden></button>
                     <button type="submit" class="round send" data-el="btn-send" data-i18n-title="composer.send">
                         <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7z"/></svg>
                     </button>
@@ -411,6 +416,14 @@
             <div id="settings-bots">
                 <h3 data-i18n="settings.bots"></h3>
                 <p class="hint" id="settings-bots-asleep" data-i18n="settings.botsAsleep" hidden></p>
+                <label><span data-i18n="settings.botApproval"></span>
+                    <select id="settings-bot-approval">
+                        <option value="risky" data-i18n="approval.policy.risky"></option>
+                        <option value="write" data-i18n="approval.policy.write"></option>
+                        <option value="never" data-i18n="approval.policy.never"></option>
+                        <option value="read" data-i18n="approval.policy.read"></option>
+                    </select>
+                </label>
                 <label><span data-i18n="settings.voiceLanguage"></span>
                     <select id="settings-voice-language">
                         <option value="" data-i18n="settings.voiceLanguageAuto"></option>
@@ -474,6 +487,35 @@
                 <h4 data-i18n="totp.title" id="totp-title" hidden></h4>
                 <div id="totp-box" class="totp-box" hidden></div>
             </div>
+            <!-- The vault (vault.js): credentials for the bots' work as a list, each entry a form with name, note, value
+                 and the bots that may use it; the value is write-only. Admins only; needs a machine that is awake -->
+            <div id="settings-vault" class="settings-block" hidden>
+                <h3 data-i18n="vault.title"></h3>
+                <p class="hint" data-i18n="vault.hint"></p>
+                <p class="hint" id="settings-vault-asleep" data-i18n="settings.botsAsleep" hidden></p>
+                <ul class="device-list" id="settings-vault-list"></ul>
+                <div class="actions left">
+                    <button type="button" class="btn" id="settings-vault-add" data-i18n="vault.add"></button>
+                </div>
+                <div class="settings-form" id="settings-vault-form" hidden>
+                    <label><span data-i18n="vault.name"></span><input type="text" id="settings-vault-name" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="HETZNER_API_TOKEN" maxlength="64"></label>
+                    <p class="hint" data-i18n="vault.nameHint"></p>
+                    <label><span data-i18n="vault.note"></span><input type="text" id="settings-vault-note" autocomplete="off" maxlength="200"></label>
+                    <label><span data-i18n="vault.value"></span><input type="password" id="settings-vault-value" autocomplete="off" data-i18n-placeholder="vault.valueEnter"></label>
+                    <label><span data-i18n="vault.bots"></span>
+                        <select id="settings-vault-bots">
+                            <option value="all" data-i18n="vault.botsAll"></option>
+                            <option value="some" data-i18n="vault.botsSome"></option>
+                        </select>
+                    </label>
+                    <fieldset class="choice" id="settings-vault-bot-list" hidden><legend data-i18n="vault.botsPick"></legend></fieldset>
+                    <p class="error" id="settings-vault-error" hidden></p>
+                    <div class="actions left">
+                        <button type="button" class="btn" id="settings-vault-cancel" data-i18n="common.cancel"></button>
+                        <button type="button" class="primary" id="settings-vault-save" data-i18n="common.save"></button>
+                    </div>
+                </div>
+            </div>
             <!-- Everything that is a sign-in (accounts.js): one list of the relays and the accounts on them (where this
                  device is signed in, and for admins everyone on this relay), "Add" for any link, an address or a new
                  person, the shared list switch, one's own account. Devices, key and second factor stay in the block above. -->
@@ -514,6 +556,10 @@
                     <label><span data-i18n="accounts.name"></span><input id="accounts-own-name" maxlength="60" autocomplete="off"></label>
                     <label><span data-i18n="accounts.picture"></span><span id="accounts-own-avatar"></span></label>
                     <label id="accounts-password-field"><span data-i18n="accounts.newPassword"></span><input type="password" id="accounts-password" autocomplete="new-password" data-i18n-placeholder="accounts.passwordPlaceholder"></label>
+                    <div class="actions left" id="accounts-delete-own-row">
+                        <button type="button" class="btn danger" id="accounts-delete-own" data-i18n="accounts.deleteOwn"></button>
+                    </div>
+                    <p class="hint" id="accounts-delete-own-hint" data-i18n="accounts.deleteOwnHint"></p>
                 </div>
                 <p class="error" id="accounts-error" hidden></p>
             </div>
@@ -521,6 +567,8 @@
             <div id="settings-about" class="settings-block">
                 <h3 data-i18n="about.title"></h3>
                 <dl class="about-list" id="about-list"></dl>
+                <!-- The desktop app's own update: its state, "Check for updates", the restart and the automatic checks -->
+                <div class="about-update" id="about-update" hidden></div>
                 <!-- What is new in this version: shown in the settings dialog (openReleaseNotes) -->
                 <div class="release-notes" id="release-notes" hidden></div>
             </div>
@@ -566,6 +614,14 @@
                 <b class="tab-badge" id="tab-repos-badge" hidden></b>
             </span>
             <span data-i18n="tabs.repos"></span>
+        </button>
+        <button type="button" class="tab" data-tab="missions">
+            <span class="tab-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>
+                <!-- decisions the missions wait for (missions.js renderMissionsBadge) -->
+                <b class="tab-badge" id="tab-missions-badge" hidden></b>
+            </span>
+            <span data-i18n="tabs.missions"></span>
         </button>
         <button type="button" class="tab" data-tab="machines">
             <span class="tab-icon">
@@ -654,6 +710,7 @@
                 <option value="male" data-i18n="editor.voiceMale"></option>
             </select>
         </label>
+        <label class="check"><input type="checkbox" id="editor-talk-fast"> <span data-i18n="editor.talkFast"></span></label>
         <!-- A voice of its own for the provider that reads right now (renderVoiceChoice in editors.js) -->
         <div class="voice-choice" id="editor-voice-choice">
             <label><span id="editor-voice-where"></span>
@@ -743,6 +800,32 @@
     </section>
 </div>
 
+<!-- Report a message (chat-features.js openReport): to the relay's admins, without one by mail to the support address -->
+<div id="report" class="overlay page" hidden>
+    <form class="dialog" id="report-form">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 data-i18n="report.title"></h2>
+        <blockquote class="report-quote" id="report-quote"></blockquote>
+        <label><span data-i18n="report.reason"></span>
+            <select id="report-reason" required>
+                <option value="offensive" data-i18n="report.reason.offensive"></option>
+                <option value="harmful" data-i18n="report.reason.harmful"></option>
+                <option value="sexual" data-i18n="report.reason.sexual"></option>
+                <option value="false" data-i18n="report.reason.false"></option>
+                <option value="other" data-i18n="report.reason.other"></option>
+            </select>
+        </label>
+        <label><span data-i18n="report.note"></span><textarea id="report-note" rows="4" maxlength="1000" data-i18n-placeholder="report.notePlaceholder"></textarea></label>
+        <p class="hint" id="report-to"></p>
+        <p class="error" id="report-error" hidden></p>
+        <div class="actions">
+            <a class="btn" id="report-mail" data-i18n="report.byMail"></a>
+            <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
+            <button type="submit" class="primary" id="report-send" data-i18n="report.send"></button>
+        </div>
+    </form>
+</div>
+
 <!-- Command palette (Ctrl+K, palette.js): chats, actions, routines, settings, messages and files; a page on the phone -->
 <div id="palette" class="overlay page palette" hidden>
     <section class="dialog" role="dialog" aria-modal="true" data-i18n-aria-label="palette.title">
@@ -764,6 +847,19 @@
         </header>
         <dl class="shortcuts-list" id="shortcuts-list"></dl>
         <p class="shortcuts-note" id="shortcuts-note" hidden></p>
+    </section>
+</div>
+
+<!-- A Markdown attachment read in the app (media.js), instead of a download -->
+<div id="doc-view" class="overlay page" hidden>
+    <section class="dialog doc-view" role="dialog" aria-modal="true" aria-labelledby="doc-title">
+        <button type="button" class="round page-back" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <header class="doc-head">
+            <h2 id="doc-title"></h2>
+            <button type="button" class="btn" id="doc-save" data-i18n="doc.save"></button>
+            <button type="button" class="round" data-close data-i18n-aria-label="common.close" data-i18n-title="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </header>
+        <div class="bubble doc-body"><div class="content" id="doc-content"></div></div>
     </section>
 </div>
 

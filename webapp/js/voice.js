@@ -168,7 +168,9 @@ export async function stopRecording(submit, spoken = false) {
         attachments: [audio, ...more],
         replyTo: p.replyTo || undefined,
         spoken: spoken || undefined,
+        later: p.later || undefined,
     }, b ? responsibleMachine(b) : undefined);
+    p.later = false;
     setReply(p, null);
     p.uploads = [];
     renderUploads(p);

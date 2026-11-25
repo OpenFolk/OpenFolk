@@ -12,6 +12,7 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {HTMLButtonElement} chatTitle
  * @property {HTMLElement} chatName
  * @property {HTMLElement} chatSub
+ * @property {HTMLElement} convTabs
  * @property {HTMLButtonElement} chatSettings
  * @property {HTMLButtonElement} chatModel
  * @property {HTMLButtonElement} chatMachine
@@ -56,6 +57,7 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {HTMLButtonElement} btnSend
  * @property {HTMLButtonElement} btnMic
  * @property {HTMLButtonElement} btnTalk
+ * @property {HTMLButtonElement} btnLater
  * @property {HTMLElement} recording
  * @property {HTMLButtonElement} recDiscard
  * @property {HTMLElement} recDot
@@ -72,6 +74,7 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {HTMLElement} root
  * @property {PaneElements} el
  * @property {string | null} chatId
+ * @property {boolean} [later]         the next message goes after the running job, not into it
  * @property {boolean} follow          follows new content until the user scrolls up
  * @property {boolean} queueOpen
  * @property {any} queueSettle

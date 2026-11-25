@@ -23,10 +23,11 @@ import {
 import { Devices, newTotpSecret, TotpStore, totpUri, totpVerify, totpVerifyOnce } from './devices.ts';
 import { MachinesSeen } from './machines-seen.ts';
 import { migrateRelayData } from './migrate.ts';
-import { MachineTokens, Owner, UNCLAIMED_PAGE, type Credentials } from './owner.ts';
+import { MachineTokens, MIN_TOKEN_LENGTH, Owner, UNCLAIMED_PAGE, type Credentials } from './owner.ts';
 import { acceptWakeAgent, handleWakeRequest, setWakeConfig, wake, wakeConfig, wakeConfigured, wakeSummary, wakeableMachines, type WakeConfig } from './wakeup.ts';
 import { WakeScheduler } from './wake-schedule.ts';
 import { nativeChannels, sendNative } from '../../shared/push-native.ts';
+import { DEVICE_WINDOWS, handlePushRequest, Limiter, SENDER_WINDOWS } from './push-service.ts';
 
 export interface RelayOptions {
     /** 0 picks a free port (tests). */
@@ -50,6 +51,17 @@ export interface RelayOptions {
     /** Default: from the environment (WAKE_METHOD and the rest, wakeup.ts). */
     wake?: WakeConfig;
     heartbeatMs?: number;
+    /**
+     * App push for every backend (POST /push, push-service.ts), not only those connected here: on for the relay of
+     * openfolk.app, which holds the store apps' APNs and FCM credentials (PUSH_SERVICE=on).
+     */
+    pushService?: boolean;
+    /**
+     * Accounts for the app stores' reviewers (DEMO_ACCOUNTS), all with `demoPassword` (DEMO_PASSWORD): created on start
+     * and again after a reviewer deleted one, name and password fixed (accounts.ts).
+     */
+    demoAccounts?: string[];
+    demoPassword?: string;
     log?: (text: string) => void;
 }
 
@@ -153,6 +165,9 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
     const owner = new Owner(dataDir, o.clientToken, o.agentToken, o.setupCode);
     const devices = new Devices(dataDir);
     const accounts = new Accounts(dataDir);
+    const demoAccounts = o.demoAccounts ?? [];
+    if (demoAccounts.length && (o.demoPassword ?? '').length < MIN_TOKEN_LENGTH) throw new Error(`DEMO_ACCOUNTS needs DEMO_PASSWORD with at least ${MIN_TOKEN_LENGTH} characters.`);
+    for (const id of accounts.ensureDemo(demoAccounts, o.demoPassword ?? '')) log(`Demo account ${id} created`);
     const totp = new TotpStore(dataDir, o.totpSecret ?? '', log);
     const machineTokens = new MachineTokens(dataDir);
     const machinesSeen = new MachinesSeen(dataDir);
@@ -166,9 +181,23 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
     /** A backend's token: the shared AGENT_TOKEN, or a machine's own (with `machine`: only that machine's). */
     const agentOk = (c: Credentials, raw: string, machine?: string) => tokenMatches(c.agentHash, raw) || machineTokens.matches(raw, machine);
 
+    const pushLimits = { devices: new Limiter(DEVICE_WINDOWS), senders: new Limiter(SENDER_WINDOWS) };
     const server = http.createServer((req, res) => {
         const url = new URL(req.url ?? '/', 'http://x');
         securityHeaders(req, res);
+        // App push for a backend on any relay (push-service.ts); without PUSH_SERVICE the address does not exist
+        if (req.method === 'POST' && url.pathname === '/push' && o.pushService) {
+            const ip = clientIp(req);
+            void readJson(req, 64 * 1024).then(async (body) => {
+                const a = await handlePushRequest(body, ip, bridge.pushChannels, pushLimits, (subs, message) => bridge.onPush(subs, message));
+                if (a.status === 429 || a.body.throttled) log(`Push service: ${a.status === 429 ? 'sender' : `${a.body.throttled} device(s)`} over the limit (${ip})`);
+                res.writeHead(a.status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(a.body));
+            }).catch((e: Error) => {
+                log(`Push service failed: ${e.message}`);
+                if (!res.headersSent) res.writeHead(500).end();
+            });
+            return;
+        }
         // A backend claims an unclaimed relay with the code from the relay's log (owner.ts)
         if (req.method === 'POST' && url.pathname === '/claim') {
             const ip = clientIp(req);
@@ -514,14 +543,20 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
             }
             case 'account_delete': {
                 const id = String(request.id ?? '');
-                if (!admin || id === own || !accounts.remove(id)) return refuse();
+                // Admins delete others; everyone but 'main' deletes their own (the stores want it in the app)
+                if ((admin ? id === own && id === MAIN : id !== own) || !accounts.remove(id)) return refuse();
                 devices.removeAccount(id);
                 // Its machines hear of it first, so they remove its data, then lose their token
                 const machines = machineTokens.removeAccount(id);
-                log(`Account ${id} deleted (by account ${own})${machines.length ? `, machines logged out: ${machines.join(', ')}` : ''}`);
+                log(`Account ${id} deleted (${id === own ? 'by itself' : `by account ${own}`})${machines.length ? `, machines logged out: ${machines.join(', ')}` : ''}`);
                 list();
                 bridge.accountDeleted(id);
                 for (const m of machines) bridge.disconnectAgent(m);
+                // A reviewer tried "Delete my account": the next review needs the account again, under a new id
+                for (const again of accounts.ensureDemo(demoAccounts, o.demoPassword ?? '')) {
+                    log(`Demo account created again as ${again}`);
+                    bridge.accountAdded(again);
+                }
                 bridge.peopleChanged(accounts.people());
                 return;
             }
@@ -742,8 +777,10 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
      */
     function clientLogin(ws: WebSocket, ip: string, ua: string, signedIn: () => void): void {
         const timer = setTimeout(() => ws.close(4001, 'Login timed out'), 10_000);
+        // The password sign-in counts its failures on the account it names (auth.ts, isGloballyBlocked)
+        let failureKey = '';
         const reject = (code: MessageCode, message: string, extra: AuthReply = {}, countsAsFailure = true) => {
-            if (countsAsFailure) recordFailure(ip);
+            if (countsAsFailure) recordFailure(ip, failureKey);
             const frame: RelayFrame = { type: 'auth', ok: false, code, message, ...extra };
             ws.send(JSON.stringify(frame));
             ws.close(4003, 'Not signed in');
@@ -828,14 +865,16 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 welcome(created, deviceLabel, 'pairing link');
                 return;
             }
-            // The global limit protects the password only: pairing tokens are long and single-use, and blocking them
-            // would let anyone stop new devices from being paired
-            if (isGloballyBlocked()) {
+            // An unknown account is a wrong password: the answer must not tell which accounts exist
+            const account = typeof f.account === 'string' && f.account.trim() ? accounts.find(f.account)?.id : MAIN;
+            failureKey = account ?? '?';
+            // The limit per account protects the password only: pairing tokens are long and single-use, and blocking
+            // them would let anyone stop new devices from being paired. A demo account has none: its password goes to
+            // the stores' reviewers and it holds nothing, so locking it out would only stop a review.
+            if (!(account && accounts.isDemo(account)) && isGloballyBlocked(failureKey)) {
                 reject('too_many_attempts', 'Too many failed attempts. Please try again later.', {}, false);
                 return;
             }
-            // An unknown account is a wrong password: the answer must not tell which accounts exist
-            const account = typeof f.account === 'string' && f.account.trim() ? accounts.find(f.account)?.id : MAIN;
             const needsCode = account === MAIN && !!totp.secret;
             // With TOTP: do not check at all without a code, so the password alone reveals nothing
             if (needsCode && typeof f.totp !== 'string') {

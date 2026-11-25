@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accent of push notifications, the OpenFolk orange. -->
+    <color name="notification_color">#D97757</color>
+</resources>

@@ -6,12 +6,12 @@ import { askForKey, bot, botIdOf, decrypt, e2e, group, imageOriginal, isGroup, i
 import { jumpToEntry, listTap, renderChatList, renderSearchResult, renderUsage, setSearchMarks } from './list.js';
 import { BRIEFLY_GONE_MS, closeChat, loadingBar, openChat, renderChatHeader, renderHeaders, updateSendAllowed } from './chat.js';
 import { BACKEND_GONE_MS, refreshMachinesPage, renderMachines, scheduleWakePoll } from './machines.js';
-import { historyUnchanged, markSeen, receiveCommands, noteIncoming, receiveSeen, renderEntry, renderHistory, renderPinned, scroll, setRead } from './chat-features.js';
-import { approvalsToBottom, attachmentBar, dropStaleLive, expireApprovalCard, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderJobs, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
+import { historyUnchanged, markSeen, receiveCommands, noteIncoming, receiveSeen, renderEntry, renderHistory, renderPinned, reportFailed, reportSent, scroll, setLike, setRead } from './chat-features.js';
+import { approvalsToBottom, attachmentBar, composerButtons, dropStaleLive, expireApprovalCard, finishLiveText, getLive, isQueued, liveWrap, receiveToolOutput, renderApprovals, renderJobs, renderLiveText, renderQueue, setDeleted, setDiscarded, setMoved, showEvent, toolRow } from './queue.js';
 import { dictationDone, dictationRefused, imageRequested, playback, removeVoicePending, startPlayback } from './voice.js';
 import { mediaArrived } from './media.js';
 import { bundled, connectionVia, desktopMachine, needsRelayAddress, relayAddress, saveFile, socketUrl } from './platform.js';
-import { answerFolderAsk, closeDialog, gitError, receiveDuplicated, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal } from './menus.js';
+import { answerFolderAsk, closeDialog, gitError, receiveDuplicated, receiveGitChanges, receiveGitCommit, receiveGitStatus, renderGitTotal, renderInfoChat } from './menus.js';
 import { receiveVscodeHistory, receiveVscodeSessions, vs, vscodeError, vscodeReconnected, vscodeShown } from './vscode.js';
 import {
     continueMove, fillInfo, folderRequestUnknown, knowledgeError, moveRequestFailed, openInfo, pickerFailed, receiveCloned, receiveFolderChecked, receiveFolderCreated, receiveFolderListed, receiveFolderProposed, receiveMoved, refreshInfo,
@@ -26,14 +26,16 @@ import {
 } from './settings.js';
 import { accountError, dropCurrentAccount, newAccountFailed, receiveAccountCreated, receiveInvite, rememberAccount, renderAccountList, renderAccounts, renderChooser } from './accounts.js';
 import { receiveSetupLink, receiveSetups, setRelayMachines } from './setups.js';
+import { receiveVault, renderVault, vaultError } from './vault.js';
 import { connectOthers } from './others.js';
 import { signInTerminalAnswer } from './welcome.js';
 import { announceMove, relayClaimed, relayClaimFailed } from './relay-claim.js';
 import { approvalError, approvalLink, approvalWaiting, receivePairApproved, receivePairRequest, startApproval, startQrLogin, stopQrLogin } from './qr-login.js';
 import { answerDone, speechAudio } from './read-aloud.js';
 import { alertDialog } from './dialogs.js';
-import { talkAnswer, talkError, talkHeard, talkInterim } from './talk.js';
+import { talkAnswer, talkDelta, talkError, talkHeard, talkInterim, talkStarted } from './talk.js';
 import { talkAnswerSdp, talkRefused } from './talk-realtime.js';
+import { missionError, missionSaved, receiveMissionDetail, receiveMissions, receiveProposal, refreshMissionsPage } from './missions.js';
 
 // ================================================================ Connection
 
@@ -332,6 +334,12 @@ function receive(f) {
             receiveSetups(f.list);
             renderAccountList();
             break;
+        case 'talk_started':
+            talkStarted(f);
+            break;
+        case 'vault':
+            receiveVault(f.entries);
+            break;
         case 'setup_link':
             receiveSetupLink(f);
             break;
@@ -379,6 +387,7 @@ function receive(f) {
             for (const r of Object.keys(state.backendPerMachine)) if (!f.online.includes(r)) delete state.backendPerMachine[r];
             renderGitTotal();
             continueMove();
+            if (!el.settings.hidden) renderVault();
             // The first steps (empty list) show which machines are connected
             if (!allChats().length) renderChatList();
             // A backend that never sends its bots must not leave the list loading for good
@@ -506,6 +515,9 @@ function receive(f) {
                 }
             }
             break;
+        case 'report_sent':
+            reportSent(f);
+            break;
         case 'people': {
             state.people = peopleWithPictures(state.peopleByMachine, f);
             state.personChats = f.chats || [];
@@ -563,6 +575,9 @@ function receive(f) {
         case 'read':
             setRead(f.chatId, f.id, f.ts);
             break;
+        case 'liked':
+            setLike(f.chatId, f.entryId, f.on);
+            break;
         case 'seen':
             receiveSeen(f);
             break;
@@ -586,6 +601,7 @@ function receive(f) {
         case 'context':
             state.context[f.botId] = f.tokens;
             if (paneFor(f.botId)) renderChatHeader(paneFor(f.botId));
+            renderInfoChat();
             break;
         case 'background': {
             const perSession = (state.backgroundPerMachine[f.machine || '?'] = state.backgroundPerMachine[f.machine || '?'] || {});
@@ -658,6 +674,7 @@ function receive(f) {
             const l = getLive(f.chatId, f.botId);
             l.text += f.text;
             if (paneFor(f.chatId)) renderLiveText(f.chatId, f.botId);
+            talkDelta(f.chatId, f.botId, l.text);
             break;
         }
         case 'tool': {
@@ -742,10 +759,12 @@ function receive(f) {
             }
             renderChatList();
             refreshMachinesPage();
+            refreshMissionsPage();
             for (const p of panes) {
                 if (!p.chatId) continue;
                 renderChatHeader(p);
                 renderQueue(p);
+                composerButtons(p);
                 // The queue shows as the bar above the input field, not as a message in the history
                 if (f.detail && f.state !== 'waiting' && !/queue|Warteschlange/i.test(f.detail) && concerns(p.chatId, f.botId)) showEvent(f.detail, false, p.chatId);
             }
@@ -771,7 +790,16 @@ function receive(f) {
         }
         case 'error': {
             const message = messageText(f);
+            if (f.request === 'report' && reportFailed(message)) break;
             if (f.request === 'settings_save' || f.request === 'machine_settings_save') settingsSaveFailed();
+            if (f.request === 'vault_save' || f.request === 'vault_delete') {
+                vaultError(message);
+                break;
+            }
+            if (f.request && /^missions?(_|$)/.test(f.request)) {
+                missionError(message);
+                break;
+            }
             if (['pair_request', 'pair_approve', 'pair_link', 'machine_join_link'].includes(f.request) && approvalError(message)) break;
             if (f.request && f.request.startsWith('totp_')) {
                 totpError(message);
@@ -917,6 +945,18 @@ function receive(f) {
             state.routines = f.routines;
             if (state.infoBot) renderRoutines();
             break;
+        case 'missions':
+            receiveMissions(f.missions);
+            break;
+        case 'mission_detail':
+            receiveMissionDetail(f);
+            break;
+        case 'mission_proposal':
+            receiveProposal(f.proposal);
+            break;
+        case 'mission_saved':
+            missionSaved(f.id);
+            break;
         case 'bot_info':
             if (state.infoBot !== f.botId) break;
             if (state.infoKnowledge && state.knowledgeWaiting) {
@@ -978,6 +1018,11 @@ function flagsOf(chatId) {
     let c = state.personChats.find((x) => x.id === id);
     if (!c) state.personChats.push(c = { id, updatedAt: '' });
     return c;
+}
+
+/** Whether this account blocked the person of a person chat. */
+export function isBlocked(chatId) {
+    return isPerson(chatId) && state.personChats.some((c) => 'p:' + c.id === chatId && c.blocked);
 }
 
 export function isFavorite(chatId) {

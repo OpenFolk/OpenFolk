@@ -79,6 +79,10 @@ export default async function ({ start, check }) {
     await h.wait(100);
     const saves = h.sent.filter((f) => f.type === 'settings_save' && f.settings.voiceLanguage === 'de').map((f) => f.machine).sort();
     check('a shared change goes to every machine that is awake', saves.join() === 'desk,workstation', saves);
+    check('approvals for new bots: "on risky actions" until set', (await p.inputValue('#settings-bot-approval')) === 'risky');
+    await p.selectOption('#settings-bot-approval', 'write');
+    await h.wait(100);
+    check('approvals for new bots: saved with the shared settings', h.sent.some((f) => f.type === 'settings_save' && f.settings.botApproval === 'write'));
     await p.click('#settings-ai-add');
     check('add: the form opens in the settings dialog, with its own buttons', await p.isVisible('#settings-dialog') && await p.isHidden('#settings-dialog-actions')
         && await p.evaluate(() => document.getElementById('settings-ai-form').parentElement.id === 'settings-dialog-body'));

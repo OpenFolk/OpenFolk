@@ -79,7 +79,16 @@ const other = bots.createConversation('chief');
 r = await m.botMessage(s(), '', 'Brainstorm three names', false, other);
 check('another conversation of the same bot takes a job', runs.at(-2)!.chatId === other && say(r).startsWith('Job handed to Chief'), say(r));
 r = await m.botMessage(s(), 'chief', 'Myself', false);
-check('the same bot without a conversation: refused, points to list_conversations', r.isError && say(r).includes('list_conversations'));
+check('the same bot without a conversation: refused, points to a new one and list_conversations', r.isError && say(r).includes('"new"') && say(r).includes('list_conversations'));
+// "new": a fresh conversation of its own, also when it has none yet
+const convsBefore = bots.findBot('chief')!.conversations?.length ?? 0;
+r = await m.botMessage(s(), '', 'Research the competitors on the side', false, 'new');
+const own = /\((?:in a new conversation, )?(chief~[0-9a-f]{8})\)/.exec(say(r))?.[1] ?? '';
+check('conversation "new" without a bot: a new conversation of its own takes the job', !r.isError && runs.some((x) => x.chatId === own) && (bots.findBot('chief')!.conversations?.length ?? 0) === convsBefore + 1, [say(r), own]);
+check('… named after the job, without a sender in front', bots.findConversation(own)?.title.startsWith('Research the competitors') === true, bots.findConversation(own)?.title);
+r = await m.botMessage(s(), 'helper', 'Separate topic', false, 'new');
+const other2 = /(helper~[0-9a-f]{8})/.exec(say(r))?.[1] ?? '';
+check('conversation "new" with a bot: a new conversation of that bot', !r.isError && other2 !== fresh && runs.some((x) => x.chatId === other2), say(r));
 r = await m.botMessage(s(), '', 'Here', false, 'chief');
 check('the conversation it is in: refused', r.isError);
 r = await m.botMessage(s(), '', 'Nowhere', false, 'helper~ffffffff');

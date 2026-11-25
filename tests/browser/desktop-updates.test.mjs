@@ -59,6 +59,8 @@ export default async function ({ check }) {
         [...live].find((t) => t.kind === 'timeout').fn();
         check('updates: the timer checks', checks.length === 1);
 
+        // A check reports its state too (the settings show it); counted from the switch on
+        changes = 0;
         item().click({ checked: false });
         check('updates: switched off: stored, both timers stopped at once, menus rebuilt', auto === false && live.size === 0 && changes === 1, { auto, pending: pending(), changes });
         check('updates: the entry shows unchecked', item().checked === false && item().enabled);

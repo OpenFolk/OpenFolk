@@ -1,4 +1,13 @@
+import groovy.json.JsonSlurper
+
 apply plugin: 'com.android.application'
+
+// Version name from mobile/package.json; the build number comes from the CI (OPENFOLK_BUILD_NUMBER) and must grow
+// with every upload to Google Play.
+def appVersion = new JsonSlurper().parse(file('../../package.json')).version
+def buildNumber = (System.getenv('OPENFOLK_BUILD_NUMBER') ?: '1') as int
+// Upload key for release builds, from the environment (CI secrets); without it the release build stays unsigned.
+def keystoreFile = System.getenv('ANDROID_KEYSTORE_FILE')
 
 android {
     namespace = "io.openfolk.app"
@@ -7,8 +16,8 @@ android {
         applicationId "io.openfolk.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode buildNumber
+        versionName appVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +25,24 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystoreFile) {
+                storeFile file(keystoreFile)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: 'upload'
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD') ?: System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // R8 shrinks and obfuscates; Capacitor's consumer rules keep the plugin classes. Upload the mapping file
+            // (build/outputs/mapping/release/mapping.txt) with every AAB.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (keystoreFile) signingConfig signingConfigs.release
         }
     }
 }

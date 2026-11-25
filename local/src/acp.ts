@@ -286,9 +286,10 @@ export class AcpConnection extends RpcProcess {
     capable: Capabilities = {};
 
     private agent: AcpAgent;
-    constructor(agent: AcpAgent, cwd?: string) {
+    /** `extra`: the bot's vault entries, mixed in after the agent's filters (they would drop names ending in _TOKEN or _KEY). */
+    constructor(agent: AcpAgent, cwd?: string, extra: Record<string, string> = {}) {
         const b = agent.command();
-        super(agent.name, b.command, b.args, b.env, true, cwd);
+        super(agent.name, b.command, b.args, { ...b.env, ...extra }, true, cwd);
         this.agent = agent;
     }
 
@@ -476,7 +477,7 @@ export class AcpRun {
         this.close();
         // Without a login do not even start a process (Antigravity alone would need 25 s for it)
         if (this.agent.signedIn && !(await this.agent.signedIn())) throw new Error(this.agent.notSignedIn());
-        const v = new AcpConnection(this.agent, s.folder);
+        const v = new AcpConnection(this.agent, s.folder, s.env);
         this.v = v;
         v.onNotification = (m, p) => this.notification(m, p);
         v.onRequest = (m, p, id) => this.request(m, p, id);
