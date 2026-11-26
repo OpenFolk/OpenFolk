@@ -79,8 +79,11 @@ async function quit(run) {
     }
 }
 
-/** The web app's status line says a machine is connected. */
-const machineConnected = (win) => win.waitForSelector('#agent-status.online', { timeout: 60_000 }).then(() => true, () => false);
+/**
+ * The web app's status line says a machine is connected. Its state, not whether it is on screen: a window the app has
+ * not shown yet (the task's start) lays the line out without a size, and Playwright counts that as not visible.
+ */
+const machineConnected = (win) => win.waitForSelector('#agent-status.online', { state: 'attached', timeout: 60_000 }).then(() => true, () => false);
 
 /**
  * Steps 2 and 3 of the setup page: "Set up this computer" (the folders as they are), then, unless an engine is ready
