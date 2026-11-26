@@ -67,7 +67,8 @@ function present(build, notice = false) {
 /**
  * Instead of confirm(): resolves true on "OK", false on "Cancel", Escape or a click beside the dialog.
  * @param {string} message
- * @param {{ ok?: string, cancel?: string }} [o] other button labels
+ * @param {{ ok?: string, cancel?: string, link?: { href: string, text: string } }} [o] other button labels; a link to read
+ *   more, below the question
  * @returns {Promise<boolean>}
  */
 export function confirmDialog(message, o = {}) {
@@ -77,7 +78,17 @@ export function confirmDialog(message, o = {}) {
         cancel.dataset.cancel = '1';
         const ok = node('button', 'primary', o.ok || t('common.ok'));
         ok.type = 'submit';
-        form.append(askText(message), actions(cancel, ok));
+        form.append(askText(message));
+        if (o.link) {
+            const a = /** @type {HTMLAnchorElement} */ (node('a', '', o.link.text));
+            a.href = o.link.href;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            const p = node('p', '');
+            p.append(a);
+            form.append(p);
+        }
+        form.append(actions(cancel, ok));
         return ok;
     });
 }

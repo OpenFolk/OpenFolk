@@ -3,7 +3,8 @@
 // without accounts (or before its hello) gets 'main' only, as it would take every other account for 'main'.
 //
 // A deleted account's folder is moved to deleted-accounts/ instead of being removed: the order comes from the relay,
-// which must not be able to destroy what it cannot read.
+// which must not be able to destroy what it cannot read. After DELETED_KEEP_DAYS it is removed for good (the deletion
+// page on openfolk.app promises that); until then the owner of the machine can undo a mistake.
 //
 // A machine joined by a setup link is bound to one account (store.ts machineBinding): it serves that account only, and
 // a person chat with an account it does not serve goes through the relay (person-route.ts).
@@ -11,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { accountFolder, dataPath, DEFAULT_ACCOUNT, inAccount, isAccountId, isRetired, machineBinding, ownerAccount, retireAccount, setMachineBinding } from './store.ts';
+import { removeTree } from './remove-tree.ts';
 import { accountHandler, type AccountRouter, type RelayHandler } from './relay-client.ts';
 import { setPeople } from './people.ts';
 import type { PersonRoute } from './person-route.ts';
@@ -43,6 +45,36 @@ export interface AccountManager extends RelayHandler {
     likeFromPerson(from: string, entryId: string, on: boolean, at: string): void;
 }
 
+/** Days a deleted account's data stays in deleted-accounts/ before it is removed. */
+export const DELETED_KEEP_DAYS = 30;
+
+/**
+ * Removes what deleted-accounts/ has held longer than DELETED_KEEP_DAYS; returns the folders removed. The time is the
+ * one in the folder's name (written by `deleted`), the folder's own time for one named otherwise.
+ */
+export function purgeDeletedAccounts(now = Date.now()): string[] {
+    const dir = dataPath('deleted-accounts');
+    let names: string[];
+    try { names = fs.readdirSync(dir); } catch { return []; }
+    const removed: string[] = [];
+    for (const name of names) {
+        const folder = path.join(dir, name);
+        const stamp = /-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/.exec(name);
+        let at = stamp ? Date.parse(`${stamp[1]}T${stamp[2]}:${stamp[3]}:${stamp[4]}.${stamp[5]}Z`) : NaN;
+        if (Number.isNaN(at)) {
+            try { at = fs.statSync(folder).mtimeMs; } catch { continue; }
+        }
+        if (now - at < DELETED_KEEP_DAYS * 86_400_000) continue;
+        try {
+            removeTree(folder, 5);
+            removed.push(name);
+        } catch (e) {
+            console.log(`accounts: ${name} not removed from deleted-accounts: ${(e as Error).message}`);
+        }
+    }
+    return removed;
+}
+
 export class Accounts implements AccountRouter {
     private managers = new Map<string, { manager: AccountManager; handler: RelayHandler }>();
     /** The relay knows accounts; until then only 'main' is served. */
@@ -51,6 +83,7 @@ export class Accounts implements AccountRouter {
     private log: (text: string) => void;
     /** Messages to accounts on other machines (index.ts sets it once the relay client exists). */
     route: PersonRoute | null = null;
+    private purgeTimer: ReturnType<typeof setInterval> | null = null;
 
     /** `create` is called in the account's context. */
     constructor(create: (account: string) => AccountManager, log: (text: string) => void = (text) => console.log(`accounts: ${text}`)) {
@@ -61,6 +94,13 @@ export class Accounts implements AccountRouter {
     /** Serves the machine's owner ('main', or the account it is bound to) from the start, before the relay is reached. */
     start(): void {
         this.serve(ownerAccount());
+        this.purge();
+        this.purgeTimer ??= setInterval(() => this.purge(), 86_400_000);
+        this.purgeTimer.unref?.();
+    }
+
+    private purge(): void {
+        for (const name of purgeDeletedAccounts()) this.log(`deleted account ${name} removed for good after ${DELETED_KEEP_DAYS} days`);
     }
 
     private serve(account: string): { manager: AccountManager; handler: RelayHandler } {
@@ -185,6 +225,8 @@ export class Accounts implements AccountRouter {
     }
 
     close(): void {
+        if (this.purgeTimer) clearInterval(this.purgeTimer);
+        this.purgeTimer = null;
         for (const id of this.served()) this.stop(id);
     }
 }

@@ -3,7 +3,7 @@ import { t } from './i18n.js';
 import { node, state, storage } from './core.js';
 import { paneFor, panes } from './panes.js';
 import { bot, isPerson, responsibleMachine, send, showImageLarge, upper } from './e2e.js';
-import { scroll, setReply } from './chat-features.js';
+import { scroll, setReply, termsAccepted } from './chat-features.js';
 import { approvalsToBottom, composerButtons, showEvent, textHeight } from './queue.js';
 import { expectAnswer, readWaitingAnswer, renderAutoRead, stopReadAloud } from './read-aloud.js';
 import { alertDialog } from './dialogs.js';
@@ -160,6 +160,7 @@ export async function stopRecording(submit, spoken = false) {
         showEvent(t('voice.tooShort'), true, chatId);
         return false;
     }
+    if (!(await termsAccepted(chatId))) return false;
     const audio = await recordingUpload(chunks, mime, length);
     const b = bot(chatId);
     // Pasted images and files go along; the backend only transcribes the recording

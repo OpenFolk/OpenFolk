@@ -212,8 +212,8 @@ backend in turn serves accounts other than `main` only after a hello that lists 
 them.
 
 Deleting an account is an order from the relay, which must not be able to destroy what it cannot read: the backend
-moves the folder to `deleted-accounts/` instead of removing it, accepts only ids of `a-z0-9-` (they become folder
-names), and never deletes `main`. The relay keeps a tombstone, so a machine asleep at the time gets the order on its
+moves the folder to `deleted-accounts/` and removes it from there only after 30 days (the deletion page of the store
+apps promises that), accepts only ids of `a-z0-9-` (they become folder names), and never deletes `main`. The relay keeps a tombstone, so a machine asleep at the time gets the order on its
 next connect, and never gives out a deleted id again, which a backend would take for the old account. All accounts
 share the end-to-end key: it keeps chats from whoever hosts the relay, while separating accounts is the relay's
 routing and, on the machine, the account folders; the owner of a machine can read every account on it anyway.

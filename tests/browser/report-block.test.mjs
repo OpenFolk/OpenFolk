@@ -1,5 +1,5 @@
 // Reporting a message and blocking a person: "Report" in the ⋯ menu of a bot's answer or a person's message opens a
-// page with reason and note, goes to the backend or, without an admin on the relay, by mail to the support address;
+// page with reason and note, goes to the backend, which sends it to the admins or, without one, to the OpenFolk team;
 // "Block" in the menu of a person chat stops writing there and turns into "Unblock".
 import { bot, onDialog } from './harness.mjs';
 
@@ -92,8 +92,9 @@ export default async function ({ start, check }) {
     await p.click('.bubble[data-eid="a1"] .more');
     await p.locator('#message-menu button', { hasText: 'Report' }).click();
     await h.wait(100);
-    check('no admin: no "Report" button, the mail is the way', await p.evaluate(() => document.getElementById('report-send').hidden
-        && document.getElementById('report-mail').className === 'primary') && (await p.textContent('#report-to')).includes('no admin'), await p.textContent('#report-to'));
+    const toTeam = await p.textContent('#report-to');
+    check('no admin: "Report" stays in the app and names the OpenFolk team, the mail is the second way', await p.evaluate(() => !document.getElementById('report-send').hidden
+        && !document.getElementById('report-mail').hidden) && toTeam.includes('no admin') && toTeam.includes('OpenFolk team'), toTeam);
     await p.fill('#report-note', 'Not funny');
     const href = await p.evaluate(() => {
         const a = document.getElementById('report-mail');
@@ -103,8 +104,15 @@ export default async function ({ start, check }) {
     });
     check('the mail goes to the support address with reason, bot, note and message', href.startsWith('mailto:support@openfolk.app?subject=') && href.includes('Offensive or hateful')
         && href.includes('PDF-Reader') && href.includes('Not funny') && href.includes('A joke that offends'), href);
+    await p.click('#report-send');
+    await h.push({ type: 'report_sent', machine: 'desk', chatId: 'pdf', entryId: 'a1', admins: [] });
+    await h.wait(150);
+    check('sent without an admin: the toast names the OpenFolk team', (await p.textContent('#toast')).includes('OpenFolk team'), await p.textContent('#toast'));
 
     // The contact address in the settings
     await p.evaluate(() => renderAbout());
     check('Settings › About names the support address', (await p.textContent('#about-list')).includes('support@openfolk.app'));
+    const links = await p.evaluate(() => [...document.querySelectorAll('#about-list a[target=_blank]')].map((a) => a.href));
+    check('… and links the privacy policy and the deletion page (the stores want both in the app)',
+        links.includes('https://openfolk.app/en/privacy') && links.includes('https://openfolk.app/en/delete-account'), links);
 }

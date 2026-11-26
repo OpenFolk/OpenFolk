@@ -33,6 +33,11 @@ export const pushService = {
         if (!r.ok) throw new Error(`push service: HTTP ${r.status}`);
         return await r.json() as { gone?: string[] };
     },
+    /** A report for the publisher of the store apps (relay/src/push-service.ts), when no admin on the relay can take it. */
+    report: async (url: string, body: unknown): Promise<void> => {
+        const r = await fetch(`${url}/report`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });
+        if (!r.ok) throw new Error(`report: HTTP ${r.status}`);
+    },
 };
 
 /** What a device said about itself with its subscription (push_subscribe); synced with it, the newer state wins. */

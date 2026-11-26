@@ -181,8 +181,9 @@ export async function scanQrCode(instructions) {
     const scanner = scannerPlugin();
     if (!scanner) return webCamera() ? webScan(instructions) : '';
     try {
-        // hint 0 = QR_CODE (Html5QrcodeSupportedFormats)
-        const r = await scanner.scanBarcode({ hint: 0, scanInstructions: instructions, scanButton: false });
+        // hint 0 = QR_CODE (Html5QrcodeSupportedFormats). Android scans with ZXing, not ML Kit, which the plugin links
+        // too: ML Kit may send usage metrics to Google, which Play's data safety form would have to declare.
+        const r = await scanner.scanBarcode({ hint: 0, scanInstructions: instructions, scanButton: false, android: { scanningLibrary: 'zxing' } });
         return String((r && r.ScanResult) || '');
     } catch (e) {
         console.warn('QR scan:', e);

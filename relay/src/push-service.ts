@@ -3,8 +3,14 @@
 // connected to it (bridge.ts). The second exception to "the relay sees no contents" (AGENTS.md): what it sees is what
 // Apple and Google see, the preview the backend already reduced by the user's pushPreview, and the device token.
 // Nothing is stored; a token is limited to a few notifications per window, so a leaked token cannot be flooded.
+//
+// The same relay takes the reports of users without another admin on their relay (POST /report): the stores want a
+// report of AI content or of another person to reach the publisher from inside the app. That is the one thing it keeps,
+// in reports.jsonl in its data folder, and only what the user chose to send: reason, note and the reported message.
 
-import type { NativePushMessage, NativePushSubscription } from '../../shared/protocol.ts';
+import fs from 'node:fs';
+import path from 'node:path';
+import { REPORT_REASONS, type NativePushMessage, type NativePushSubscription, type ReportReason } from '../../shared/protocol.ts';
 
 /** At most this many devices per request: one account rarely has more. */
 export const PUSH_SERVICE_MAX_DEVICES = 20;
@@ -83,4 +89,49 @@ export async function handlePushRequest(
     const allowed = push.subscriptions.filter((s) => limits.devices.take(`${s.channel}:${s.token}`));
     const gone = allowed.length ? await deliver(allowed, push.message) : [];
     return { status: 200, body: { gone: gone.map((s) => s.token), throttled: push.subscriptions.length - allowed.length } };
+}
+
+/** A report as the publisher keeps it: no address, no account, no device. */
+export interface PublisherReport {
+    at: string;
+    reason: ReportReason;
+    /** Whose message: a bot's answer or another person's. */
+    author: 'bot' | 'person';
+    text: string;
+    note?: string;
+    model?: string;
+    version?: string;
+}
+
+export const REPORT_FILE = 'reports.jsonl';
+/** Per sending address: a user reporting a bad day, not a script filling the disk. */
+export const REPORT_WINDOWS: Window[] = [{ ms: 60 * 60_000, max: 10 }, { ms: 24 * 3600_000, max: 50 }];
+/** Beyond this the file takes nothing more until somebody has read and emptied it. */
+const REPORT_FILE_MAX = 20 * 1024 * 1024;
+
+/** Checks and trims a report; null: not one. */
+export function cleanReport(input: unknown, at: string): PublisherReport | null {
+    const r = input as Partial<Record<keyof PublisherReport, unknown>> | null;
+    if (!r || typeof r.text !== 'string' || !r.text.trim() || !REPORT_REASONS.includes(r.reason as ReportReason)) return null;
+    const short = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+    const note = short(r.note, 1000);
+    const model = short(r.model, 100);
+    const version = short(r.version, 40);
+    return {
+        at, reason: r.reason as ReportReason, author: r.author === 'person' ? 'person' : 'bot', text: r.text.slice(0, 4000),
+        ...(note ? { note } : {}), ...(model ? { model } : {}), ...(version ? { version } : {}),
+    };
+}
+
+/** One report (POST /report): appended to reports.jsonl in the data folder. */
+export function handleReportRequest(body: unknown, sender: string, dataDir: string, limiter: Limiter, now = new Date()): { status: number; body: { error?: string } } {
+    const report = cleanReport(body, now.toISOString());
+    if (!report) return { status: 400, body: { error: 'invalid' } };
+    if (!limiter.take(sender)) return { status: 429, body: { error: 'too_many' } };
+    const file = path.join(dataDir, REPORT_FILE);
+    let size = 0;
+    try { size = fs.statSync(file).size; } catch { /* the first one */ }
+    if (size > REPORT_FILE_MAX) return { status: 507, body: { error: 'full' } };
+    fs.appendFileSync(file, JSON.stringify(report) + '\n', { mode: 0o600 });
+    return { status: 200, body: {} };
 }

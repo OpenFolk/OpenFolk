@@ -13,7 +13,10 @@ read, before any code. `README.md` is for people who run OpenFolk.
    with APNs/FCM credentials delivers for the backends connected to it, and the push service of openfolk.app
    (`PUSH_SERVICE=on`, `relay/src/push-service.ts`, decided by the user on 2026-11-22 for the store apps, whose
    credentials only Flowdesk holds) delivers for every backend on any relay, limited per device and storing nothing;
-   a backend switches it off with `PUSH_SERVICE_URL=off`. Do not add a third exception without a reason this strong.
+   a backend switches it off with `PUSH_SERVICE_URL=off`. The same push service also takes the reports of users
+   without another admin on their relay (`POST /report`, the stores want reports of AI content to reach the
+   publisher from inside the app) and keeps them, but only what the user chose to send. Do not add a further
+   exception without a reason this strong.
 2. **Everything else happens on the user's machine.** Sessions, history, knowledge, uploads, git and approvals
    belong to the backend. A client never substitutes its own view of files or state for the backend's.
 3. **One web app, every surface.** Browser (PWA), Windows, Linux and macOS (Electron) and iOS and Android (Capacitor) run

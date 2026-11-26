@@ -5,7 +5,24 @@ dieselben.
 
 ## [Unreleased]
 
+### Neu
+- Die Store-Apps fragen einmal nach den Nutzungsbedingungen, bevor die erste Nachricht an eine Person geht (Apples Regeln
+  für Inhalte anderer Personen); Browser und Desktop-Apps fragen nicht.
+- Einstellungen › Über verlinkt die Datenschutzerklärung und die Seite zum Löschen des Kontos auf openfolk.app.
+
 ### Geändert
+- „Melden“ ohne weiteren Admin auf dem Relay bleibt in der App: Das Backend schickt die Meldung über den Push-Dienst von
+  openfolk.app an das OpenFolk-Team (`POST /report`, dort in `reports.jsonl` abgelegt; Grund, Notiz, die Nachricht,
+  Modell und Version, nichts, was dich, einen Bot oder einen Chat nennt). Die Mail an die Support-Adresse bleibt der
+  zweite Weg.
+- Die Daten eines gelöschten Kontos werden nach 30 Tagen endgültig aus `deleted-accounts/` entfernt; bis dahin lässt
+  sich ein Versehen dort noch rückgängig machen.
+- Die Store-Apps verlinken in den ersten Schritten nicht mehr die Claude Console und erwähnen ihr Guthaben nicht (Apples
+  Regeln zu Käufen außerhalb der App); der API-Schlüssel funktioniert genauso.
+- Android: Der QR-Scanner nutzt ZXing statt ML Kit, das Nutzungsdaten an Google senden kann, und die App ist vom
+  Google-Backup ausgenommen, das die Anmeldung des Geräts auf ein anderes Handy tragen würde.
+- iOS: Das Privacy Manifest gibt das Gerätetoken für Push und den Inhalt einer Meldung an das OpenFolk-Team an (beides
+  nicht mit dir verknüpft, kein Tracking).
 - Die Android-App braucht Android 8.0 (API 26) oder neuer: Der QR-Scanner verlangt es, mit dem bisherigen Minimum
   Android 7.0 schlug der Build fehl.
 - Der Windows-Installer heißt in der Abfrage der Administratorrechte nur noch „OpenFolk“ statt der ganzen

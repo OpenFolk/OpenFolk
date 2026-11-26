@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { cleanPush, handlePushRequest, Limiter, PUSH_SERVICE_MAX_DEVICES } from './push-service.ts';
+import { cleanPush, cleanReport, handlePushRequest, Limiter, PUSH_SERVICE_MAX_DEVICES, REPORT_FILE } from './push-service.ts';
 import { startRelay } from './relay.ts';
 import { parseWakeConfig } from './wakeup.ts';
 import type { NativePushMessage, NativePushSubscription } from '../../shared/protocol.ts';
@@ -57,10 +57,30 @@ const post = (port: number) => fetch(`http://127.0.0.1:${port}/push`, { method: 
 const off = await startRelay({ ...base, dataDir: tmp() });
 check('without PUSH_SERVICE: no such address', (await post(off.port)).status === 405);
 await off.close();
-const on = await startRelay({ ...base, dataDir: tmp(), pushService: true });
+const onDir = tmp();
+const on = await startRelay({ ...base, dataDir: onDir, pushService: true });
 const r = await post(on.port);
 check('with PUSH_SERVICE but without APNs/FCM credentials: 404 with the reason', r.status === 404 && (await r.json() as { error: string }).error === 'no_push_service');
+
+// ---- reports for the publisher
+const at = '2026-11-26T12:00:00.000Z';
+const cr = cleanReport({ reason: 'offensive', author: 'person', text: 'Rude', note: ' n ', model: 'Sonnet', version: '0.8.0', account: 'x', ip: '1.2.3.4' }, at);
+check('a report keeps reason, author, text, note, model and version, nothing else', JSON.stringify(cr)
+    === JSON.stringify({ at, reason: 'offensive', author: 'person', text: 'Rude', note: 'n', model: 'Sonnet', version: '0.8.0' }), cr);
+check('no text or an unknown reason: no report', cleanReport({ reason: 'offensive', text: ' ' }, at) === null && cleanReport({ reason: 'boring', text: 'x' }, at) === null);
+const report = (port: number, b: unknown) => fetch(`http://127.0.0.1:${port}/report`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+const good = { reason: 'harmful', author: 'bot', text: 'A bad answer', model: 'Haiku' };
+const r1 = await report(on.port, good);
+const r2 = await report(on.port, { reason: 'harmful' });
+const lines = fs.readFileSync(path.join(onDir, REPORT_FILE), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { text: string });
+check('POST /report: stored, an invalid one refused', r1.status === 200 && r2.status === 400 && lines.length === 1 && lines[0].text === 'A bad answer', { r1: r1.status, r2: r2.status, lines });
+let last = 200;
+for (let i = 0; i < 10 && last === 200; i++) last = (await report(on.port, good)).status;
+check('POST /report: limited per sender', last === 429, last);
 await on.close();
+const off2 = await startRelay({ ...base, dataDir: tmp() });
+check('without PUSH_SERVICE: no /report either', (await report(off2.port, good)).status === 405);
+await off2.close();
 
 if (failed) process.exit(1);
 console.log('all push service tests passed');

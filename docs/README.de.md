@@ -160,8 +160,9 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   („workstyle“) merken, was dir an seiner Arbeitsweise gefällt. Nicht in Gruppenchats, wo die nächste Nachricht an einen
   anderen Bot gehen kann.
 - **Melden:** „Melden“ im ⋯-Menü einer Bot-Antwort oder der Nachricht einer Person schickt sie mit Grund an die Admins
-  des Relays, in deinen Chat mit ihnen. Gibt es außer dir keinen Admin, geht die Meldung per Mail an den Herausgeber
-  der App (support@openfolk.app, auch unter Einstellungen › Über).
+  des Relays, in deinen Chat mit ihnen. Gibt es außer dir keinen Admin, geht die Meldung über den Push-Dienst von
+  openfolk.app an den Herausgeber der App, das OpenFolk-Team; die Mail an support@openfolk.app (auch unter
+  Einstellungen › Über) ist der zweite Weg.
 - **Dateien** anhängen, einfügen oder hineinziehen; Bots schicken Dateien mit `send_file`. Bilder
   stehen direkt im Chat (auch die eines Bots, vom Rechner geholt) und öffnen sich mit einem Tipp groß; Videos (MP4,
   WebM, MOV) laufen in der App. Bis 20 MB je Datei, Ende-zu-Ende verschlüsselt über das Relay. Auf Wunsch setzt ein Bot
@@ -540,7 +541,8 @@ eingerichtet hat, besitzt das Hauptkonto; solange es kein zweites gibt, ändert 
   VS-Code-Sitzungen gehören zum Hauptkonto. Bots aller Konten arbeiten in den Ordnern unter `ALLOWED_ROOTS` des
   Rechners, auf dem sie wohnen.
 - **Löschen:** Ein Admin löscht ein Konto in derselben Liste. Seine Geräte werden sofort abgemeldet; auf jedem Rechner
-  wandern seine Daten nach `local/data/deleted-accounts/`, ein Versehen lässt sich dort rückgängig machen.
+  wandern seine Daten nach `local/data/deleted-accounts/`, ein Versehen lässt sich dort 30 Tage lang rückgängig machen;
+  danach entfernt das Backend sie endgültig.
 - **Chats zwischen Konten:** Jedes Konto kann den anderen Konten auf seinem Relay schreiben („+“ → „Person“). Ein Kunde
   soll nur sein Team erreichen und keine anderen Kunden: Beim Anlegen das Häkchen „Kunde: chattet nur mit den Admins“
   setzen, oder später in der Liste „Nur Admins“ bzw. „Erreicht alle“ wählen. Admins erreichen jeden. Ein Konto, das nur
@@ -627,7 +629,8 @@ Was der Betreiber des Relays kann und was nicht, mit Ende-zu-Ende-Verschlüsselu
   Bot, Gruppe oder Rechner); in den Einstellungen lässt sich das auf Titel und Text oder nur „OpenFolk“ ändern.
   Ohne eigene Apple- und Google-Zugangsdaten stellt das Relay zu, wenn es welche hat, sonst der Push-Dienst von
   openfolk.app (`PUSH_SERVICE_URL`, `off` schaltet ab): Er sieht Gerätetoken und dieselbe Vorschau, speichert nichts
-  und drosselt je Gerät.
+  und drosselt je Gerät. Ausnahme ist eine Meldung, die du selbst abschickst: Auf einem Relay ohne weiteren Admin geht
+  „Melden“ über denselben Dienst mit der Nachricht an das OpenFolk-Team.
 - Sicherheitslücken bitte vertraulich an security@openfolk.app melden, nicht in öffentlichen Issues (`SECURITY.md`).
 
 ## Entwicklung

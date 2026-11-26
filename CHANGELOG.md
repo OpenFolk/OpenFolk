@@ -5,7 +5,24 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+### Added
+- The store apps ask once for the terms of use before the first message to a person (Apple's rules for content of
+  other people); the browser and the desktop apps do not.
+- Settings › About links the privacy policy and the page on deleting your account at openfolk.app.
+
 ### Changed
+- "Report" without another admin on the relay stays in the app: the backend sends the report to the OpenFolk team
+  through the push service of openfolk.app (`POST /report`, kept in `reports.jsonl` there; reason, note, the message,
+  the model and the version, nothing that names you, a bot or a chat). The mail to the support address remains the
+  second way.
+- A deleted account's data is removed for good from `deleted-accounts/` after 30 days; until then a mistake can still
+  be undone there.
+- The store apps no longer link to the Claude Console or mention its credit in the first steps (Apple's rules on
+  purchases outside the app); the API key works the same.
+- Android: the QR scanner uses ZXing instead of ML Kit, which may send usage data to Google, and the app is left out of
+  Google's backup, which would carry the device's sign-in to another phone.
+- iOS: the privacy manifest declares the device token for push and the content of a report sent to the OpenFolk team
+  (neither linked to you, no tracking).
 - The Android app needs Android 8.0 (API 26) or newer: the QR scanner requires it, and the build failed with the
   former minimum of Android 7.0.
 - The Windows installer is called just "OpenFolk" in the administrator prompt instead of the app's whole

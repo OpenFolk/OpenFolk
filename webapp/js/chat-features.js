@@ -1,5 +1,5 @@
 /* OpenFolk web app: @ mentions, / commands, history rendering, unread, pinned messages, replies (quote). */
-import { t } from './i18n.js';
+import { i18n, readSetting, t, writeSetting } from './i18n.js';
 import { SEEN_KEY, SUPPORT_MAIL, el, mdCached, node, state, storage, closest, toast } from './core.js';
 import { codeBlocks } from './code-blocks.js';
 import { paneFor, paneOf, panes, visibleChats } from './panes.js';
@@ -13,6 +13,7 @@ import { menuButton } from './menus.js';
 import { isReading, readAloud, speakButton } from './read-aloud.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
 import { renderOutbox } from './outbox.js';
+import { isNative } from './platform.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -688,10 +689,32 @@ function forwardTo(id) {
     setReply(p, isPerson(id) ? { id: q.id, from: q.from, text: q.text, forwarded: true } : q);
 }
 
+// ---------------------------------------------------------- Terms for chats with people
+// Apple wants users of an app with content from other people to agree to terms that tolerate no objectionable content
+// or abuse (guideline 1.2). The store apps ask once per device, before the first message to a person; the browser and
+// the desktop apps, which reach their own relay, do not.
+
+const TERMS_KEY = 'openfolk-terms-accepted';
+
+/** Whether a message to this chat has to wait for the terms: one to a person, in a store app, before they were accepted. */
+export const termsNeeded = (chatId) => isNative && isPerson(chatId) && !readSetting(TERMS_KEY);
+
+/** Whether a message may go to this chat, asking for the terms first where they are needed. */
+export async function termsAccepted(chatId) {
+    if (!termsNeeded(chatId)) return true;
+    const yes = await confirmDialog(t('terms.ask'), {
+        ok: t('terms.accept'),
+        link: { href: `https://openfolk.app/${i18n.language === 'de' ? 'de' : 'en'}/terms`, text: t('terms.link') },
+    });
+    if (yes) writeSetting(TERMS_KEY, new Date().toISOString());
+    return yes;
+}
+
 // ---------------------------------------------------------- Reporting
 // "Report" in the menu of a bot's answer or a person's message (the app stores' rules for AI content and content of
 // other people): the backend quotes the stored message into the person chat with each admin of the relay, who gets a
-// push and can answer there. Without an admin (a relay of one's own) the report goes by mail to the support address.
+// push and can answer there. Without an admin (a relay of one's own) it goes to the publisher of the app, the OpenFolk
+// team, through the push service of openfolk.app; the mail to the support address is the second way in both cases.
 
 /** The message being reported while the page is open. */
 let reporting = null;
@@ -711,8 +734,6 @@ function openReport(chatId, e, from) {
     el.reportError.hidden = true;
     el.reportSend.disabled = false;
     const admins = reportAdmins();
-    el.reportSend.hidden = !admins.length;
-    el.reportMail.className = admins.length ? 'btn' : 'primary';
     el.reportTo.textContent = admins.length
         ? t('report.toAdmins', { names: admins.map((x) => x.name).join(', '), mail: SUPPORT_MAIL })
         : t('report.toSupport', { mail: SUPPORT_MAIL });
@@ -751,7 +772,7 @@ export function reportSent(f) {
     reporting = null;
     el.report.hidden = true;
     const names = (f.admins || []).map((id) => (person('p:' + id) || {}).name || id).join(', ');
-    toast(t('report.sent', { names }));
+    toast(names ? t('report.sent', { names }) : t('report.sentPublisher'));
 }
 
 export function reportFailed(message) {

@@ -110,6 +110,12 @@ const trash = fs.readdirSync(path.join(dir, 'deleted-accounts'));
 check('deleted: manager closed and no longer served', made[1].closed && router.served().join() === 'main');
 check('deleted: data moved to deleted-accounts, not removed', !fs.existsSync(path.join(dir, 'accounts', 'work')) && trash.length === 1
     && fs.existsSync(path.join(dir, 'deleted-accounts', trash[0], 'y.json')));
+const { purgeDeletedAccounts } = await import('./accounts.ts');
+check('deleted: kept for 30 days', purgeDeletedAccounts(Date.now() + 29 * 86_400_000).length === 0 && fs.existsSync(path.join(dir, 'deleted-accounts', trash[0])));
+fs.mkdirSync(path.join(dir, 'deleted-accounts', 'hand-made'));
+check('deleted: removed for good after 30 days, also a folder named otherwise',
+    purgeDeletedAccounts(Date.now() + 31 * 86_400_000).sort().join() === [trash[0], 'hand-made'].sort().join()
+    && fs.readdirSync(path.join(dir, 'deleted-accounts')).length === 0);
 check('deleted: its data refuses access', throws(() => inAccount('work', () => readJson('y.json', null))).includes('deleted'));
 check('deleted: traffic still on its way finds no handler (no new manager, no crash)', router.handler('work') === null && router.served().join() === 'main');
 router.deleted('main');

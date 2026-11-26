@@ -27,7 +27,7 @@ import { MachineTokens, MIN_TOKEN_LENGTH, Owner, UNCLAIMED_PAGE, type Credential
 import { acceptWakeAgent, handleWakeRequest, setWakeConfig, wake, wakeConfig, wakeConfigured, wakeSummary, wakeableMachines, type WakeConfig } from './wakeup.ts';
 import { WakeScheduler } from './wake-schedule.ts';
 import { nativeChannels, sendNative } from '../../shared/push-native.ts';
-import { DEVICE_WINDOWS, handlePushRequest, Limiter, SENDER_WINDOWS } from './push-service.ts';
+import { DEVICE_WINDOWS, handlePushRequest, handleReportRequest, Limiter, REPORT_WINDOWS, SENDER_WINDOWS } from './push-service.ts';
 
 export interface RelayOptions {
     /** 0 picks a free port (tests). */
@@ -182,6 +182,7 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
     const agentOk = (c: Credentials, raw: string, machine?: string) => tokenMatches(c.agentHash, raw) || machineTokens.matches(raw, machine);
 
     const pushLimits = { devices: new Limiter(DEVICE_WINDOWS), senders: new Limiter(SENDER_WINDOWS) };
+    const reportLimit = new Limiter(REPORT_WINDOWS);
     const server = http.createServer((req, res) => {
         const url = new URL(req.url ?? '/', 'http://x');
         securityHeaders(req, res);
@@ -194,6 +195,19 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
                 res.writeHead(a.status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(a.body));
             }).catch((e: Error) => {
                 log(`Push service failed: ${e.message}`);
+                if (!res.headersSent) res.writeHead(500).end();
+            });
+            return;
+        }
+        // A report for the publisher of the store apps (push-service.ts), from a backend without another admin
+        if (req.method === 'POST' && url.pathname === '/report' && o.pushService) {
+            const ip = clientIp(req);
+            void readJson(req, 32 * 1024).then((body) => {
+                const a = handleReportRequest(body, ip, dataDir, reportLimit);
+                log(a.status === 200 ? 'Report received' : `Report refused: ${a.body.error} (${ip})`);
+                res.writeHead(a.status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(a.body));
+            }).catch((e: Error) => {
+                log(`Report failed: ${e.message}`);
                 if (!res.headersSent) res.writeHead(500).end();
             });
             return;

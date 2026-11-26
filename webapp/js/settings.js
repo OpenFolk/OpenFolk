@@ -184,6 +184,15 @@ export function renderAbout() {
     const mail = node('a', '', SUPPORT_MAIL);
     mail.href = `mailto:${SUPPORT_MAIL}`;
     rows.push([t('about.support'), mail]);
+    // The app stores want both reachable from inside the app; the site has them in English and German
+    const site = `https://openfolk.app/${i18n.language === 'de' ? 'de' : 'en'}`;
+    for (const [label, page] of [['about.privacy', 'privacy'], ['about.deletion', 'delete-account']]) {
+        const a = node('a', '', t(`${label}Link`));
+        a.href = `${site}/${page}`;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        rows.push([t(label), a]);
+    }
     el.aboutList.replaceChildren(...rows.flatMap(([label, value]) => {
         const dd = node('dd', '');
         dd.append(value);

@@ -3,6 +3,7 @@ import { t } from './i18n.js';
 import { el, node, state } from './core.js';
 import { responsibleMachine, send, upper } from './e2e.js';
 import { keyField } from './settings.js';
+import { isNative } from './platform.js';
 import { renderChatList } from './list.js';
 
 /** Engines the web app can sign in with a device code (DEVICE_LOGIN_ENGINES in shared/protocol.ts). */
@@ -164,13 +165,19 @@ function machineStep(machine) {
         input.addEventListener('focus', () => { keyDraft.focused = true; });
         // Taking the field off the page blurs it too; only a field still on the page lost the focus to the user
         input.addEventListener('blur', () => setTimeout(() => { if (input.isConnected) keyDraft.focused = false; }));
-        const hint = node('p', 'hint', `${t('welcome.aiKey')} `);
-        const link = /** @type {HTMLAnchorElement} */ (node('a', '', t('welcome.aiKeyLink')));
-        link.href = CONSOLE_KEYS;
-        link.target = '_blank';
-        link.rel = 'noreferrer';
-        hint.append(link);
-        extra.append(hint, key, node('p', 'hint', t('welcome.aiKeyBilling')));
+        if (isNative) {
+            // The store apps neither link to the Console nor talk about its credit: Apple reads a way to buy outside
+            // the app into both (guideline 3.1.1). The key works the same.
+            extra.append(node('p', 'hint', t('welcome.aiKeyApp')), key);
+        } else {
+            const hint = node('p', 'hint', `${t('welcome.aiKey')} `);
+            const link = /** @type {HTMLAnchorElement} */ (node('a', '', t('welcome.aiKeyLink')));
+            link.href = CONSOLE_KEYS;
+            link.target = '_blank';
+            link.rel = 'noreferrer';
+            hint.append(link);
+            extra.append(hint, key, node('p', 'hint', t('welcome.aiKeyBilling')));
+        }
         // Once the list has put the field on the page again
         if (keyDraft.focused) queueMicrotask(() => input.focus());
         // Neither a subscription nor a key at hand: OpenCode, if it is not on already (then it would be ready or missing)

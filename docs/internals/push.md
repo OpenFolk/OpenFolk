@@ -40,6 +40,13 @@ limit per device token (30 per 10 minutes, 400 per day) and per sending address 
 leaked cannot be flooded. A backend uses it last, after its own credentials and its relay's channels, at
 `PUSH_SERVICE_URL` (default `https://push.openfolk.app`; `off` switches it off, then the apps get no push from it).
 
+The same relay takes `POST /report`: a report of a message from a user who has no other admin on the relay. Apple and
+Google want reports of AI content and of other people to reach the publisher from inside the app, and a relay of one's
+own has nobody else to send them to. The backend sends what the report page shows (reason, note, the message, the
+model of a bot's answer, its version) and nothing that names the user, a bot, a chat or an account; the relay
+appends it to `reports.jsonl` in its data folder, limited per sending address (10 per hour, 50 per day). This is the
+one thing the push service keeps.
+
 ## Subscriptions
 
 Browsers register a Web Push subscription, apps a device token (`push_subscribe` with `channel`, `token` and the

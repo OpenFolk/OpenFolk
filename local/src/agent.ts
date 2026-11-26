@@ -59,7 +59,8 @@ import type { VscodeSession } from '../../shared/protocol.ts';
 import { checkClientFrame } from './frames.ts';
 import { noteDeviceSeen } from './first-device.ts';
 import {
-    adoptVapid, attention, publicKey, pushChannels, pushSettings, removeSubscriptions, savePushSettings, saveSubscription, sendPush, vapidKeys, type Presence, type PushMessage,
+    adoptVapid, attention, publicKey, pushChannels, pushService, pushServiceUrl, pushSettings, removeSubscriptions, savePushSettings, saveSubscription, sendPush, vapidKeys,
+    type Presence, type PushMessage,
 } from './push.ts';
 import { copyRoutines, deleteBotRoutines, deleteRoutine, loadRoutines, routinesWithNextRun, runFinished, runStarted, saveRoutine, startScheduler, wakeSchedule } from './routines.ts';
 import {
@@ -1405,12 +1406,11 @@ export class BotManager implements SessionHooks {
                     break;
                 case 'report': {
                     // The error goes to the report's page, which stays open with what the user typed
-                    try {
-                        const admins = this.report(frame.chatId, frame.entryId, frame.reason, frame.note?.trim() ?? '');
-                        this.send({ type: 'report_sent', chatId: frame.chatId, entryId: frame.entryId, admins }, cid);
-                    } catch (e) {
-                        this.send({ type: 'error', request: frame.type, message: (e as Error).message }, cid);
-                    }
+                    const { chatId, entryId } = frame;
+                    this.report(chatId, entryId, frame.reason, frame.note?.trim() ?? '').then(
+                        (admins) => this.send({ type: 'report_sent', chatId, entryId, admins }, cid),
+                        (e: Error) => this.send({ type: 'error', request: 'report', message: e.message }, cid),
+                    );
                     break;
                 }
                 case 'group_delete':
@@ -2104,13 +2104,29 @@ export class BotManager implements SessionHooks {
     /**
      * A report of a message (the stores' rules for AI answers and content of other people): a message quoting the
      * stored entry into the person chat with each admin this account reaches, so it arrives with a push on every
-     * machine of the admin, and the admin can answer there. Returns the admins.
+     * machine of the admin, and the admin can answer there. Returns the admins. Without another admin (a relay of one's
+     * own) the report goes to the publisher of the store apps through the push service, and the answer names nobody.
      */
-    private report(chatId: string, entryId: string, reason: ReportReason, note: string): string[] {
+    private async report(chatId: string, entryId: string, reason: ReportReason, note: string): Promise<string[]> {
         const e = readEntry(chatId, entryId);
         if (!e || e.deletedAt || e.role === 'event') throw new Error(t('report.notFound'));
         const admins = contactsOf(this.accountId).filter((p) => p.admin && p.id !== this.accountId && !isBlocked(p.id)).map((p) => p.id);
-        if (!admins.length) throw new Error(t('report.noAdmin'));
+        if (!admins.length) {
+            const service = pushServiceUrl();
+            if (!service) throw new Error(t('report.noAdmin'));
+            const author = e.role === 'assistant' ? findBot(e.botId ?? botIdOf(chatId)) : undefined;
+            const model = author ? modelDisplayName(author.model ?? 'default', readJson<ModelInfo[]>('models.json', [])) : '';
+            const text = e.text || (e.attachments ?? []).map((a) => a.name).join(', ');
+            // What the user chose to send: no names of bots, chats or people, no account
+            await pushService.report(service, {
+                reason, author: e.role === 'assistant' ? 'bot' : 'person', text, ...(note ? { note } : {}), ...(model ? { model } : {}),
+                ...(BACKEND_VERSION ? { version: BACKEND_VERSION } : {}),
+            }).catch((err: Error) => {
+                console.log(`report to the publisher failed: ${err.message}`);
+                throw new Error(t('report.publisherFailed'));
+            });
+            return [];
+        }
         const b = isGroup(chatId) || isPerson(chatId) ? undefined : findBot(botIdOf(chatId));
         const where = isGroup(chatId) ? findGroup(chatId.slice(2))?.name ?? chatId
             : isPerson(chatId) ? personName(personOf(chatId))

@@ -167,8 +167,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   it with your next message in that chat, together with a reminder of the answer, and may keep what you value in how it
   works as knowledge ("workstyle"). Not in group chats, where the next message may go to another bot.
 - **Reporting.** "Report" in the ⋯ menu of a bot's answer or a person's message sends it with a reason to the admins
-  of the relay, into your chat with them. On a relay without another admin, the report goes by mail to the app's
-  publisher (support@openfolk.app, also under Settings › About).
+  of the relay, into your chat with them. On a relay without another admin, it goes to the app's publisher, the
+  OpenFolk team, through the push service of openfolk.app; the mail to support@openfolk.app (also under Settings ›
+  About) is the second way.
 - **Files.** Attach, paste or drop files; images and PDFs go straight to the model. Bots send files with
   `send_file`. Pictures show in the chat (also those a bot sends, fetched from its machine) and open large with a tap;
   videos (MP4, WebM, MOV) play in the app. Files go through the relay end-to-end encrypted, up to 20 MB each.
@@ -466,7 +467,8 @@ main account; nothing changes until a second one exists.
   sessions belong to the main account. Bots of every account work in the folders under `ALLOWED_ROOTS` of the
   machine they live on.
 - **Deleting:** an admin deletes an account in the same list. Its devices are signed out at once; on every machine
-  its data goes to `local/data/deleted-accounts/`, so a mistake can be undone there.
+  its data goes to `local/data/deleted-accounts/`, so a mistake can be undone there within 30 days; after that the
+  backend removes it for good.
 - **Chats between accounts:** every account can write to the other accounts on its relay ("+" → "Person"). A customer
   should reach their team and no other customer: tick "Customer: chats with the admins only" when creating the account,
   or choose "Admins only" or "Reaches everyone" in the list later. Admins reach everyone. An account that only chats needs
@@ -573,7 +575,8 @@ What the host of the relay can and cannot do, with end-to-end encryption on (the
   credentials delivers for backends that have none; it then sees that preview too and nothing else. For a backend on
   any other relay the push service of openfolk.app delivers (`PUSH_SERVICE_URL`, `off` switches it off): it sees the
   device token and the same preview, stores nothing and limits each device. Those are the only cases in which a relay
-  sees any content (`docs/internals/push.md`).
+  sees any content (`docs/internals/push.md`), apart from a report you send yourself: on a relay without another
+  admin, "Report" sends the message to the OpenFolk team through the same service.
 - Report vulnerabilities privately, not in public issues.
 
 ## Development

@@ -1,6 +1,7 @@
 // The web app inside the mobile apps (Capacitor): relay address in the login form, push through APNs/FCM instead of
 // Web Push, tapping a notification opens the chat, end-to-end key in the Keychain, number on the app icon.
 // The Capacitor bridge and its plugins are stand-ins that record what the app calls.
+import { onDialog } from './harness.mjs';
 
 /** Runs in the page before the app: a fake Capacitor bridge for iOS. */
 function fakeCapacitor() {
@@ -122,6 +123,34 @@ export default async function ({ start, check }) {
     await p.evaluate(() => window.__fire('pushNotificationActionPerformed', { notification: { data: { url: '/?chat=pdf' } } }));
     await h.wait(300);
     check('notification opens the chat', await p.evaluate(() => document.getElementById('app').classList.contains('chat-open')) && (await p.evaluate(() => document.querySelector('[data-el=chat-name]').firstChild.textContent)) === 'PDF-Reader');
+
+    // ---- the terms of use before the first message to a person (Apple 1.2); asked once, a bot's chat never
+    await h.push({ type: 'people', machine: 'desk', list: [{ id: 'kunde', name: 'Kunde', admin: false, reach: 'all' }], chats: [] });
+    const asked = [];
+    let accept = false;
+    await onDialog(p, async (d) => {
+        asked.push({ message: d.message(), link: await p.evaluate(() => document.querySelector('.overlay.ask a')?.getAttribute('href')) });
+        if (accept) d.accept(); else d.dismiss();
+    });
+    const toPerson = () => h.sent.filter((f) => f.type === 'send' && f.chatId === 'p:kunde');
+    const write = async (text) => {
+        await p.evaluate(() => openChat('p:kunde'));
+        await h.wait(150);
+        const pane = p.locator('.pane:not([hidden]) [data-el=text]');
+        await pane.fill(text);
+        await p.click('.pane:not([hidden]) [data-el=btn-send]');
+        await h.wait(200);
+    };
+    await write('Hello');
+    check('first message to a person: the terms are asked for, with a link to them', asked.length === 1 && asked[0].message.includes('terms of use')
+        && asked[0].link === 'https://openfolk.app/en/terms', asked);
+    check('… declined: nothing sent, the text stays', toPerson().length === 0
+        && await p.locator('.pane:not([hidden]) [data-el=text]').inputValue() === 'Hello');
+    accept = true;
+    await write('Hello');
+    check('… accepted: the message goes out', toPerson().length === 1 && toPerson()[0].text === 'Hello', toPerson());
+    await write('Again');
+    check('… and the terms are not asked again', asked.length === 2 && toPerson().length === 2, asked.length);
 
     // ---- the end-to-end key goes to the Keychain, not IndexedDB
     await p.evaluate(() => adoptKey(btoa(String.fromCharCode(...new Uint8Array(32).fill(7)))));

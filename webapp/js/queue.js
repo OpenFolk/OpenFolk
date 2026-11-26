@@ -7,7 +7,7 @@ import { bot, botIdOf, clockTime, colorOf, conversationTitle, duration, fileSize
 import { setLast } from './connection.js';
 import { chatStatus, renderChatList } from './list.js';
 import { machineToWake, openChat } from './chat.js';
-import { isRead, renderEntry, scroll, setReply } from './chat-features.js';
+import { isRead, renderEntry, scroll, setReply, termsAccepted, termsNeeded } from './chat-features.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 import { canRecord, dictationOn, imageRequested, rec, renderUploads } from './voice.js';
@@ -644,6 +644,19 @@ export function sendMessage(p) {
     const text = p.el.text.value.trim();
     const chatId = p.chatId;
     if ((!text && p.uploads.length === 0 && !(p.replyTo && p.replyTo.forwarded)) || !chatId || !state.agentOnline || machineToWake(chatId)) return;
+    // A store app asks for the terms before the first message to a person; accepted, it sends what is still there
+    if (termsNeeded(chatId)) {
+        void termsAccepted(chatId).then((yes) => { if (yes && p.chatId === chatId) sendAccepted(p); });
+        return;
+    }
+    sendAccepted(p);
+}
+
+/** @param {Pane} p */
+function sendAccepted(p) {
+    const text = p.el.text.value.trim();
+    const chatId = p.chatId;
+    if ((!text && p.uploads.length === 0 && !(p.replyTo && p.replyTo.forwarded)) || !chatId) return;
     // Single chat directly to the bot's machine (the attachments land there too); groups to the first one awake
     const b = bot(chatId);
     // to a bot or group: kept until its machine stored it, sent again after a dropped connection (outbox.js)
