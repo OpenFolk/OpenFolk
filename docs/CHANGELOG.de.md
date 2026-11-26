@@ -5,6 +5,10 @@ dieselben.
 
 ## [Unreleased]
 
+### Geändert
+- Die Android-App braucht Android 8.0 (API 26) oder neuer: Der QR-Scanner verlangt es, mit dem bisherigen Minimum
+  Android 7.0 schlug der Build fehl.
+
 ## [0.8.0] - 2026-11-26
 
 ### Neu

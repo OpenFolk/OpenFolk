@@ -5,6 +5,10 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+### Changed
+- The Android app needs Android 8.0 (API 26) or newer: the QR scanner requires it, and the build failed with the
+  former minimum of Android 7.0.
+
 ## [0.8.0] - 2026-11-26
 
 ### Added
