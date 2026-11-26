@@ -344,7 +344,9 @@ if (process.platform === 'win32') {
         run = { app, profile, config: () => readJson(path.join(profile, 'config.json')), env: () => '' };
         const win = await app.firstWindow();
         const loaded = await relayShown(win, server.origin);
-        check('with the task on: the window is pointed at the relay, signed in', loaded && await machineConnected(win), win.url());
+        check('with the task on: the window is pointed at the relay', loaded, win.url());
+        check('with the task on: signed in there, the machine of the task is connected', loaded && await machineConnected(win),
+            { page: await win.evaluate(() => document.body.innerText.slice(0, 300)).catch((e) => e.message), relay: server.log().slice(-1200), backend: log().slice(-1200) });
         check('with the task on: the app started no backend of its own', !log().includes('Start backend (desktop app'));
         await quit(run);
         run = null;

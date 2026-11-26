@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { machineName } from '../src/machine-name.ts';
 import { dataDir, envFile, parse, set, values } from './env.mjs';
 
 const json = process.env.OPENFOLK_JSON === '1';
@@ -47,7 +48,7 @@ async function join(raw) {
 
     // The name the backend will use (config.ts): MACHINE_NAME, otherwise the computer name
     const v = values();
-    const machine = (v.MACHINE_NAME || v.RECHNER || process.env.COMPUTERNAME || os.hostname()).toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32);
+    const machine = machineName(v.MACHINE_NAME || v.RECHNER || process.env.COMPUTERNAME || os.hostname());
 
     let r;
     try {

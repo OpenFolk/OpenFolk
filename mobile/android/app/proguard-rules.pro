@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# The barcode scanner library (ionbarcode-android, pulled in as a bare @aar) annotates its scan parameters with Gson's
+# @SerializedName without shipping Gson. The plugin builds those parameters in code and Gson is never called, so the
+# missing annotation class is harmless.
+-dontwarn com.google.gson.annotations.SerializedName

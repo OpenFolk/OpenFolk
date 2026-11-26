@@ -8,6 +8,13 @@ dieselben.
 ### Geändert
 - Die Android-App braucht Android 8.0 (API 26) oder neuer: Der QR-Scanner verlangt es, mit dem bisherigen Minimum
   Android 7.0 schlug der Build fehl.
+- Der Windows-Installer heißt in der Abfrage der Administratorrechte nur noch „OpenFolk“ statt der ganzen
+  Beschreibung der App.
+
+### Behoben
+- Ein Rechner, dessen Name auf 32 Zeichen gekürzt direkt hinter einem Bindestrich oder Punkt endet (lange
+  macOS-Hostnamen), tritt einem Relay wieder bei: Der Beitritt meldete den Namen mit dem Bindestrich am Ende an, das
+  Backend meldete sich ohne ihn an, und das Relay lehnte jede Anmeldung ab.
 
 ## [0.8.0] - 2026-11-26
 

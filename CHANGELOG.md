@@ -8,6 +8,13 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 ### Changed
 - The Android app needs Android 8.0 (API 26) or newer: the QR scanner requires it, and the build failed with the
   former minimum of Android 7.0.
+- The Windows installer is called just "OpenFolk" in the administrator prompt instead of the app's whole
+  description.
+
+### Fixed
+- A computer whose name is cut to 32 characters right after a dash or dot (long macOS host names) joins a relay
+  again: joining registered the name with the dash at its end, the backend signed in without it, and the relay
+  rejected every sign-in.
 
 ## [0.8.0] - 2026-11-26
 

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { parseMachineConfig, type MachineConfig } from './machine-config.ts';
+import { machineName } from './machine-name.ts';
 import { machineSettings } from './machine-settings.ts';
 import type { ClaudeAuth } from '../../shared/protocol.ts';
 
@@ -69,10 +70,7 @@ export function envVar(name: string, legacy?: string): string | undefined {
     return process.env[name] || (legacy ? process.env[legacy] : undefined) || undefined;
 }
 
-/** The relay takes 1 to 32 characters of a-z, 0-9 and '-'; longer host names (macOS CI runners, some Macs) are cut. */
-export function machineName(raw: string): string {
-    return raw.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32).replace(/-+$/, '') || 'home';
-}
+export { machineName };
 
 /** Port of the relay embedded in this backend (no RELAY_URL). */
 const embeddedPort = Number(process.env.RELAY_PORT) || 8787;
