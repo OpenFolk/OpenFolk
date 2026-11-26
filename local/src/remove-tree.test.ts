@@ -29,6 +29,22 @@ fs.writeFileSync(file, 'x');
 removeTree(file);
 check('a single file', !fs.existsSync(file));
 
+// A file that vanishes between listing and deleting (a process ending deletes its own pid file): no error
+const racing = path.join(base, 'racing');
+fs.mkdirSync(racing);
+fs.writeFileSync(path.join(racing, 'backend.pid'), '1');
+const unlink = fs.unlinkSync;
+fs.unlinkSync = (p: fs.PathLike) => { unlink(p); unlink(p); };
+let raced = '';
+try {
+    removeTree(racing);
+} catch (e) {
+    raced = String(e);
+} finally {
+    fs.unlinkSync = unlink;
+}
+check('a file gone meanwhile is no error', raced === '' && !fs.existsSync(racing));
+
 removeTree(base);
 if (failed) process.exit(1);
 console.log('all tests passed');

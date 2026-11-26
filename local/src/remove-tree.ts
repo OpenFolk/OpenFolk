@@ -15,18 +15,23 @@ function remove(p: string): void {
         if ((e as NodeJS.ErrnoException).code === 'ENOENT') return;
         throw e;
     }
-    if (st.isSymbolicLink()) {
-        // A junction or directory link is removed with rmdir on Windows, a file link with unlink
-        try {
-            fs.unlinkSync(p);
-        } catch {
+    try {
+        if (st.isSymbolicLink()) {
+            // A junction or directory link is removed with rmdir on Windows, a file link with unlink
+            try {
+                fs.unlinkSync(p);
+            } catch {
+                fs.rmdirSync(p);
+            }
+        } else if (st.isDirectory()) {
+            for (const name of fs.readdirSync(p)) remove(path.join(p, name));
             fs.rmdirSync(p);
+        } else {
+            fs.unlinkSync(p);
         }
-    } else if (st.isDirectory()) {
-        for (const name of fs.readdirSync(p)) remove(path.join(p, name));
-        fs.rmdirSync(p);
-    } else {
-        fs.unlinkSync(p);
+    } catch (e) {
+        // Gone meanwhile (a process that ends deletes its own pid file): what rm -rf does, not an error
+        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
     }
 }
 

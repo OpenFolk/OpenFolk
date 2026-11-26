@@ -94,10 +94,14 @@ async function firstDevice(given: string): Promise<void> {
         check('the token signs the device in at the relay', auth.ok === true, auth);
         ws.close();
     } finally {
-        for (const p of procs.splice(0)) p.kill();
-        await new Promise((r) => setTimeout(r, 500));
-        removeTree(relayData);
-        removeTree(backendData);
+        // Wait for the processes to end: the backend deletes its pid file on the way out
+        await Promise.all(procs.splice(0).map((p) => new Promise<void>((r) => {
+            if (p.exitCode !== null || p.signalCode !== null) return r();
+            p.once('exit', () => r());
+            p.kill();
+        })));
+        removeTree(relayData, 5);
+        removeTree(backendData, 5);
     }
 }
 
