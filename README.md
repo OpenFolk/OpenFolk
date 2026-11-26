@@ -294,7 +294,7 @@ openfolk/
 ├── tests/browser/       Playwright tests of the web app against a scripted relay and backend
 ├── scripts/             test runner, desktop bundle and smoke test, screenshots, a WebSocket test client
 ├── wake-agent/          one file for a Raspberry Pi at home that wakes the machines for a relay on a server
-├── docs/                running.md, tailscale.md, README.de.md, architecture.svg, internals/ (architecture decisions)
+├── docs/                running.md, features.md, tailscale.md, README.de.md, architecture.svg, internals/ (architecture decisions)
 └── AGENTS.md            read first when changing OpenFolk
 ```
 
