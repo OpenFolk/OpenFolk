@@ -17,10 +17,11 @@ import { underAllowedRoot } from './bots.ts';
 import { projectRoot } from './config.ts';
 import { language, t } from './i18n.ts';
 import { apiKey, avatarModel } from './settings.ts';
+import { AVATAR_OPTIONS, composeAvatar, sanitizeChoice } from './avatar-kit.ts';
 import { OTHER_ENGINES, engineModelId, engineOf, type BotVoice, type Engine, type Language, type SuggestionRequest, type SuggestionResult } from '../../shared/protocol.ts';
 
 const MAX_CONTEXT = 2500;
-// Realistic portraits need many gradients and strands, hence more room than a flat drawing.
+// An SVG of an older answer may be a whole portrait; the kit's own are a few KB.
 const MAX_SVG = 200 * 1024;
 const TIMEOUT_MS = 90_000;
 /** Image model for photos; the answer must be there before the web app's 120-s timer. */
@@ -60,7 +61,15 @@ const SCHEMAS = {
         required: ['suggestions'], additionalProperties: false,
     },
     role: { type: 'object', properties: { role: { type: 'string' } }, required: ['role'], additionalProperties: false },
-    avatar: { type: 'object', properties: { svg: { type: 'string' } }, required: ['svg'], additionalProperties: false },
+    // the parts of the drawn picture (avatar-kit.ts): one of each list, plus the two switches
+    avatar: {
+        type: 'object',
+        properties: {
+            ...Object.fromEntries(Object.entries(AVATAR_OPTIONS).map(([k, list]) => [k, { type: 'string', enum: [...list] }])),
+            headphones: { type: 'boolean' }, earrings: { type: 'boolean' },
+        },
+        required: [...Object.keys(AVATAR_OPTIONS), 'headphones', 'earrings'], additionalProperties: false,
+    },
     photo: { type: 'object', properties: { description: { type: 'string' } }, required: ['description'], additionalProperties: false },
 } as const;
 
@@ -126,20 +135,18 @@ export function prompt(a: SuggestionRequest, context: string, task: Task = a.wha
                 a.previous?.length ? `Not again: ${a.previous.join(' | ')}.` : '');
             break;
         case 'avatar':
-            head.push('Create a profile picture for the bot as SVG: a portrait of a human, head and shoulders, frontal, friendly',
-                'smiling, as realistic as an application photo, explicitly no flat illustration, no comic, no cartoon.',
-                'Realism comes from light and shadow: soft radial and linear gradients for skin (cheeks, forehead, bridge of the nose,',
-                'chin, neck with a core shadow under the chin), highlights in eyes and on lips, hair as many fine',
-                'strands in several tones instead of one area, natural skin colors with redness on cheeks and nose, eyebrows from',
-                'single strokes, slight blur (feGaussianBlur) for shadow gradients, a soft, blurred background as in',
-                'a photo with an open aperture (work out face, neck, hair, eyes, brows, nose, mouth, ears, top). The person',
-                'should fit the name: first name and sound of the name determine gender, approximate age, hairstyle and charisma; the',
-                'role determines clothing and accessories (e.g. glasses, headphones, shirt, hoodie, blazer). Choose skin tone and hair color freely,',
-                'face large in the picture (about 60 % of the height). Square, viewBox="0 0 256 256", width="256" height="256". Allowed are',
-                'paths, basic shapes, gradients, masks and filters (feGaussianBlur, feDropShadow); no text, no lettering, no animals,',
-                'no robots, no external references, no scripts, no embedded raster images. Return the complete',
-                'SVG markup.',
-                a.previous?.length ? 'A different person than last time (different hairstyle, hair color, clothing).' : '');
+            // The model only chooses the parts; the kit draws them (avatar-kit.ts), so nothing comes out as a cartoon
+            head.push('Choose the parts of the bot\'s profile picture from a kit: a calm, flat portrait as on the team page of a firm.',
+                'Return exactly these fields, each one of its options: '
+                + Object.entries(AVATAR_OPTIONS).map(([k, list]) => `${k} (${list.join(', ')})`).join('; ') + '; headphones and earrings (true or false).',
+                'Business look: blazer, shirt or turtleneck in a deep tone (navy, charcoal, slate, forest, burgundy, plum) or offwhite;',
+                'tee, vneck or hoodie only when the wishes for the picture ask for it. No beard (beard: none) and no headphones unless',
+                'the wishes ask for them. Skin tone light or fair as a rule, medium now and then; tan, brown or deep only when the',
+                'wishes ask for it. The person should fit the name: first name and sound of the name determine the impression of',
+                'gender (hair style, earrings) and the approximate age (grey or white hair for an older person); vary hair style and',
+                'hair color between bots. Glasses where they suit a reader or analyst. Background and cloth should go well together.',
+                a.wish ? 'Where the wishes for the picture name a part, they come first.' : '',
+                a.previous?.length ? 'A different person than last time (different hair style, hair color and clothes).' : '');
             break;
     }
     return head.filter(Boolean).join('\n');
@@ -177,7 +184,10 @@ export function resultFrom(what: SuggestionRequest['what'], data: unknown): Sugg
         }
         case 'avatar':
             if (typeof o.image === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(o.image)) return { what, image: o.image };
-            return { what, svg: checkSvg(o.svg) };
+            if ('image' in o) throw new Error('No picture received');
+            // an SVG of its own (older answers); otherwise the parts the model chose, drawn by the kit
+            if (typeof o.svg === 'string') return { what, svg: checkSvg(o.svg) };
+            return { what, svg: composeAvatar(sanitizeChoice(o)) };
     }
 }
 
@@ -256,7 +266,7 @@ export function askJson(q: JsonQuestion): Promise<unknown> {
 const SHAPES: Record<Task, string> = {
     name: '{"suggestions":[{"name":"…","area":"…","voice":"female" or "male"}, … three of them]}',
     role: '{"role":"…"}',
-    avatar: '{"svg":"…"}',
+    avatar: '{' + Object.entries(AVATAR_OPTIONS).map(([k, list]) => `"${k}":"${list.join('"|"')}"`).join(',') + ',"headphones":true|false,"earrings":true|false}',
     photo: '{"description":"…"}',
 };
 

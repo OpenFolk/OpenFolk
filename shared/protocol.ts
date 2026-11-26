@@ -291,9 +291,14 @@ export interface Category {
     updatedAt: string;
     /** Place in the list, set by moving folders; missing = after the placed ones, by name. Missing from older backends. */
     order?: number;
+    /**
+     * Its bots stay in the folder while they work or have something unread, instead of moving up to "Running now" and
+     * "Done, unread" (missing = they move up, as before).
+     */
+    stay?: boolean;
 }
 
-export type CategoryInput = Pick<Category, 'id' | 'name'>;
+export type CategoryInput = Pick<Category, 'id' | 'name'> & Partial<Pick<Category, 'stay'>>;
 
 /** Kinds of push notification; security warnings always arrive and cannot be configured. */
 export type PushKind = 'done' | 'routine' | 'approval' | 'awake' | 'limit' | 'message' | 'handover';
@@ -601,6 +606,8 @@ export interface HistoryEntry {
     attachments?: Attachment[];
     /** true = voice message; `text` is the transcript, the recording is in `attachments`. */
     voice?: boolean;
+    /** user: the app's id of the message (`send` cid), so a copy sent again after a dropped connection is known. */
+    cid?: string;
     /** user: when a bot started working on the message (blue ticks). */
     readAt?: string;
     /** user: moved from the queue into this conversation (chatId); runs there instead. */
@@ -614,8 +621,9 @@ export interface HistoryEntry {
     /** event of a hand-over in the bot's chat: the account whose person chat continues it (a link there). */
     person?: string;
     /**
-     * Person chats: the reader of this message likes it (the other person for one of 'me', this account for one of
-     * theirs); both halves carry it. A like taken back stays with `on` false, so the newer `at` wins between machines.
+     * The reader of this message likes it. Person chats: the other person for one of 'me', this account for one of
+     * theirs; both halves carry it. Bot chats: the user, on a bot's answer; the bot hears of it with the next message.
+     * A like taken back stays with `on` false, so the newer `at` wins between machines.
      */
     like?: { on: boolean; at: string };
 }
@@ -973,8 +981,12 @@ export type ClientFrame =
         /** From the voice conversation (webapp/js/talk.js): the bot gets the note to answer briefly, for being read aloud. */
         spoken?: boolean;
         /** While the bot works: after its job instead of folded into it (the composer's "Afterwards"). */
-        later?: boolean }
+        later?: boolean;
+        /** The app's id of the message: sent again after a dropped connection, the machine stores it only once. */
+        cid?: string }
     | { type: 'interrupt'; chatId: string }
+    /** Stops background tasks of a chat's session (shells, subagents) by their ids, as `background` named them. To their machine. */
+    | { type: 'task_stop'; chatId: string; taskIds: string[] }
     /** A job between bots (Job): stop waiting for its result, with `cancel` also stop it at the target. To its source's machine. */
     | { type: 'job_stop'; id: string; cancel?: boolean }
     /** New session; with chatId only for that conversation, otherwise for the main chat. */
@@ -996,7 +1008,10 @@ export type ClientFrame =
     | { type: 'queue_to_conversation'; chatId: string; entryId: string }
     /** Delete a waiting message from the queue (only while the bot has not started it). */
     | { type: 'queue_delete'; chatId: string; entryId: string }
-    /** Like a message of the other person in a person chat (on) or take the like back; answer "liked" to all browsers. */
+    /**
+     * Like a message of the other person in a person chat or a bot's answer in a bot chat (on), or take the like back;
+     * answer "liked" to all browsers. Bot chats: to the bot's machine, which tells the bot with the next message.
+     */
     | { type: 'like'; chatId: string; entryId: string; on: boolean }
     /** Pin a message at the top of the chat (on) or unpin it. */
     | { type: 'pin'; chatId: string; entry: PinnedEntry; on: boolean }
@@ -1137,7 +1152,8 @@ export type ClientFrame =
     /** The events and the project's metrics of one mission; answered with mission_detail. */
     | { type: 'mission_open'; id: string }
     /** The Mission Builder: a goal in plain words becomes a proposal (mission_proposal). */
-    | { type: 'mission_propose'; text: string; folder?: string }
+    /** `id`: names the request; the proposal goes to every page of the account, and a page reloaded meanwhile takes it by this id. */
+    | { type: 'mission_propose'; text: string; folder?: string; id?: string }
     /** A new mission (id '') or the user's change of one; `start` starts it right after saving. */
     | { type: 'mission_save'; mission: MissionInput; start?: boolean }
     | { type: 'mission_control'; id: string; action: MissionAction }
@@ -1398,7 +1414,7 @@ export type AgentFrame =
     | { type: 'conversation_created'; chatId: string }
     /** Pinned messages: one chat after a change, all on connect (chatId missing). */
     | { type: 'pinned'; chatId?: string; entries?: PinnedEntry[]; all?: Record<string, PinnedEntry[]> }
-    /** A message of a person chat was liked or the like taken back, by this account or by the other person. */
+    /** A message was liked or the like taken back: by this account, or in a person chat by the other person. */
     | { type: 'liked'; chatId: string; entryId: string; on: boolean }
     /** Read state: changed chats, all on connect (`all`). */
     | { type: 'seen'; state: Record<string, SeenEntry>; all?: boolean }
@@ -1419,7 +1435,7 @@ export type AgentFrame =
     | { type: 'missions'; missions: Mission[] }
     /** `metricsError`: the project's metrics.json exists but cannot be read. */
     | { type: 'mission_detail'; id: string; events: MissionEvent[]; metrics: MissionMetrics | null; metricsError?: string }
-    | { type: 'mission_proposal'; proposal: MissionProposal }
+    | { type: 'mission_proposal'; proposal: MissionProposal; id?: string }
     /** Answer to mission_save: the mission's id, also for a new one. */
     | { type: 'mission_saved'; id: string }
     /** `expired`: nobody answered in time; the web app leaves the card in place, marked, until the chat is drawn anew. */

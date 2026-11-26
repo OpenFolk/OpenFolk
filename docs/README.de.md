@@ -76,7 +76,7 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   lesenden Anbieters (13 von OpenAI, 30 von Gemini, Piper je Sprache) mit „Anhören“. „KI-Avatar“ öffnet dort ein Set
   fertiger Porträts (gezeichnet, in `webapp/avatars/`), das Bildmodell steht darin als letzter Eintrag; „Vorschlag“
   schlägt Namen (Vorname mit Aufgabenfeld in einem eigenen Feld), Rolle oder ein Profilbild vor; mit einem Gemini- oder
-  OpenAI-Schlüssel in den Einstellungen ist der Avatar ein generiertes Foto, sonst ein vom Modell gezeichnetes SVG.
+  OpenAI-Schlüssel in den Einstellungen ist der Avatar ein generiertes Foto, sonst ein Porträt aus den Teilen eines Baukastens (`local/src/avatar-kit.ts`; das Modell wählt nur die Teile, nichts wird frei gezeichnet).
   „Bot duplizieren“ auf seiner Seite legt eine Kopie unter neuem Namen auf demselben Rechner an: Profil, Modell,
   Freigabe-Stufe, Ordner und Bild, dazu seine Routinen pausiert; Verlauf, Wissen und Unterhaltungen bleiben beim
   Original. Das Feld „Ordner“ ist ein Textfeld: Der Ordner muss auf dem Rechner des Bots schon existieren und unter dessen freigegebenen Ordnern
@@ -155,6 +155,10 @@ per QR-Code. Alles Weitere steht unter [Loslegen](#loslegen).
   Werkzeug `hand_over`: Er schickt der Person seine Zusammenfassung, sie bekommt eine Benachrichtigung, und der User
   im Bot-Chat einen Knopf „Weiter mit …“. Bots lesen Chats zwischen Personen nicht. „Blockieren“ im Menü des Chats
   hält Nachrichten in beide Richtungen auf, bis „Blockierung aufheben“.
+- **Gefällt mir:** „Gefällt mir“ im ⋯-Menü einer Bot-Antwort setzt ein Herz daran. Der Bot antwortet nicht darauf; er
+  erfährt es mit deiner nächsten Nachricht in diesem Chat, samt einer Erinnerung an die Antwort, und kann sich als Wissen
+  („workstyle“) merken, was dir an seiner Arbeitsweise gefällt. Nicht in Gruppenchats, wo die nächste Nachricht an einen
+  anderen Bot gehen kann.
 - **Melden:** „Melden“ im ⋯-Menü einer Bot-Antwort oder der Nachricht einer Person schickt sie mit Grund an die Admins
   des Relays, in deinen Chat mit ihnen. Gibt es außer dir keinen Admin, geht die Meldung per Mail an den Herausgeber
   der App (support@openfolk.app, auch unter Einstellungen › Über).

@@ -6,7 +6,7 @@ import { allChats, checkConnection, checkTotp, connect, credentials, renderAccou
 import { bundled, fitToKeyboard, platformKind, onNotificationOpen, parsePairingLink, relayAddress, requestPushPermission, setRelayAddress } from './platform.js';
 import { CHAT_DRAG, SIDEBAR_PX, activePane, closeSettings, createPane, layoutPanes, paneOf, panes, setActivePane, setSidebarWidth, visibleChats } from './panes.js';
 import { chooseSearchFilter, closeChatSearch, listTap, onChatSearchInput, onSearchInput, openRowMenu, renderChatList, renderUsage, setupFolderDrop, setupListLongPress, setupListSwipe, setupSearchBox, stepChatSearch } from './list.js';
-import { addEmptyPane, closeChat, dropChat, openChat, paneActivated, renderChatHeader, setupSwipeBack, swipeBack } from './chat.js';
+import { addEmptyPane, closeChat, dropChat, openChat, paneActivated, renderChatHeader, setupSwipeBack, stopBackground, swipeBack } from './chat.js';
 import { renderMachines, wake } from './machines.js';
 import { checkMention, closeMention, markSeen, mentionKey, renderForwardList, renderHistory, renderPinned, scroll, setReply, setupMessageMenu, setupReport, tapPinned, unpinShown } from './chat-features.js';
 import { composerButtons, renderQueue, saveDraft, sendMessage, setupQueueSwipe, textHeight } from './queue.js';
@@ -14,13 +14,13 @@ import { autoReadOn, setAutoRead, primeReadAloud, readWaitingAnswer, setupSpeech
 import { addFiles, dictationOn, finishDictation, pauseRecording, rec, setDictation, shrinkImage, startRecording, stopRecording } from './voice.js';
 import { endTalk, startTalk, talkVisibility, tapTalk, toggleTalkMic } from './talk.js';
 import {
-    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, newCategory, openGitPage, openMachinesPage, openMissionsPage,
+    chatMenuAction, chatMenuButtons, closeAllMenus, closeDialog, closeGitPage, infoAction, menuButton, newCategory, openMachinesPage, openMissionsPage,
     renameConversation, renderGitTotal, renderPageTitle, submitText, toggleHeaderSwitch,
 } from './menus.js';
 import { adoptVscodeSession, openVscode, renderVscodeAdoptButton, renderVscodeSub, showInVscode, showVscodeList, vs } from './vscode.js';
 import {
     canMessageChanged, chooseFolder, createPickerFolder, folderChanged, folderTyped, knowledgeSection, machineChanged, newGroup, openEditor, openFolderPicker, openGroupEditor,
-    openAvatarPicker, openBotChanges, openInfo, openKnowledgeEditor, openRoutineEditor, renderEditorAvatar, renderKnowledge, renderRoutines,
+    openAvatarPicker, openBotChanges, openInfo, editorChanged, openKnowledgeEditor, openRoutineEditor, renderEditorAvatar, renderKnowledge, renderRoutines,
     repoChanged, repoTyped, requestSuggestion, roleChanged, routineCron, routineFields, submitEditor, renderVoiceChoice, chooseVoiceName, listenToVoice,
 } from './editors.js';
 import { checkPush, renderPushSettings, setPushAlways, subscribePush } from './push.js';
@@ -323,14 +323,13 @@ el.chatList.addEventListener('pointerdown', () => {
 });
 // only after the click that follows pointerup
 for (const kind of ['pointerup', 'pointercancel']) el.chatList.addEventListener(kind, () => releaseList(350));
-// Tabs: the list, the repos of all bots, the machines, the settings. Without stopPropagation the click catcher of the
+// Tabs: the list, the status (machines and the repos of all bots), the missions, the settings. Without stopPropagation the click catcher of the
 // menus would close the long-press menu's git list right away.
 el.tabBar.addEventListener('click', (ev) => {
     const tab = closest(ev, '.tab')?.dataset.tab;
     if (!tab) return;
     ev.stopPropagation();
     closeAllMenus();
-    if (tab === 'repos') return openGitPage();
     if (tab === 'machines') return openMachinesPage();
     if (tab === 'missions') return openMissionsPage();
     // On wide screens the settings are a pane, and the panes hide behind the page
@@ -394,6 +393,7 @@ const PANE_CLICKS = {
     'btn-talk': (p) => startTalk(p),
     'btn-later': (p) => { p.later = !p.later; composerButtons(p); },
     'btn-stop': (p) => { if (p.chatId) send({ type: 'interrupt', chatId: p.chatId }); },
+    'btn-stop-tasks': (p) => { if (p.chatId) void stopBackground(p.chatId); },
     'btn-attach': (p) => p.el.fileInput.click(),
     'to-bottom': (p) => scroll(p, true),
     'sleep-wake': (p) => wake(p.el.sleepWake.dataset.host),
@@ -689,14 +689,17 @@ el.editorName.addEventListener('input', renderEditorAvatar);
 el.editorImage.addEventListener('change', async () => {
     const d = el.editorImage.files && el.editorImage.files[0];
     if (!d) return;
-    try { state.editorAvatar = await shrinkImage(d, AVATAR_EDGE, true); renderEditorAvatar(); } catch (e) { el.editorError.textContent = e.message; el.editorError.hidden = false; }
+    try { state.editorAvatar = await shrinkImage(d, AVATAR_EDGE, true); renderEditorAvatar(); editorChanged(); } catch (e) { el.editorError.textContent = e.message; el.editorError.hidden = false; }
     el.editorImage.value = '';
 });
-el.editorImageRemove.addEventListener('click', () => { state.editorAvatar = ''; renderEditorAvatar(); });
+el.editorImageRemove.addEventListener('click', () => { state.editorAvatar = ''; renderEditorAvatar(); editorChanged(); });
 el.editorNameSuggest.addEventListener('click', () => requestSuggestion('name'));
 el.editorRoleSuggest.addEventListener('click', () => requestSuggestion('role'));
 el.editorAvatarAi.addEventListener('click', () => openAvatarPicker());
 el.avatarGenerate.addEventListener('click', () => { closeDialog(el.avatarPicker); requestSuggestion('avatar'); });
+// Editing a bot saves every change by itself (editors.js editorChanged)
+el.editorForm.addEventListener('input', editorChanged);
+el.editorForm.addEventListener('change', editorChanged);
 el.editorForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
     submitEditor();

@@ -5,7 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-26
+
 ### Added
+- A list folder can keep its bots in place: "Keep its bots in the folder" in the folder's menu (long press or right
+  click on its heading) keeps them there while they work or have something unread, instead of moving up to "Running
+  now" and "Done, unread"; "Move working and finished bots up" sets it back. New optional field `stay` of `Category`.
+- A bot's background tasks (a long test run, a build, a subagent) can be stopped from the app: while only they run, the
+  status line above the input has "Stop", which asks first and stops them on their machine; what they did so far stays.
+  New frame `task_stop` (the CLI's `stopTask`).
 - Mission Control: missions, long-term goals a team of bots pursues on its own, in a tab of their own. A builder turns
   a goal in plain words into an editable proposal (criteria, team with portraits and a supervisor, milestones, risks,
   autonomy, approval rules, budget, guardrails, schedule); the supervisor runs the mission in cycles of one turn each,
@@ -82,12 +90,42 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
   automatic checks, as in the app's menus.
 - Chats with people: "Like" in the ⋯ menu of a message the other person wrote puts a heart on it that both sides see,
   "Unlike" takes it back. It needs the new version on the backends of both accounts.
+- "Like" on a bot's answer: a heart on it, and with the next message in that chat the bot learns which answers you
+  liked, without a turn of its own, and may keep what you value as workstyle knowledge. Not in group chats.
 
 ### Changed
+- Approval level "risky": deleting inside the bot folder (`rm`, `rmdir`, `del`, `Remove-Item`, `find -delete`) no
+  longer asks; it is the bot's everyday work. Deleting outside the folder, the folder itself or a target the rule cannot
+  tell (a variable) asks with the reason "deletes outside the bot folder". Destructive git commands still ask.
+- Drawn profile pictures (without an image model's key) come from a kit instead of a freehand drawing of the model: the
+  model only chooses skin tone, hair, clothes, glasses, beard, headphones and background from fixed options, and the kit
+  (`local/src/avatar-kit.ts`) draws a calm flat portrait as on a firm's team page: business look (blazer, shirt, turtleneck), no beards and
+  mostly light skin unless the wishes ask otherwise, muted colors, no cartoon faces. The
+  24 ready-made pictures under "AI avatar" are drawn by the same kit (`npm run avatar-set`) and changed with it.
+- The conversation tabs above a bot's chat move like the chat list: working or waiting first, then finished ones with
+  something unread, then the rest, each newest message first; the main chat stays the first tab.
+- @ mentions by first name: the completion inserts a bot's first name (`@Hugo`, not `@hub`) when no other bot has
+  it as name or id, and finds bots by the start of their name too; the backend already matched names and ids alike,
+  whatever the case.
+- "Edit bot" saves every change by itself, without Save and Cancel: typing after a short pause, a choice at once, a
+  change still waiting when the editor closes as it goes; a line below says "Saved". Folder, repository and machine are
+  checked once left, as a save did. A new bot keeps its "Create".
+- A bot's background task shows short in the list and the header: "Still running: …" with the first real step of a
+  shell command (no `cd`, pipes or redirections, at most 32 characters) instead of the whole command, and the row's dot
+  pulses until the task ends.
+- The tab "Repos" is part of "Status": the status page shows the open changes of all bots between the machines and
+  the quota, with commit and push as before; the status tab carries their count ("!" for a hint or a lost sign-in).
 - The limit of 30 failed sign-ins per hour counts per account: guessing at one account no longer locks the password
   sign-in of every other, and failed joins, claims and setup links no longer lock it at all.
 
 ### Fixed
+- The empty input field keeps the height of one line: measured while hidden (during a recording, in a parked pane,
+  switching chats) it was squeezed to a sliver with the placeholder cut off.
+- A message to a bot, photos and voice messages included, no longer vanishes when the relay restarts (a deploy) or the
+  connection drops while it is on its way: the app keeps it with "Sending …" in the chat until the machine stored it,
+  sends it again after a reconnect or 15 seconds without an answer, and after three minutes says "Not delivered" with
+  "Send again". The machine stores a message once by the new optional field `cid` of `send` (kept in the history entry)
+  and answers a copy with the stored entry.
 - Jumping into a chat (a tab, the command palette, a notification, a favorite tile) scrolls the chat list on the
   left to its row, just far enough; a conversation under a folded bot shows the bot's row.
 - iPhone and iPad (web app and home screen app): with the keyboard open the window no longer jumps up. iOS ignores
@@ -802,7 +840,8 @@ Docker runs.
 - Files in the backend's data folder are written with mode 0600 (Linux and macOS). Recursive deletes go through
   `removeTree`, because `fs.rmSync` on Windows under Node 24 follows directory junctions.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.5.0...v0.6.0

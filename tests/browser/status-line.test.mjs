@@ -2,14 +2,14 @@
 export default async function ({ start, check }) {
     const h = await start({ history: { pdf: [{ id: 'a', role: 'user', from: 'me', text: 'Build the feature', ts: '2026-10-08T05:00:00Z', readAt: '2026-10-08T05:00:00Z' }] } });
     const p = h.page;
-    const line = () => p.evaluate(() => { const a = document.querySelector('[data-el=working]'); return a.hidden ? '' : a.textContent.replace(/\s+/g, ' ').trim(); });
+    const line = () => p.evaluate(() => { const a = document.querySelector('[data-el=working]'); return a.hidden ? '' : [...a.children].filter((n) => !n.hidden).map((n) => n.textContent).join(' ').replace(/\s+/g, ' ').trim(); });
     const state = (s) => h.push({ type: 'state', machine: 'desk', botId: 'pdf', state: s, chatId: s === 'idle' ? undefined : 'pdf', activity: 'thinking' });
     await h.openChat('PDF');
     check('free: no line', (await line()) === '');
     await state('thinking');
     await h.wait(200);
     const a = await line();
-    check('working: star, word, running time and stop', /^[·✢✶✻✽]\p{L}+ … \(0 s\) Stop$/u.test(a), a);
+    check('working: star, word, running time and stop', /^[·✢✶✻✽] ?\p{L}+ … \(0 s\) Stop$/u.test(a), a);
     check('no emoji star (✳ has an emoji variant)', !/✳/.test(a));
     await h.wait(3900);
     const b = await line();

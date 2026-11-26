@@ -34,7 +34,7 @@ export function missionTools(s: BotSession, host: ToolHost) {
         ),
         tool(
             'mission_delegate',
-            'Supervisor only: hands a task to its assignee. It works in a new conversation of its own; its result comes back by itself and starts the next cycle. '
+            'Supervisor only: hands a task to its assignee. It gets the task in its main chat (queued while it works on something else); its result comes back by itself and starts the next cycle. '
             + 'At autonomy level 1 the user approves each delegation first.',
             { mission, task: z.string().max(40).describe('Id of the task') },
             call('mission_delegate'),

@@ -7,9 +7,9 @@ import { bot, clockTime, conversation, conversationTitle, group, isConversation,
 import { archivedOf, isBlocked, isFavorite, isMuted, toggleFavorite, toggleMuted, categoryOf, setCategory, sortedCategories } from './connection.js';
 import { listTap, openChatSearch, renderChatList, rowMenu } from './list.js';
 import { closeChat, openChat, paneActivated, renderChatHeader, renderHeaders } from './chat.js';
-import { refreshMachinesPage, renderMachines, wake } from './machines.js';
+import { refreshMachinesPage, renderMachines, renderStatusBadge, wake } from './machines.js';
 import { closeVscodeSession, openVscode } from './vscode.js';
-import { moveBot, openEditor, openGroupEditor, openInfo } from './editors.js';
+import { flushEditor, moveBot, openEditor, openGroupEditor, openInfo } from './editors.js';
 import { alertDialog, confirmDialog, dangerDialog } from './dialogs.js';
 import { closePalette } from './palette.js';
 
@@ -436,6 +436,17 @@ export function newCategory(chatId) {
     });
 }
 
+/** A folder keeps its bots in place, or lets them move up while busy again (its menu); shown right away. */
+export function toggleCategoryStay(id) {
+    const c = state.categories.find((x) => x.id === id);
+    if (!c) return;
+    c.stay = !c.stay;
+    // an older backend drops the field and sends the folder back without it: then the app says so (connection.js)
+    state.categoryStayPending = { id, stay: c.stay, until: Date.now() + 15_000 };
+    renderChatList();
+    send({ type: 'category_save', category: { id, name: c.name, stay: c.stay } });
+}
+
 /** Rename (long press on the heading); shown right away, the backend confirms it. */
 export function renameCategory(id) {
     const c = state.categories.find((x) => x.id === id);
@@ -802,9 +813,12 @@ export function receiveGitStatus(f) {
     refreshMachinesPage();
 }
 
+/** What the open changes add to the status tab's badge (machines.js renderStatusBadge). */
+export const reposBadge = { count: 0, hint: false, title: '' };
+
 /**
- * The tab "Repos": the number of repos with open changes as a badge, "!" when there are only hints (versions, restart,
- * push access); the summary is its title. Keeps an open total list current.
+ * The open changes on the tab "Status": the number of repos with open changes for its badge, "!" when there are only
+ * hints (versions, restart, push access); the summary is its title. Keeps an open total list current.
  */
 export function renderGitTotal() {
     const open = gitOpenAll();
@@ -819,9 +833,8 @@ export function renderGitTotal() {
         noPush.length ? t('git.noPushNotice', { machines: [...new Set(noPush.map((g) => upper(g.machine)))].join(', ') }) : '',
     ].filter(Boolean);
     const hints = mismatch.length || outdatedBackends().length || noPush.length;
-    el.tabReposBadge.hidden = !open.length && !hints;
-    el.tabReposBadge.textContent = open.length ? String(open.length) : '!';
-    el.tabRepos.title = parts.join(' · ');
+    Object.assign(reposBadge, { count: open.length, hint: Boolean(hints), title: parts.join(' · ') });
+    renderStatusBadge();
     if (gitViewOpen()) renderGitList();
 }
 
@@ -923,29 +936,36 @@ export const gitPageFromChat = () => gitFromChat && !el.gitPage.hidden;
  * page was opened from).
  */
 export function openGitPage(b, fromChat = false) {
-    showPage(b ? 'bot' : 'repos', fromChat);
+    // all bots' open changes are part of the status page
+    if (!b) return openMachinesPage();
+    showPage('bot', fromChat);
     el.gitSub.textContent = b ? b.name : t('git.allBots');
     const show = (...parts) => el.gitPageContent.replaceChildren(...parts);
-    if (b) return showGitChanges(b, el.gitPage, show);
-    Object.assign(gitView, { botId: '*', menu: el.gitPage, show, repos: [], busy: gitView.all ? gitView.busy : null, message: null });
-    renderGitList();
+    showGitChanges(b, el.gitPage, show);
 }
 
-/** The tab "Status": the machines with waking and shutting down, the plans' quota and the engines' versions. */
+/**
+ * The tab "Status": the machines with waking and shutting down, the open changes of all bots' repos, the plans' quota
+ * and the engines' versions.
+ */
 export function openMachinesPage() {
     showPage('machines', false);
     el.gitSub.textContent = '';
     renderMachines();
+    const show = (...parts) => el.statusRepos.replaceChildren(...parts);
+    Object.assign(gitView, { botId: '*', menu: el.gitPage, show, repos: [], busy: gitView.all ? gitView.busy : null, message: null });
+    el.gitPage.dataset.view = 'git';
+    renderGitList();
 }
 
 /** The tab "Missions": the overview of the missions, from there one mission or the builder (missions.js). */
 export function openMissionsPage() {
-    showPage('missions', false);
+    // First: showPage draws the page (renderPageTitle), which must know whether a builder is resumed
     showMissionList();
-    renderMissionsPage();
+    showPage('missions', false);
 }
 
-/** The page frame over the panes, with the repos of all bots, of one bot, the machines or the missions. */
+/** The page frame over the panes, with the repos of one bot, the status (machines and all repos) or the missions. */
 function showPage(page, fromChat) {
     gitFromChat = fromChat;
     rowMenu.hidden = true;
@@ -953,7 +973,7 @@ function showPage(page, fromChat) {
     el.gitPage.hidden = false;
     el.gitPage.dataset.page = page;
     // a git answer arriving later must not fill the page while it shows the machines
-    if (page === 'machines' || page === 'missions') delete el.gitPage.dataset.view;
+    if (page === 'missions') delete el.gitPage.dataset.view;
     el.gitPageContent.hidden = page === 'machines' || page === 'missions';
     el.machinesPage.hidden = page !== 'machines';
     el.missionsPage.hidden = page !== 'missions';
@@ -1128,6 +1148,8 @@ export function closeSettingsDialog(content) {
 export function closeDialog(o) {
     if (o === el.settingsDialog) { closeSettingsDialog(); return true; }
     if (o === el.palette) { closePalette(); return true; }
+    // a change of the bot editor still in its pause is saved before it goes
+    if (o === el.editor && !o.hidden) flushEditor();
     o.hidden = true;
     if (o === el.info) { state.infoBot = null; state.infoChat = null; infoShown = ''; layoutPanes(); }
     if (o === el.settings) layoutPanes();

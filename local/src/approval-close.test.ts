@@ -26,9 +26,10 @@ const frames: { type: string; [k: string]: unknown }[] = [];
 const m = new BotManager((f) => { frames.push(f as { type: string }); }) as unknown as Inner;
 m.updateAgents(['workstation']);
 
-// No bot behind the chats: the message stops after closing the cards, before a session would start
+// No bot behind the chats: the message stops after closing the cards, before a session would start. The command only
+// has to ask in "risky" (git push does; deleting inside the folder, which lies in the temp folder here, no longer does)
 const session = (id: string) => ({ bot: { id, name: id, approval: 'risky', folder: root.replace(/\\/g, '/') }, state: 'thinking', setState() {} });
-const ask = (chatId: string) => m.approval(session(chatId.replace(/^g:/, '')), { chatId }, 'Bash', { command: 'rm -rf build' }, new AbortController().signal);
+const ask = (chatId: string) => m.approval(session(chatId.replace(/^g:/, '')), { chatId }, 'Bash', { command: 'git push origin main' }, new AbortController().signal);
 const settled = (p: Promise<Result>) => Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), 200))]);
 
 // ---- a new message in the same chat

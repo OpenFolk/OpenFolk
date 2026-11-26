@@ -63,7 +63,7 @@ export const el = {
     messageMenu: $('message-menu'),
     speechBar: $('speech-bar'), speechBarAuto: /** @type {HTMLButtonElement} */ ($('speech-bar-auto')), speechBarOpen: $('speech-bar-open'), speechBarWho: $('speech-bar-who'), speechBarText: $('speech-bar-text'), speechBarStop: $('speech-bar-stop'),
     speechBarPlay: $('speech-bar-play'), speechBarSeek: /** @type {HTMLInputElement} */ ($('speech-bar-seek')), speechBarElapsed: $('speech-bar-elapsed'), speechBarTotal: $('speech-bar-total'),
-    editor: $('editor'), editorForm: /** @type {HTMLFormElement} */ ($('editor-form')), editorTitle: $('editor-title'), editorRoleSuggestions: $('editor-role-suggestions'),
+    editor: $('editor'), editorForm: /** @type {HTMLFormElement} */ ($('editor-form')), editorTitle: $('editor-title'), editorSaved: $('editor-saved'), editorRoleSuggestions: $('editor-role-suggestions'),
     editorMachineField: $('editor-machine-field'), editorAvatar: $('editor-avatar'), editorImage: /** @type {HTMLInputElement} */ ($('editor-image')), editorImageRemove: /** @type {HTMLButtonElement} */ ($('editor-image-remove')),
     editorAvatarAi: /** @type {HTMLButtonElement} */ ($('editor-avatar-ai')), avatarPicker: $('avatar-picker'), avatarGrid: $('avatar-grid'), avatarError: $('avatar-error'), avatarGenerate: /** @type {HTMLButtonElement} */ ($('avatar-generate')), editorNameSuggest: /** @type {HTMLButtonElement} */ ($('editor-name-suggest')), editorNameSuggestions: $('editor-name-suggestions'),
     editorRoleSuggest: /** @type {HTMLButtonElement} */ ($('editor-role-suggest')),
@@ -91,7 +91,7 @@ export const el = {
     kType: /** @type {HTMLSelectElement} */ ($('knowledge-type')), kDescription: /** @type {HTMLInputElement} */ ($('knowledge-description')), kText: /** @type {HTMLTextAreaElement} */ ($('knowledge-text')), kError: $('knowledge-error'), kDelete: /** @type {HTMLButtonElement} */ ($('knowledge-delete')),
     machines: $('machines'), machinesNone: $('machines-none'), usageNone: $('usage-none'), machinesPage: $('machines-page'),
     missionsPage: $('missions-page'), tabMissionsBadge: $('tab-missions-badge'),
-    tabBar: $('tab-bar'), tabRepos: $('tab-repos'), tabReposBadge: $('tab-repos-badge'), tabStatusBadge: $('tab-status-badge'), machinesSignin: $('machines-signin'),
+    tabBar: $('tab-bar'), tabStatus: /** @type {HTMLElement} */ ($('tab-bar').querySelector('[data-tab=machines]')), tabStatusBadge: $('tab-status-badge'), statusRepos: $('status-repos'), machinesSignin: $('machines-signin'),
     gitPage: $('git-page'), gitPageContent: $('git-page-content'), gitBack: /** @type {HTMLButtonElement} */ ($('git-back')), gitTitle: $('git-title'), gitSub: $('git-sub'),
     archive: $('archive'), archiveSub: $('archive-sub'), archiveList: $('archive-list'),
     report: $('report'), reportForm: /** @type {HTMLFormElement} */ ($('report-form')), reportQuote: $('report-quote'), reportReason: /** @type {HTMLSelectElement} */ ($('report-reason')),
@@ -176,6 +176,8 @@ export const state = {
     lastTs: {},              // chatId -> time of the last message (sorting and time in the overview)
     incoming: {},            // chatId -> time of the last incoming message (bot, job from a bot)
     context: {},             // session key (bot id or conversation chatId) -> tokens in context
+    /** "Keep its bots in the folder" just set, until the machine answered: { id, stay, until } (connection.js) */
+    categoryStayPending: null,
     backgroundPerMachine: Object.create(null), // machine -> { session key -> [{ id, description }] } running background tasks
     gitPerMachine: {},       // machine -> { bot id -> open repos } for the bots running there (git_status)
     backendPerMachine: {},   // machine -> { since, changed, requested } according to its backend (backend_status)

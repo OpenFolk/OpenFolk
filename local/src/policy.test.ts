@@ -25,7 +25,8 @@ check('Write .env asks, not refused', needsApproval('risky', 'Write', { file_pat
     && !needsApproval('risky', 'Write', { file_path: path.join(folder, '.env') }, folder).deny);
 
 // Existing rules stay
-check('risky: rm -rf asks', needsApproval('risky', 'Bash', { command: 'rm -rf build' }, folder).ask);
+check('risky: rm -rf outside the folder asks', needsApproval('risky', 'Bash', { command: 'rm -rf ../build' }, folder).ask);
+check('risky: rm -rf inside the folder is free', !needsApproval('risky', 'Bash', { command: 'rm -rf build' }, folder).ask);
 check('risky: git status free', !needsApproval('risky', 'Bash', { command: 'git status' }, folder).ask);
 check('risky: write outside the folder asks', needsApproval('risky', 'Write', { file_path: path.join(folder, '..', 'other', 'a.ts') }, folder).ask);
 check('write: every Bash asks', needsApproval('write', 'Bash', { command: 'ls' }, folder).ask);

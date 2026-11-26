@@ -28,6 +28,13 @@ export function openEditor(b, machine) {
     }
     state.editorBot = b || null;
     moving = Boolean(b && machine);
+    autosaving = false;
+    clearTimeout(autoTimer);
+    autoTimer = null;
+    el.editorSaved.textContent = '';
+    savedSnapshot = '';
+    // Editing saves every change by itself: no Save and Cancel (editorChanged)
+    el.editor.classList.toggle('autosave', Boolean(b) && !moving);
     // From the bot's page, the editor takes the place of that page in the side panel instead of opening over everything
     el.editor.classList.toggle('side-edit', Boolean(b && !moving && !el.info.hidden && state.infoBot === b.id));
     el.editor.classList.toggle('moving', moving);
@@ -61,6 +68,7 @@ export function openEditor(b, machine) {
         machineChanged();
     }
     el.editor.hidden = false;
+    if (b && !moving) savedSnapshot = editorSnapshot();
     // In the side panel the editor is looked at first, not typed into: no field takes the focus (no keyboard on a tablet)
     if (!el.editor.classList.contains('side-edit')) (moving ? el.editorFolder : b ? el.editorName : el.editorRole).focus();
 }
@@ -482,6 +490,7 @@ export function chooseFolder() {
         return;
     }
     el.editorFolder.value = picker.folder;
+    queueMicrotask(() => editorChanged());
     filled.folder = false;
     closeDialog(el.folderPicker);
     folderChanged();
@@ -533,7 +542,68 @@ function saveBot(folder, to) {
         },
     }, to);
     setSaving(false);
+    if (autosaving) {
+        autosaving = false;
+        el.editorSaved.textContent = t('editor.saved');
+        el.editorSaved.classList.add('done');
+        return;
+    }
     closeDialog(el.editor);
+}
+
+// ---------------------------------------------------------------- Editing a bot saves by itself
+// No Save button while editing: every change goes to the bot's machine on its own, typing after a short pause, a
+// choice at once. Folder, repository and machine only once they are left (each step would check a folder), and only a
+// bot with a name and a folder; the checks (folder, clone, move) run as on a save, and the editor stays open.
+let autosaving = false;
+let autoTimer = null;
+const AUTOSAVE_MS = 800;
+const AT_LEAVING = new Set(['editor-folder', 'editor-repo', 'editor-machine']);
+
+/** A field of the editor changed (input, change), or a picture or a suggestion was taken (no event). */
+export function editorChanged(ev) {
+    const b = state.editorBot;
+    if (!b || moving || el.editor.hidden) return;
+    const id = ev && ev.target && /** @type {HTMLElement} */ (ev.target).id;
+    if (ev && ev.type === 'input' && AT_LEAVING.has(id)) return;
+    // a select or a box reports input and change: the change saves (at once)
+    const target = /** @type {HTMLInputElement | null} */ (ev && ev.target);
+    if (ev && ev.type === 'input' && target && (target.tagName === 'SELECT' || target.type === 'checkbox' || target.type === 'radio')) return;
+    clearTimeout(autoTimer);
+    el.editorSaved.textContent = t('editor.saving');
+    el.editorSaved.classList.remove('done');
+    autoTimer = setTimeout(autosave, ev && ev.type === 'input' ? AUTOSAVE_MS : 0);
+}
+
+/** What the editor holds right now, to save only what really changed (leaving a field reports a change too). */
+const editorSnapshot = () => JSON.stringify([
+    [...el.editorForm.elements].map((x) => (/** @type {HTMLInputElement} */ (x).type === 'checkbox' ? /** @type {HTMLInputElement} */ (x).checked : /** @type {HTMLInputElement} */ (x).value)),
+    state.editorAvatar, editorVoices,
+]);
+let savedSnapshot = '';
+
+function autosave() {
+    if (el.editor.hidden || !state.editorBot || !el.editorName.value.trim() || (!el.editorFolder.value.trim() && !el.editorRepo.value.trim())) {
+        el.editorSaved.textContent = '';
+        return;
+    }
+    const now = editorSnapshot();
+    if (now === savedSnapshot) {
+        el.editorSaved.textContent = t('editor.saved');
+        el.editorSaved.classList.add('done');
+        return;
+    }
+    savedSnapshot = now;
+    autosaving = true;
+    void submitEditor();
+}
+
+/** Leaving the editor with a change still waiting for its pause: saved now. */
+export function flushEditor() {
+    if (!autoTimer) return;
+    clearTimeout(autoTimer);
+    autoTimer = null;
+    if (el.editorSaved.textContent === t('editor.saving')) autosave();
 }
 
 /**
@@ -552,6 +622,9 @@ export async function submitEditor() {
     if (repo && !isRepository(repo)) { showEditorError(t('editor.repoInvalid')); el.editorRepo.focus(); return; }
     // Its sessions follow the bot to the new machine, and so does what is not on the git server yet
     takeWork = b && b.machine && b.machine !== machine ? workToTake(b) : null;
+    // A change saved by itself with folder and machine as they were: nothing to check, straight to the machine (also
+    // when the editor closes right after, which would drop the folder check's answer)
+    if (autosaving && b && b.folder === asked && (b.machine || '') === machine && !repo) { saveBot(asked, state.online.includes(machine) ? machine : undefined); return; }
     if (!state.online.includes(machine)) {
         if (b && b.machine === machine && b.folder === asked && state.online.length) { saveBot(asked, undefined); return; }
         showEditorError(t('editor.machineAsleep', { machine: upper(machine) }));
@@ -836,6 +909,7 @@ export async function receiveSuggestion(f) {
                 renderEditorAvatar();
                 el.editorNameSuggestions.hidden = true;
                 el.editorName.focus();
+                editorChanged();
             });
             el.editorNameSuggestions.appendChild(chip);
         });
@@ -843,12 +917,14 @@ export async function receiveSuggestion(f) {
     } else if (r.what === 'role') {
         suggestionsShown.role.push(r.role);
         el.editorRole.value = r.role;
+        editorChanged();
     } else if (r.what === 'avatar') {
         suggestionsShown.avatar.push('x');
         try {
             const source = r.image ? dataUrlToBlob(r.image) : new Blob([r.svg], { type: 'image/svg+xml' });
             state.editorAvatar = await shrinkImage(source, AVATAR_EDGE, true);
             renderEditorAvatar();
+            editorChanged();
         } catch (err) { showEditorError(t('editor.imageFailed', { error: err.message })); }
     }
 }
@@ -885,7 +961,15 @@ function splitFolderRefusal(text) {
 }
 
 /** @param {string} text @param {{ folder: string, roots: string[] }} [refused] from the backend's answer */
+/** An error of the editor; a change saved by itself is not saved then. */
 function showEditorError(text, refused) {
+    autosaving = false;
+    savedSnapshot = '';
+    el.editorSaved.textContent = '';
+    showEditorErrorShown(text, refused);
+}
+
+function showEditorErrorShown(text, refused) {
     const parts = refused?.folder && Array.isArray(refused.roots) ? refused : folderNotAllowed(text) ? splitFolderRefusal(text) : null;
     el.editorError.textContent = parts ? t('editor.folderNotAllowed', { folder: parts.folder }) : text;
     if (parts) el.editorError.append(node('span', 'error-roots', t('editor.allowedFolders') + '\n' + parts.roots.join('\n')));

@@ -112,6 +112,33 @@ export default async function ({ start, check }) {
     const asked = h.sent.find((f) => f.type === 'mission_propose');
     check('the goal goes to a machine for a proposal', asked?.text === 'Average 1000 EUR a month from trading strategies');
     check('the proposal is a form with the team to edit', await p.locator('.mission-member-edit').count() === 2 && (await p.inputValue('.mission-member-edit [data-field=name] >> nth=0')) === 'Tina');
+    // Leaving the page and coming back: the unsaved proposal is still there, with what was typed into it
+    await p.fill('.mission-form > label [data-field=name]', 'Trading paper');
+    await p.click('[data-tab=bots]');
+    await h.wait(200);
+    await p.click('[data-tab=missions]');
+    await h.wait(200);
+    check('back on the tab: the builder with the proposal and the edit', (await p.textContent('#git-title')) === 'New mission'
+        && (await p.inputValue('.mission-form > label [data-field=name]')) === 'Trading paper');
+    await p.click('#git-back');
+    await h.wait(200);
+    check('back to the overview: the begun mission waits there', await p.isVisible('.mission-actions button:has-text("Continue the new mission")'));
+    await p.click('.mission-actions button:has-text("Continue the new mission")');
+    await h.wait(200);
+    check('… and opens again', (await p.textContent('#git-title')) === 'New mission' && await p.locator('.mission-member-edit').count() === 2);
+    // A reload (relay restart, deploy, app in the background): the unsaved proposal comes back from the device
+    await p.fill('.mission-form > label [data-field=name]', 'Trading kept');
+    await p.reload();
+    await h.wait(800);
+    await h.push({ type: 'missions', machine: 'desk', missions });
+    await p.click('[data-tab=missions]');
+    await h.wait(300);
+    check('after a reload: the begun mission waits in the overview', await p.isVisible('.mission-actions button:has-text("Continue the new mission")'));
+    await p.click('.mission-actions button:has-text("Continue the new mission")');
+    await h.wait(200);
+    check('… with the edit made before', (await p.inputValue('.mission-form > label [data-field=name]')) === 'Trading kept' && await p.locator('.mission-member-edit').count() === 2);
+    check('the request carried an id, so a reloaded page can take the answer', /^[a-z0-9]+$/.test(asked?.id ?? ''), asked);
+    await p.fill('.mission-form > label [data-field=name]', 'Trading');
     await p.fill('.mission-form > label [data-field=folder]', 'C:/www/missions/trading');
     await p.fill('.mission-form > label [data-field=guardrails]', 'mode = paper\nlive = false\nmax_daily_loss_eur = 50');
     await p.click('.mission-actions button:has-text("Start mission")');

@@ -32,7 +32,6 @@ const WRITING = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', '
 
 /** Commands that ask even in "risky" mode. */
 const RISKY = [
-    /\brm\s+-[a-z]*[rf]/i, /\brm\s+(?!-)/, /\brmdir\b/i, /\bdel\s/i, /\bRemove-Item\b/i, /\brd\s+\/s/i,
     /\bgit\s+(push|reset\s+--hard|clean|checkout\s+--|rebase|branch\s+-D|stash\s+drop|filter-branch)/i,
     /\b(drop|truncate)\s+(table|database|schema)\b/i, /\bdelete\s+from\b/i,
     /\b(shutdown|Restart-Computer|Stop-Computer|format)\b/i,
@@ -116,7 +115,7 @@ export function needsApproval(policy: ApprovalPolicy, tool: string, input: Recor
 
     if (policy === 'write') return { ask: writing, reason: t('policy.writing') };
 
-    // risky: writing outside the bot folder, risky commands, foreign MCP tools with external effect
+    // risky: writing or deleting outside the bot folder, risky commands, foreign MCP tools with external effect
     if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit') {
         // Codex changes several files at once with a patch (input.files)
         const files = Array.isArray(input.files) ? input.files.map(String) : [String(input.file_path ?? input.notebook_path ?? '')];

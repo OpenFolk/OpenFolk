@@ -68,7 +68,7 @@ export default async function ({ start, check }) {
     check('refused: one request, no second move', moves().length === before + 1);
     check('refused: the dialog with the reason', (await editorOpen()) && (await p.textContent('#editor-error')).includes('already exists'), await p.textContent('#editor-error'));
     check('refused: the repository from the place is in its field', (await p.inputValue('#editor-repo')) === REMOTE, await p.inputValue('#editor-repo'));
-    await p.click('#editor [data-close]');
+    await p.keyboard.press('Escape');
     await h.wait(150);
 
     // A backend before bot_move: the dialog as before
@@ -78,7 +78,7 @@ export default async function ({ start, check }) {
     await h.wait(250);
     check('old backend: the dialog with folder and repository', (await editorOpen()) && (await p.inputValue('#editor-machine')) === 'workstation'
         && (await p.isHidden('#editor-error')));
-    await p.click('#editor [data-close]');
+    await p.keyboard.press('Escape');
     await h.wait(150);
 
     // Asleep: woken without a question, and the move goes on as soon as the machine is there

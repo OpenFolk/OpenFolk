@@ -18,7 +18,7 @@ export default async function ({ start, check }) {
         await p.fill('#editor-name', name);
         await p.fill('#editor-folder', folder);
         await h.wait(900);
-        await p.click('#editor-form button[type=submit]');
+        await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
         await h.wait(300);
         return h.sent.findLast((f) => f.type === 'bot_save');
     };
@@ -48,7 +48,7 @@ export default async function ({ start, check }) {
     await p.evaluate(() => openEditor(bot('pdf')));
     await h.wait(150);
     await p.fill('#editor-name', 'PDF-Writer');
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(300);
     const edited = h.sent.findLast((f) => f.type === 'bot_save');
     check('editing a bot: no setup', edited?.bot.id === 'pdf' && !('setup' in edited), edited);

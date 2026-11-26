@@ -30,7 +30,7 @@ export default async function ({ start, check }) {
     await menu().locator('.chip', { hasText: 'WORKSTATION' }).click();
     await h.wait(200);
     check('another machine: the small move dialog', await p.isVisible('#editor.moving') && (await p.textContent('#editor-title')) === 'Move PDF-Reader to WORKSTATION');
-    await p.click('#editor [data-close]');
+    await p.keyboard.press('Escape');
     await h.wait(100);
 
     await h.push({ type: 'agents', online: ['desk'] });

@@ -14,7 +14,7 @@ export default async function ({ start, check }) {
 
     const h = await start({ online: ['desk', 'workstation'] });
     const p = h.page;
-    const footer = () => p.getAttribute('#tab-repos', 'title');
+    const footer = () => p.getAttribute('[data-tab=machines]', 'title');
     await h.push({ type: 'backend_status', machine: 'desk', since: '2026-10-13T08:00:00Z', changed: [] });
     await h.push({ type: 'backend_status', machine: 'workstation', since: '2026-10-13T08:00:00Z', changed: [], protocol: web, minClientProtocol: 0 });
     await h.wait(100);
@@ -25,6 +25,6 @@ export default async function ({ start, check }) {
     check('backend needs a newer app: hint on the repos tab', (await footer()).includes('WORKSTATION: app and backend do not fit'), await footer());
     await p.evaluate(() => openGitPage());
     await h.wait(200);
-    const page = await p.textContent('#git-page-content');
+    const page = await p.textContent('#status-repos');
     check('page explains what to update', page.includes('This app is too old for the backend on WORKSTATION') && page.includes('Update the app'), page);
 }

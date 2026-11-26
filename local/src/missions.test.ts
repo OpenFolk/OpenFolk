@@ -160,12 +160,13 @@ check('after the first cycle: waiting for approval', mission.status === 'waiting
 check('the cycle\'s cost counts', mission.spent.costUsd === 0.1 && mission.spent.turns === 1, mission.spent);
 check('the pending reason waits for the pause between cycles', cycles() === 1 && mission.loop.pending.length > 0);
 
-// ---- The user allows: the task goes out as a job into a new conversation of the assignee, its result comes back
+// ---- The user allows: the task goes out as a job into the assignee's main chat, its result comes back
 const runsBefore = runs.length;
 m.handle({ type: 'mission_approval_reply', missionId: mission.id, id: mission.approvals[0].id, allow: true }, 'c1');
 mission = missions.findMission(mission.id)!;
 const job = runs.slice(runsBefore).find((x) => x.turn.job);
-check('allowed: the task ran as a job in a new conversation of Max', !!job && job.turn.chatId.startsWith(`${max.id}~`) && bots.findConversation(job.turn.chatId)?.title === 'Shop launch: Research the market');
+check('allowed: the task ran as a job in the main chat of Max, no new conversation', !!job && job.turn.chatId === max.id && !(bots.findBot(max.id)!.conversations ?? []).length);
+check('the main chat shows the task from the supervisor', readHistory(max.id).some((e) => e.from === sara.id && e.text.includes('Research the market')));
 const done = mission.tasks.find((x) => x.id === research.id)!;
 check('the result closes the task', done.status === 'done' && done.result === `result of ${job?.turn.chatId}`, done);
 check('the delegated work counts against the budget', mission.spent.turns === 2 && mission.spent.costUsd === 0.35, mission.spent);

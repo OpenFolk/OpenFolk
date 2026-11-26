@@ -27,7 +27,7 @@ export default async function ({ start, check }) {
     await h.openChat('PDF');
 
     await more('a1');
-    check('"⋯" opens the menu', (await menu()) === 'Reply|Pin|Read aloud|Copy|Forward|Report', await menu());
+    check('"⋯" opens the menu', (await menu()) === 'Reply|Like|Pin|Read aloud|Copy|Forward|Report', await menu());
     await p.locator('#message-menu button', { hasText: 'Pin' }).click();
     await h.wait(200);
     check('bar shows the pinned answer', (await bar()).includes('PDF-Reader: The deploy command is npm run deploy.'), await bar());
@@ -49,7 +49,7 @@ export default async function ({ start, check }) {
 
     await p.evaluate(() => { const b = document.querySelector('.bubble[data-eid="a1"]'); const r = b.getBoundingClientRect(); b.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.x + 20, clientY: r.y + 10 })); });
     await h.wait(150);
-    check('right click opens the menu with "Unpin"', (await menu()).startsWith('Reply|Unpin'), await menu());
+    check('right click opens the menu with "Unpin"', (await menu()).startsWith('Reply|Like|Unpin'), await menu());
     await p.evaluate(() => { document.getElementById('message-menu').hidden = true; });
 
     const selection = await p.evaluate(() => {

@@ -346,6 +346,16 @@ export class BotSession {
         this.attachments.push(a);
     }
 
+    /** Stops background tasks of this session (shells, subagents); the CLI reports the rest with background_tasks_changed. */
+    async stopTasks(ids: string[]): Promise<void> {
+        const q = this.running;
+        if (!q) return;
+        for (const id of ids) {
+            if (!this.background.has(id)) continue;
+            await q.stopTask(id).catch((e: Error) => console.log(`${this.key}: background task ${id} not stopped: ${e.message}`));
+        }
+    }
+
     async interrupt(): Promise<void> {
         if (this.active) this.stopped = true;
         this.discardQueue();

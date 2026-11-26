@@ -10,6 +10,7 @@ import { connectionVia } from './platform.js';
 import { renderSettings } from './settings.js';
 import { confirmDialog } from './dialogs.js';
 import { setupCard, signInLost } from './welcome.js';
+import { reposBadge } from './menus.js';
 
 // ---------------------------------------------------------------- Machines and waking
 
@@ -74,11 +75,15 @@ export function refreshMachinesPage() {
     if (!el.machinesPage.hidden) renderMachines();
 }
 
-/** The "!" on the status tab while a machine that runs bots lost its sign-in; the page says which and how. */
+/**
+ * The badge of the status tab: the number of repos with open changes (menus.js renderGitTotal), "!" for a hint or while
+ * a machine that runs bots lost its sign-in; the page says which and how.
+ */
 export function renderStatusBadge() {
     const lost = signInLost();
-    el.tabStatusBadge.hidden = !lost;
-    el.tabStatusBadge.title = lost ? t('status.signInLost') : '';
+    el.tabStatusBadge.hidden = !lost && !reposBadge.count && !reposBadge.hint;
+    el.tabStatusBadge.textContent = reposBadge.count && !lost ? String(reposBadge.count) : '!';
+    el.tabStatus.title = [lost ? t('status.signInLost') : '', reposBadge.title].filter(Boolean).join(' · ');
 }
 
 export function renderMachines() {

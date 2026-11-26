@@ -52,7 +52,7 @@ export default async function ({ start, check }) {
     // Saving: the template's presets travel unseen, and only while its role stays
     await p.locator('#editor-role-suggestions .chip', { hasText: 'Mail' }).click();
     await p.fill('#editor-name', 'Mira');
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(400);
     const mail = h.sent.findLast((f) => f.type === 'bot_save');
     check('saved with setup, the template\'s working instructions and approval level, a folder of its own',
@@ -63,7 +63,7 @@ export default async function ({ start, check }) {
     await p.locator('#editor-role-suggestions .chip', { hasText: 'Product Scout' }).click();
     await p.fill('#editor-role', 'Product ideas');
     await p.fill('#editor-name', 'Pia');
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(400);
     const pia = h.sent.findLast((f) => f.type === 'bot_save');
     check('a role typed over the template: its presets dropped', pia?.bot.role === 'Product ideas' && pia.bot.tone === '' && pia.bot.approval === 'risky', pia?.bot);
@@ -76,7 +76,7 @@ export default async function ({ start, check }) {
         await h.wait(150);
         await p.locator('#editor-role-suggestions .chip', { hasText: template }).click();
         await p.fill('#editor-name', name);
-        await p.click('#editor-form button[type=submit]');
+        await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
         await h.wait(400);
         const saved = h.sent.findLast((f) => f.type === 'bot_save');
         check(`settings on "every change": ${template} starts with it`, saved?.bot.name === name && saved.bot.approval === 'write', saved?.bot);

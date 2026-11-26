@@ -45,7 +45,7 @@ export default async function ({ start, check }) {
 
     await p.click('.bubble[data-eid="a1"] .more');
     const errors = await checkMenu(p, '#message-menu');
-    check('message menu: all entries with the icon before the label', errors.length === 0 && (await p.locator('#message-menu button').count()) === 6, errors);
+    check('message menu: all entries with the icon before the label', errors.length === 0 && (await p.locator('#message-menu button').count()) === 7, errors);
     await p.locator('#message-menu button svg').first().click();
     check('a tap on the icon works (Reply)', await p.evaluate(() => !document.querySelector('[data-el=reply-bar]').hidden));
 }

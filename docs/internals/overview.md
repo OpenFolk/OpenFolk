@@ -236,6 +236,9 @@ every machine without the relay or the other side knowing. A **like** is a field
 (`HistoryEntry.like`) in both halves, found by the entry id the halves share, and the one part of an entry that
 changes after other machines have it: `mergeHistory` therefore takes over a newer like of an entry it knows, and a
 like taken back stays as `on: false` with its time instead of being removed, or an older copy would bring it back.
+A like on a bot's answer starts no turn: a turn costs money and time, and a bot answering praise is noise. It waits in
+`like-notes.json` on the bot's machine and goes in front of the user's next message in that chat, as the voice
+conversation's recap does; groups have none, because that message may go to another member than the one liked.
 
 **Machines bound to an account** turn "machines belong to nobody" around for one case: an employee's or customer's
 own computer, joined with a setup link (`/setup-invite`, `/setup` in `relay/src/relay.ts`, `MachineTokens` in

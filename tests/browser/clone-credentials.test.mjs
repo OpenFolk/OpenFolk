@@ -25,7 +25,7 @@ export default async function ({ start, check }) {
         await h.wait(150);
         await p.fill('#editor-name', 'Private');
         await p.fill('#editor-repo', REPO);
-        await p.click('#editor-form button[type=submit]');
+        await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
         await h.wait(300);
     };
 

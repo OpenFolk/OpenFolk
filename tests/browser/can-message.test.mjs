@@ -21,7 +21,7 @@ export default async function ({ start, check }) {
         await h.wait(150);
     };
     const save = async () => {
-        await p.click('#editor-form button[type=submit]');
+        await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
         await h.wait(200);
         return h.sent.findLast((f) => f.type === 'bot_save');
     };

@@ -2,11 +2,12 @@
 import { t } from './i18n.js';
 import { node, state, storage } from './core.js';
 import { paneFor, panes } from './panes.js';
-import { bot, responsibleMachine, send, showImageLarge, upper } from './e2e.js';
+import { bot, isPerson, responsibleMachine, send, showImageLarge, upper } from './e2e.js';
 import { scroll, setReply } from './chat-features.js';
 import { approvalsToBottom, composerButtons, showEvent, textHeight } from './queue.js';
 import { expectAnswer, readWaitingAnswer, renderAutoRead, stopReadAloud } from './read-aloud.js';
 import { alertDialog } from './dialogs.js';
+import { sendTracked } from './outbox.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -163,7 +164,7 @@ export async function stopRecording(submit, spoken = false) {
     const b = bot(chatId);
     // Pasted images and files go along; the backend only transcribes the recording
     const more = p.uploads.map((u) => ({ name: u.name, type: u.type, data: u.data, thumb: u.thumb }));
-    send({
+    (isPerson(chatId) ? send : sendTracked)({
         type: 'send', chatId, text: p.el.text.value.trim(),
         attachments: [audio, ...more],
         replyTo: p.replyTo || undefined,

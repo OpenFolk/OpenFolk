@@ -20,7 +20,9 @@ One folder holds one mission that is not over, because there is one `mission.jso
 
 The supervisor works in cycles, each one turn in a conversation of its own (`Mission.chatId`) with the mission's state
 as fenced data (`cyclePrompt`). A turn never waits for the team: a delegated task is a job between bots (`jobs.ts`)
-into a new conversation of the assignee, and its result comes back through `deliverFeedback`, which hands it to the
+into the assignee's main chat, where the user follows that bot's work anyway (a main chat that is busy queues it; the
+queue does not survive a restart, which reports the job as interrupted and fails the task for the next cycle), and its
+result comes back through `deliverFeedback`, which hands it to the
 mission (`MissionControl.jobResult`) instead of starting a turn of the giving bot. That result, the user's decision on
 an approval, a team member's `mission_event`, a resume or the mission's cron each add a reason to `loop.pending`; a
 cycle collects all reasons that arrived meanwhile. Waiting inside a turn would tie up the session for hours and lose

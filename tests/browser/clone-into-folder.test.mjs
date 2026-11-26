@@ -26,7 +26,7 @@ export default async function ({ start, check }) {
         await p.fill('#editor-folder', folder);
         await h.wait(900);
         await p.fill('#editor-repo', REPO);
-        await p.click('#editor-form button[type=submit]');
+        await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
         await h.wait(300);
     };
 
@@ -37,7 +37,7 @@ export default async function ({ start, check }) {
         && !h.sent.some((f) => f.type === 'bot_save'), await p.textContent('#editor-error'));
 
     cloneAnswer = { ok: true };
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(300);
     check('cloned on the second try: saved with that folder', h.sent.some((f) => f.type === 'bot_save' && f.bot.folder === 'C:/www/web'));
 

@@ -10,7 +10,7 @@ export default async function ({ start, check }) {
     const p = h.page;
     await h.push({ type: 'git_status', machine: 'desk', status: { skool: [SKOOL], mail: [MAIL] } });
     await h.wait(100);
-    await p.click('#tab-repos');
+    await p.click('[data-tab=machines]');
     await h.wait(200);
     const meta = await p.$$eval('#git-page .git-repo', (rows) => Object.fromEntries(rows.map((r) => [r.querySelector('strong').textContent, r.querySelector('.git-meta')?.textContent || ''])));
     check('a repo with a time: "since" and the time of today', meta.skool.includes("since 09:41"), meta);

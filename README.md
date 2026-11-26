@@ -77,8 +77,8 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   per language) with "Listen" for a sample. "AI avatar" there opens a set of ready-made portraits (drawn, in
   `webapp/avatars/`; `npm run avatar-set` redraws them) with the image model as the last entry, and "Suggest" proposes
   names (a first name with a field of work, kept in a field of its own), a role or a profile picture from the folder's
-  README/CLAUDE.md; with a Gemini or OpenAI key in the settings the avatar is a generated photo, otherwise an SVG drawn
-  by the model. "Duplicate bot" on its page makes a copy under a new name on the same machine: profile, model,
+  README/CLAUDE.md; with a Gemini or OpenAI key in the settings the avatar is a generated photo, otherwise a portrait put
+  together from the parts of a kit (`local/src/avatar-kit.ts`; the model only chooses the parts, so nothing is drawn freehand). "Duplicate bot" on its page makes a copy under a new name on the same machine: profile, model,
   approval level, folder and picture, and its routines paused; history, knowledge and conversations stay with the
   original. The field "Folder" is a text field: the folder has to exist on the bot's machine and lie under that machine's
   allowed folders (`docs/running.md`, "Allowed folders"), otherwise the backend refuses it with the reason. A git
@@ -163,6 +163,9 @@ phone with a QR code. Everything else is in [Getting started](#getting-started).
   "Unlike" takes it back. A bot with "Hand over to" set in its settings gets the tool `hand_over`: it sends that person its
   summary, they get a notification, and the user gets a "Continue with …" button in the bot's chat. Bots do not read
   the chats between people. "Block" in the chat's menu stops their messages and yours until "Unblock".
+- **Likes.** "Like" in the ⋯ menu of a bot's answer puts a heart on it. The bot does not answer the like; it hears of
+  it with your next message in that chat, together with a reminder of the answer, and may keep what you value in how it
+  works as knowledge ("workstyle"). Not in group chats, where the next message may go to another bot.
 - **Reporting.** "Report" in the ⋯ menu of a bot's answer or a person's message sends it with a reason to the admins
   of the relay, into your chat with them. On a relay without another admin, the report goes by mail to the app's
   publisher (support@openfolk.app, also under Settings › About).

@@ -1,6 +1,6 @@
 // Likes in a person chat: the menu of the other person's message offers "Like", the heart appears once the backend
 // stored it (frame "liked"), "Unlike" takes it away; a like of the other person shows on one's own message; a history
-// that carries likes shows them; own messages and bot chats offer no like.
+// that carries likes shows them; own messages offer no like; a bot's answer can be liked too.
 import { bot } from './harness.mjs';
 
 const people = [{ id: 'kunde', name: 'Kunde Müller', admin: false, reach: 'admins' }];
@@ -73,5 +73,10 @@ export default async function ({ start, check }) {
     await h.openChat('Anna');
     await h.wait(200);
     const bots = await menu('a1');
-    check('a bot\'s answer offers no like', bots.length > 0 && !bots.includes('Like'), bots);
+    check('a bot\'s answer offers "Like"', bots.includes('Like'), bots);
+    await p.locator('#message-menu button', { hasText: /^Like$/ }).click();
+    await h.wait(200);
+    const toBot = h.sent.findLast((f) => f.type === 'like');
+    check('the like goes to the backend for the bot\'s chat', toBot && toBot.chatId === 'anna' && toBot.entryId === 'a1' && toBot.on === true, toBot);
+    check('the heart says the bot hears of it with the next message', (await heart('a1')) === 'You like this. Anna hears of it with your next message.', await heart('a1'));
 }

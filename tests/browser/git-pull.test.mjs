@@ -61,7 +61,7 @@ export default async function ({ start, check }) {
     await h.wait(150);
     await p.selectOption('#editor-machine', 'workstation');
     dialog = null;
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(200);
     const saved = h.sent.find((f) => f.type === 'bot_save');
     const take = h.sent.find((f) => f.type === 'work_take');
@@ -77,7 +77,7 @@ export default async function ({ start, check }) {
     await h.wait(150);
     await p.selectOption('#editor-machine', 'workstation');
     dialog = null;
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(200);
     check('only behind: no question, no work requested', dialog === null && h.sent.filter((f) => f.type === 'bot_save').length === 2
         && h.sent.filter((f) => f.type === 'work_take').length === 1, dialog);

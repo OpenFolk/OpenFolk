@@ -479,7 +479,11 @@ export function saveCategory(input: CategoryInput, chatId?: string): Category {
     const existing = categories.find((c) => c.id === id);
     if (input.id && !existing) throw new Error(t('bots.categoryNotFound'));
     const now = new Date().toISOString();
-    const category: Category = { id, name: input.name.trim() || id, createdAt: existing?.createdAt ?? now, updatedAt: now, ...(existing?.order !== undefined ? { order: existing.order } : {}) };
+    const stay = input.stay ?? existing?.stay;
+    const category: Category = {
+        id, name: input.name.trim() || id, createdAt: existing?.createdAt ?? now, updatedAt: now, ...(existing?.order !== undefined ? { order: existing.order } : {}),
+        ...(stay ? { stay: true } : {}),
+    };
     if (existing) categories[categories.indexOf(existing)] = category;
     else categories.push(category);
     saveCategories(categories);

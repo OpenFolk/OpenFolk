@@ -45,7 +45,7 @@ export default async function ({ start, check }) {
     check('names only: field of work and voice kept', (await p.inputValue('#editor-name')) === 'Bernd' && (await p.inputValue('#editor-area')) === 'Research' && (await p.inputValue('#editor-voice')) === 'male');
 
     await p.fill('#editor-name', 'Rudolf');
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(200);
     const saved = h.sent.findLast((f) => f.type === 'bot_save');
     check('saving sends name, field of work, role and voice', saved && saved.bot.name === 'Rudolf' && saved.bot.area === 'Research' && saved.bot.role === 'Web research' && saved.bot.voice === 'male', saved);

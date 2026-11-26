@@ -331,6 +331,8 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .dot.error { background: var(--danger); }
 .badge { background: var(--warning); color: #fff; border-radius: 10px; min-width: 20px; height: 20px; padding: 0 6px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 @keyframes pulse { 50% { opacity: .3; } }
+.chat-list li.section .stay-pin { display: inline-flex; margin-left: 6px; color: var(--muted); vertical-align: middle; }
+.chat-list li.section .stay-pin svg { width: 13px; height: 13px; }
 .chat-list li.section {
     display: block; cursor: default; padding: 10px 14px 4px; border-bottom: 0;
     font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
@@ -403,6 +405,9 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .machines-page > * { max-width: 640px; }
 .machines-page h3 { margin: 0; font-size: 14px; color: var(--text); }
 .machines-page h3 + .usage, .machines-page h3 + .machines { margin-top: -4px; }
+/* The open changes of all bots inside the status page: the page scrolls, the list not on its own */
+.status-repos { display: flex; flex-direction: column; margin-top: -4px; }
+.status-repos .git-list { max-height: none; max-width: 760px; overflow: visible; }
 /* The line under a machine: bots, engines, backend, repos */
 .machine-details { margin: -4px 0 4px 19px; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
 .account-line { margin: 0; font-size: 12.5px; }
@@ -922,6 +927,14 @@ mark.search-mark.current { background: #ff9f1a; box-shadow: 0 0 0 2px #ff9f1a; }
 /* A voice message takes the full bubble width, however short its transcript, so the track is long enough to follow */
 .bubble.voice { width: 100%; min-width: 220px; }
 .bubble.pending { opacity: .7; font-style: italic; }
+/* A message on its way (outbox.js): the line below it says so; not delivered in the color of an error */
+.bubble.outbox { font-style: normal; }
+.outbox-line { font-size: 12px; text-align: right; margin-top: 2px; }
+.outbox-thumbs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.outbox-thumbs img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; }
+.bubble.outbox .text { white-space: pre-wrap; }
+.bubble.outbox.failed { opacity: 1; }
+.bubble.outbox.failed .outbox-line { color: var(--danger); }
 .voice-player { display: flex; align-items: center; gap: 10px; margin: 2px 0 4px; }
 .voice-button { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; cursor: pointer; font-size: 14px; flex: 0 0 auto; }
 .voice-track { flex: 1; height: 4px; border-radius: 2px; background: rgba(0, 0, 0, .15); overflow: hidden; min-width: 80px; }
@@ -973,6 +986,16 @@ a.primary, a.btn { text-decoration: none; }
 .settings-hint { font-size: 12.5px; color: var(--muted); padding-left: 26px; }
 /* Moving a bot: the editor as a small dialog with folder and repository only */
 #editor.moving #editor-form > :not(.on-move) { display: none; }
+/* Editing a bot saves by itself: no Save and Cancel, a line that says it is saved */
+#editor.autosave #editor-form > .actions { display: none; }
+#editor-form { position: relative; }
+.editor-close { display: none; position: absolute; top: 10px; right: 10px; z-index: 2; }
+#editor.autosave .editor-close { display: inline-flex; }
+/* the phone has the back arrow of the page */
+@media (max-width: 760px) { #editor.autosave .editor-close { display: none; } }
+#editor:not(.autosave) .editor-saved { display: none; }
+.editor-saved { margin: 0; min-height: 1.4em; text-align: right; }
+.editor-saved.done { color: var(--ok); }
 /* A new bot: role, name, folder and repository, the role first; the model's suggestion buttons stay with editing */
 #editor.new #editor-form > :not(.on-new), #editor.new #editor-name-suggest, #editor.new #editor-role-suggest { display: none; }
 #editor.new .page-back, #editor.new #editor-title, #editor.new #editor-new-hint { order: -2; }

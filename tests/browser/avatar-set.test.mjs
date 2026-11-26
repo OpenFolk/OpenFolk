@@ -29,7 +29,7 @@ export default async function ({ start, check }) {
     await h.wait(500);
     const picked = await p.evaluate(() => ({ closed: document.getElementById('avatar-picker').hidden, src: (document.querySelector('#editor-avatar img') || {}).src || '' }));
     check('a tap takes the picture over as the bot\'s avatar and closes the set', picked.closed && picked.src.startsWith('data:image/jpeg;base64,') && await p.isVisible('#editor'), picked.src.slice(0, 40));
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(300);
     const saved = h.sent.findLast((f) => f.type === 'bot_save');
     check('saved with the picture, like an uploaded one', saved && saved.bot.avatar.startsWith('data:image/jpeg;base64,') && saved.bot.avatar.length > 2000, saved && saved.bot.avatar.slice(0, 40));

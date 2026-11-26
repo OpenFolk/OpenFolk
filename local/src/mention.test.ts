@@ -27,6 +27,11 @@ check('several, order of the list', ids(mentioned('@mail and @cloud', bots)), 'c
 check('@all hits everyone', ids(mentioned('@all please', bots)), 'cloud,mail');
 check('an e-mail address is no mention of a known bot', ids(mentioned('mail@example.com', bots)), '');
 check('unknown bot', ids(mentioned('@nobody', bots)), '');
+// First names whose ids differ (hub, cloud, bruno): the name hits, whatever its case
+const team = [{ id: 'hub', name: 'Hugo', role: '' }, { id: 'cloud', name: 'Carlo', role: '' }, { id: 'bruno', name: 'Bea', role: '' }] as Bot[];
+check('first names hit the bots with other ids, case-insensitive', ids(mentioned('@Hugo, @carlo and @BEA, please', team)), 'hub,cloud,bruno');
+check('the id still hits', ids(mentioned('@hub', team)), 'hub');
+check('a first name followed by punctuation', ids(mentioned('Frag @Hugo.', team)), 'hub');
 check('no note without a mention', delegationContext([]), '');
 check('note names id, name and role', delegationContext(bots.slice(0, 1)).includes('@cloud (Cloud, Infrastructure)'), true);
 check('note names the tool', delegationContext(bots).includes('message_bot'), true);

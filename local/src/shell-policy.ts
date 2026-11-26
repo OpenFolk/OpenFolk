@@ -8,7 +8,7 @@ import path from 'node:path';
 import { isUnder } from './bots.ts';
 
 /** Why a command asks; the keys are i18n keys `policy.<risk>`. */
-export type ShellRisk = 'outsideFolder' | 'sensitiveFile' | 'remoteCode' | 'install' | 'elevation' | 'envDump';
+export type ShellRisk = 'outsideFolder' | 'deleteOutside' | 'sensitiveFile' | 'remoteCode' | 'install' | 'elevation' | 'envDump';
 
 /** Sensitive file names ('zugangsdaten' is German for credentials); templates of .env files stay free. */
 const SENSITIVE = /(^|[\\/])\.env(\.[\w-]+)?$|\.(pem|key|pfx|p12|ppk)$|(^|[\\/])id_(rsa|ed25519|ecdsa)$|zugangsdaten|credentials|(^|[\\/])secrets\.|(^|[\\/])vault(\.json|-key)$/i;
@@ -175,6 +175,28 @@ function installs(name: string, args: string[]): boolean {
     return false;
 }
 
+/**
+ * Commands that delete files. Deleting inside the bot folder is the bot's everyday work (build output, scratch files)
+ * and runs without a card; a target outside the folder, the folder itself or one the rule cannot tell (a variable) asks.
+ */
+const DELETERS = new Set(['rm', 'rmdir', 'del', 'erase', 'rd', 'remove-item', 'ri', 'unlink', 'shred', 'trash']);
+
+/** What a delete command removes: PowerShell's -Path/-LiteralPath, else the positional words (cmd switches /s /q dropped). */
+function deleteTargets(args: string[]): string[] {
+    const named = param(args, ['path', 'literalpath']);
+    if (named) return named.split(',').map((x) => x.trim()).filter(Boolean);
+    return positional(args).filter((a) => !/^\/[a-z]$/i.test(a));
+}
+
+/** A delete target that leaves the bot folder, is the folder itself, or cannot be told: asked about. */
+function deletesOutside(target: string, cwd: string, folder: string): boolean {
+    const p = expand(target);
+    if (p === null) return true;
+    if (!p.trim()) return false;
+    if (path.relative(path.resolve(folder), path.resolve(cwd, p)) === '') return true;
+    return outside(target, cwd, folder);
+}
+
 /** The first reason for a question in "risky", or null when the command may run without one. */
 export function shellRisk(command: string, folder: string): ShellRisk | null {
     const line = command.toLowerCase();
@@ -205,6 +227,9 @@ export function shellRisk(command: string, folder: string): ShellRisk | null {
         if ((READERS.has(name) && args.some(sensitive)) || [...part.matchAll(/<\s*("[^"]*"|'[^']*'|[^\s;|&<>]+)/g)].some((m) => sensitive(m[1].replace(/^["']|["']$/g, '')))) {
             return 'sensitiveFile';
         }
+        if (DELETERS.has(name) && deleteTargets(args).some((target) => deletesOutside(target, cwd, folder))) return 'deleteOutside';
+        // find deletes below its root: the root counts, inside the folder it is free
+        if (name === 'find' && /\s-delete\b|\s-exec\s+rm\b/.test(part) && outside(positional(args)[0] ?? '.', cwd, folder)) return 'deleteOutside';
         if (writeTargets(part, name, args).some((target) => outside(target, cwd, folder))) return 'outsideFolder';
     }
     return null;

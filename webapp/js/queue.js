@@ -12,6 +12,7 @@ import { isRead, renderEntry, scroll, setReply } from './chat-features.js';
 /** @typedef {import('./panes.js').Pane} Pane */
 import { canRecord, dictationOn, imageRequested, rec, renderUploads } from './voice.js';
 import { dropExpected } from './read-aloud.js';
+import { sendTracked } from './outbox.js';
 import { INLINE_IMAGE_MAX, cachedUrl, fileUrl, isMarkdown, isVideo, loadWhenVisible, showMarkdown, showVideo } from './media.js';
 
 // ---------------------------------------------------------- Queue
@@ -645,7 +646,8 @@ export function sendMessage(p) {
     if ((!text && p.uploads.length === 0 && !(p.replyTo && p.replyTo.forwarded)) || !chatId || !state.agentOnline || machineToWake(chatId)) return;
     // Single chat directly to the bot's machine (the attachments land there too); groups to the first one awake
     const b = bot(chatId);
-    send({
+    // to a bot or group: kept until its machine stored it, sent again after a dropped connection (outbox.js)
+    (isPerson(chatId) ? send : sendTracked)({
         type: 'send', chatId, text,
         attachments: p.uploads.length ? p.uploads.map((u) => ({ name: u.name, type: u.type, data: u.data, thumb: u.thumb })) : undefined,
         replyTo: p.replyTo || undefined,
@@ -665,7 +667,10 @@ export function sendMessage(p) {
 export function textHeight(p) {
     const text = p.el.text;
     text.style.height = 'auto';
-    text.style.height = Math.min(text.scrollHeight, window.innerHeight * 0.4) + 'px';
+    // Empty, or measured while hidden (recording, a parked pane: scrollHeight 0): the height of one line from the CSS.
+    // A height taken then stayed and squeezed the empty field to a sliver with the placeholder cut off.
+    if (text.value && text.scrollHeight) text.style.height = Math.min(text.scrollHeight, window.innerHeight * 0.4) + 'px';
+    else text.style.height = '';
     composerButtons(p);
 }
 

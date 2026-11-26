@@ -42,7 +42,7 @@ export interface MissionHost {
     /** Runs one cycle: a turn of the supervisor in the mission's chat, without a visible message of the user. */
     runCycle(m: Mission, bot: Bot, content: string, onDone: (r: CycleResult) => void): void;
     /**
-     * Prepares a task's job between bots in a new conversation of the assignee; `send` hands it out. Its result comes
+     * Prepares a task's job between bots into the assignee's main chat; `send` hands it out. Its result comes
      * to jobResult, possibly before `send` returns, so the task records the job in between.
      */
     delegate(m: Mission, task: MissionTask, bot: Bot, text: string): { jobId: string; chatId: string; send: () => void } | { error: string };
@@ -459,7 +459,7 @@ export class MissionControl {
             Object.assign(y, { status: 'delegated', jobId: r.jobId, chatId: r.chatId, result: undefined, updatedAt: this.now().toISOString() });
         }, { kind: 'delegation', by: m.supervisor, text: t('missions.ev.delegated', { task: task.title, bot: bot.name }), data: task.id });
         r.send();
-        return { text: `Delegated "${task.title}" to ${bot.name} (conversation ${r.chatId}). The result starts a new cycle by itself; end your turn when you have nothing else to plan.` };
+        return { text: `Delegated "${task.title}" to ${bot.name} (into its main chat). The result starts a new cycle by itself; end your turn when you have nothing else to plan.` };
     }
 
     // ------------------------------------------------------------------ The bots' tools

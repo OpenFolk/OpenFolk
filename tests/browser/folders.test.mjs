@@ -80,7 +80,7 @@ export default async function ({ start, check }) {
 
     // rename and delete by a long press (with the mouse: right click) on the heading
     await openMenu('#chat-list li.section[data-category="kunden"]');
-    check('the heading\'s menu: move (here only up, it is the last folder), rename, delete', (await menuItems()).join('|') === 'Move up|Rename folder|Delete folder', await menuItems());
+    check('the heading\'s menu: move (here only up, it is the last folder), keep its bots, rename, delete', (await menuItems()).join('|') === 'Move up|Keep its bots in the folder|Rename folder|Delete folder', await menuItems());
     await p.locator('#row-menu button', { hasText: 'Rename folder' }).click();
     await h.wait(100);
     check('the dialog with the name', (await p.inputValue('#text-input')) === 'Kunden');
@@ -104,9 +104,10 @@ export default async function ({ start, check }) {
     const options = await p.evaluate(() => [...document.querySelectorAll('#editor-category option')].map((o) => o.value + '=' + o.textContent).join('|'));
     check('bot editor: the folders to choose from, the current one chosen', options === '=No folder|extern=Extern|intern=Intern|kunden=Kundschaft' && (await p.inputValue('#editor-category')) === 'kunden', options);
     await p.selectOption('#editor-category', 'intern');
-    await p.click('#editor-form button[type=submit]');
     await h.wait(300);
-    check('saving sends the folder', sent('bot_save').at(-1)?.bot.category === 'intern', sent('bot_save').at(-1));
+    await p.keyboard.press('Escape');
+    await h.wait(100);
+    check('choosing it saves the folder', sent('bot_save').at(-1)?.bot.category === 'intern', sent('bot_save').at(-1));
     await openMenu('#chat-list li[data-chat="g:team"]');
     await p.locator('#row-menu button', { hasText: 'Edit group' }).click();
     await h.wait(200);

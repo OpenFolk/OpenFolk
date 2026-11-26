@@ -214,7 +214,7 @@ home volume. The image cannot shut down (`OPENFOLK_CONTAINER=1`) and `AUTOLOGON_
 machine. `npm run restart -w local` inside the container ends the process once no bot is working and Docker
 starts it again (`restart: unless-stopped`); `docker compose restart` does the same at once. The image has no
 Python, so bots on this machine do not transcribe voice messages. For them take the same tag with `-voice`
-(`ghcr.io/openfolk/openfolk-local:latest-voice`, `:0.7.1-voice` …; `OPENFOLK_LOCAL_IMAGE` in the `.env`): larger, with
+(`ghcr.io/openfolk/openfolk-local:latest-voice`, `:0.8.0-voice` …; `OPENFOLK_LOCAL_IMAGE` in the `.env`): larger, with
 Python, faster-whisper and Piper (`local/Dockerfile.voice`). It transcribes on the CPU with the model `small`
 unless the machine settings choose another; the model is downloaded into `/home/node` with the first voice message,
 the voices for reading aloud with the first message read with "the bot's machine" as the voice.

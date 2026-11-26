@@ -142,6 +142,9 @@ export function responsibleMachine(bot: Pick<Bot, 'machine'>, online: string[]):
 /** Frames about the machine and its logins, which only its owner's account ('main') may send. */
 const MAIN_ONLY = new Set<string>(['claude_sign_in', 'relay_claim', 'machine_shutdown', 'machine_autologon', 'machine_settings_save', 'voice_setup', 'machine_join_link', 'backend_restart', 'vscode_sessions', 'vscode_open', 'vscode_close', 'vscode_adopt', 'vscode_show']);
 
+/** How much of a liked answer the bot is reminded of with the like. */
+const LIKE_EXCERPT = 300;
+
 export class BotManager implements SessionHooks {
     private sessions = new Map<string, BotSession>();
     private approvals = new Map<string, OpenApproval>();
@@ -1455,13 +1458,15 @@ export class BotManager implements SessionHooks {
                         this.messageToPerson(frame.chatId, frame.text, uploads, frame.replyTo);
                         break;
                     }
+                    // Sent again by the app after a dropped connection: stored once, the copy only answered
+                    if (frame.cid && this.knownMessage(frame.chatId, frame.cid)) break;
                     if (uploads.some((u) => u.type.startsWith('audio/'))) {
                         // Voice message: first turn it into text locally, then continue like a text message
-                        void this.voiceMessage(frame.chatId, frame.text, uploads, frame.replyTo, frame.spoken === true, frame.later === true).catch((e: Error) => {
+                        void this.voiceMessage(frame.chatId, frame.text, uploads, frame.replyTo, frame.spoken === true, frame.later === true, frame.cid).catch((e: Error) => {
                             this.send({ type: 'error', chatId: frame.chatId, message: e.message });
                         });
                     } else {
-                        this.messageFromUser(frame.chatId, frame.text, uploads, undefined, frame.replyTo, frame.spoken === true, frame.later === true);
+                        this.messageFromUser(frame.chatId, frame.text, uploads, undefined, frame.replyTo, frame.spoken === true, frame.later === true, frame.cid);
                     }
                     break;
                 }
@@ -1481,6 +1486,10 @@ export class BotManager implements SessionHooks {
                 case 'interrupt':
                     this.interruptLocally(frame.chatId);
                     this.peer({ kind: 'interrupt', chatId: frame.chatId });
+                    break;
+                case 'task_stop':
+                    // The app sends it to the machine that reported the tasks; the session of that chat holds them
+                    void this.sessions.get(frame.chatId)?.stopTasks(frame.taskIds);
                     break;
                 case 'job_stop':
                     this.stopJob(frame.id, frame.cancel === true);
@@ -2026,13 +2035,20 @@ export class BotManager implements SessionHooks {
     }
 
     /**
-     * A like on a message of the other person, or taking it back: noted in this account's half and, by the same entry
-     * id, in theirs. No push and no unread mark: the heart on the message is all there is to it.
+     * A like, or taking it back. No push and no unread mark: the heart on the message is all there is to it for a
+     * person; a bot hears of it with the user's next message in that chat (likeContext), not with a turn of its own.
      */
     private like(chatId: string, entryId: string, on: boolean): void {
+        const e = readEntry(chatId, entryId);
+        if (!isPerson(chatId)) {
+            // Groups not: the next message there may go to another member than the one liked
+            if (!e || e.deletedAt || e.role !== 'assistant' || isGroup(chatId)) throw new Error(t('errors.cannotLike'));
+            if (this.liked(chatId, entryId, on, new Date().toISOString())) this.noteLike(chatId, e, on);
+            return;
+        }
+        // A person chat: in this account's half and, by the same entry id, in theirs
         const other = personOf(chatId);
-        const e = isPerson(chatId) ? readEntry(chatId, entryId) : undefined;
-        if (!e || e.deletedAt || e.role !== 'user' || e.from !== `person:${other}`) throw new Error(t('people.cannotLike'));
+        if (!e || e.deletedAt || e.role !== 'user' || e.from !== `person:${other}`) throw new Error(t('errors.cannotLike'));
         if (!canReach(this.accountId, other)) throw new Error(t('people.unreachable', { name: personName(other) }));
         if (isBlocked(other)) throw new Error(t('people.blockedSend', { name: personName(other) }));
         const at = new Date().toISOString();
@@ -2042,11 +2058,36 @@ export class BotManager implements SessionHooks {
     }
 
     /** Stores a like; the browsers and this account's other machines learn of it if it changed anything. */
-    private liked(chatId: string, entryId: string, on: boolean, at: string): void {
+    private liked(chatId: string, entryId: string, on: boolean, at: string): boolean {
         const e = markLiked(chatId, entryId, on, at);
-        if (!e) return;
+        if (!e) return false;
         this.send({ type: 'liked', chatId, entryId, on });
         if (this.online.length > 1) this.peer({ kind: 'history', chatId, entries: [e] });
+        return true;
+    }
+
+    /**
+     * A bot's answer liked: kept for the chat's next message (like-notes.json, as the talk recaps), with a reminder of
+     * the answer, so the bot knows which one; taken back before then, it is forgotten again.
+     */
+    private noteLike(chatId: string, e: HistoryEntry, on: boolean): void {
+        const notes = readJson<Record<string, { id: string; text: string }[]>>('like-notes.json', {});
+        const rest = (notes[chatId] ?? []).filter((n) => n.id !== e.id);
+        const text = (e.text || (e.attachments ?? []).map((a) => a.name).join(', ')).replace(/\s+/g, ' ').trim();
+        if (on) rest.push({ id: e.id!, text: text.length > LIKE_EXCERPT ? `${text.slice(0, LIKE_EXCERPT)} …` : text });
+        if (rest.length) notes[chatId] = rest.slice(-10);
+        else delete notes[chatId];
+        writeJson('like-notes.json', notes);
+    }
+
+    /** What goes in front of the user's next message in a bot chat: the answers liked since the last one. */
+    private likeContext(chatId: string): string {
+        const notes = readJson<Record<string, { id: string; text: string }[]>>('like-notes.json', {});
+        const liked = notes[chatId];
+        if (!liked?.length) return '';
+        delete notes[chatId];
+        writeJson('like-notes.json', notes);
+        return `${t('prompt.liked')}\n${liked.map((n) => `- "${n.text}"`).join('\n')}\n\n---\n\n`;
     }
 
     /** The other half of a like, called in this account's context: only on what this account wrote to `from`. */
@@ -2257,7 +2298,7 @@ export class BotManager implements SessionHooks {
      * Stores the recording, turns it into text with Whisper and passes it on as a message.
      * If the transcription fails, the recording stays in the history (playable), the bot gets nothing.
      */
-    private async voiceMessage(chatId: string, text: string, uploads: UploadInput[], replyTo?: Quote, spoken = false, later = false): Promise<void> {
+    private async voiceMessage(chatId: string, text: string, uploads: UploadInput[], replyTo?: Quote, spoken = false, later = false, cid?: string): Promise<void> {
         const audio = uploads.filter((u) => u.type.startsWith('audio/'));
         const rest = uploads.filter((u) => !u.type.startsWith('audio/'));
         const saved = saveUploads(chatId, audio).map((g) => g.attachment);
@@ -2269,16 +2310,16 @@ export class BotManager implements SessionHooks {
             }
         } catch (e) {
             this.entry(chatId, {
-                role: 'user', text: '', ts: new Date().toISOString(), from: 'me', voice: true, attachments: saved,
+                role: 'user', text: '', ts: new Date().toISOString(), from: 'me', voice: true, attachments: saved, ...(cid ? { cid } : {}),
             });
             throw new Error(t('errors.voiceFailed', { error: (e as Error).message }), { cause: e });
         }
         const transcript = parts.join('\n\n').trim();
         if (!transcript && !text.trim()) {
-            this.entry(chatId, { role: 'user', text: '', ts: new Date().toISOString(), from: 'me', voice: true, attachments: saved });
+            this.entry(chatId, { role: 'user', text: '', ts: new Date().toISOString(), from: 'me', voice: true, attachments: saved, ...(cid ? { cid } : {}) });
             throw new Error(t('errors.voiceEmpty'));
         }
-        this.messageFromUser(chatId, text, rest, { transcript, attachments: saved }, replyTo, spoken, later);
+        this.messageFromUser(chatId, text, rest, { transcript, attachments: saved }, replyTo, spoken, later, cid);
     }
 
     /**
@@ -2317,7 +2358,7 @@ export class BotManager implements SessionHooks {
         return [...words].filter(Boolean).join(', ').slice(0, 300);
     }
 
-    private messageFromUser(chatId: string, text: string, uploads: UploadInput[], voice?: { transcript: string; attachments: Attachment[] }, quote?: Quote, spoken = false, later = false): void {
+    private messageFromUser(chatId: string, text: string, uploads: UploadInput[], voice?: { transcript: string; attachments: Attachment[] }, quote?: Quote, spoken = false, later = false, cid?: string): void {
         text = text.trim();
         const replyTo = storedQuote(quote);
         // A forward may go without a word of its own: the forwarded message is the content
@@ -2342,7 +2383,7 @@ export class BotManager implements SessionHooks {
             if (!g) throw new Error(t('bots.groupNotFound'));
             const { content, attachments: more } = this.content(chatId, forClaude, uploads);
             const attachments = [...firstAttachments, ...more];
-            const { id: entryId } = this.record(chatId, { role: 'user', text: display, ts, from: 'me', voice: voice ? true : undefined, attachments: attachments.length ? attachments : undefined, replyTo }, true);
+            const { id: entryId } = this.record(chatId, { role: 'user', text: display, ts, from: 'me', voice: voice ? true : undefined, attachments: attachments.length ? attachments : undefined, replyTo, ...(cid ? { cid } : {}) }, true);
             const members = this.members(g);
             let targets = mentioned(display, members);
             if (targets.length === 0) targets = members.slice(0, 1);
@@ -2369,11 +2410,31 @@ export class BotManager implements SessionHooks {
             const first = display || (replyTo?.forwarded ? replyTo.text : '');
             if (!c.title && first) this.nameConversation(chatId, first);
         }
-        const note = command ? '' : this.talkContext(bot, chatId) + delegationContext(mentioned(display, loadBots().filter((b) => b.id !== bot.id)));
+        const note = command ? '' : this.talkContext(bot, chatId) + this.likeContext(chatId) + delegationContext(mentioned(display, loadBots().filter((b) => b.id !== bot.id)));
         const { content, attachments: more } = this.content(chatId, note + forClaude, uploads);
         const attachments = [...firstAttachments, ...more];
-        const { id: entryId } = this.record(chatId, { role: 'user', text: display, ts, from: 'me', voice: voice ? true : undefined, attachments: attachments.length ? attachments : undefined, replyTo }, true);
+        const { id: entryId } = this.record(chatId, { role: 'user', text: display, ts, from: 'me', voice: voice ? true : undefined, attachments: attachments.length ? attachments : undefined, replyTo, ...(cid ? { cid } : {}) }, true);
         this.startTurn(bot, { chatId, from: 'me', text: display, content, entryId, ...(later ? { later } : {}) });
+    }
+
+    /** Messages of the app by their cid (chat|cid), as long as this backend runs; older ones are found in the history. */
+    private seenMessages = new Set<string>();
+
+    /**
+     * A message the app sent again (outbox.js) that this machine has already: the stored copy goes to the browsers again
+     * as their answer, nothing is stored or started twice. A message still being transcribed is only noted.
+     */
+    private knownMessage(chatId: string, cid: string): boolean {
+        const key = `${chatId}|${cid}`;
+        const copy = readHistory(chatId, 100).find((e) => e.cid === cid);
+        if (copy) {
+            this.send({ type: 'user', chatId, entry: copy });
+            return true;
+        }
+        if (this.seenMessages.has(key)) return true;
+        this.seenMessages.add(key);
+        if (this.seenMessages.size > 1000) this.seenMessages.delete(this.seenMessages.values().next().value!);
+        return false;
     }
 
     private rememberRound(round: string, bots: string[]): Set<string> {
@@ -3428,15 +3489,15 @@ export class BotManager implements SessionHooks {
     }
 
     /**
-     * A task of a mission as a job between bots: into a new conversation of the assignee, given by the supervisor from
-     * the mission's chat, so the result comes back there like any job's (deliverFeedback) and on to the mission.
+     * A task of a mission as a job between bots: into the assignee's main chat, where the user follows a bot's work
+     * anyway (a busy main chat takes it into its queue), given by the supervisor from the mission's chat, so the
+     * result comes back there like any job's (deliverFeedback) and on to the mission.
      */
     private delegateTask(m: Mission, title: string, bot: Bot, text: string): { jobId: string; chatId: string; send: () => void } | { error: string } {
         const supervisor = findBot(m.supervisor);
         if (!supervisor) return { error: t('bots.botNotFound') };
         const machine = responsibleMachine(bot, this.online);
-        const chatId = createConversation(bot.id);
-        renameConversation(chatId, `${m.name}: ${title}`);
+        const chatId = bot.id;
         const id = randomUUID();
         const origin: JobOrigin = { id, machine: config.machine, botId: supervisor.id, chatId: m.chatId, chain: [supervisor.id], chats: [m.chatId] };
         const ts = new Date().toISOString();
@@ -3449,7 +3510,6 @@ export class BotManager implements SessionHooks {
             send: () => {
                 addJob(stored);
                 this.entry(chatId, { role: 'user', text, ts, from: supervisor.id });
-                this.sendBots();
                 if (machine) this.dispatchJob(stored);
                 else this.sendJobs();
             },
@@ -3577,7 +3637,9 @@ export class BotManager implements SessionHooks {
                     propose(frame.text, frame.folder?.trim() ?? '').then(
                         (proposal) => {
                             console.log(`mission proposal: done after ${((Date.now() - begin) / 1000).toFixed(1)} s`);
-                            this.send({ type: 'mission_proposal', proposal }, cid);
+                            // With an id to every page of the account: the asking one may have reloaded during the minute it takes
+                            if (frame.id) this.send({ type: 'mission_proposal', proposal, id: frame.id });
+                            else this.send({ type: 'mission_proposal', proposal }, cid);
                         },
                         (e: Error) => fail(e.message),
                     );

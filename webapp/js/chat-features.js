@@ -12,6 +12,7 @@ import { renderVoicePending, voicePlayer } from './voice.js';
 import { menuButton } from './menus.js';
 import { isReading, readAloud, speakButton } from './read-aloud.js';
 import { alertDialog, confirmDialog } from './dialogs.js';
+import { renderOutbox } from './outbox.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -23,6 +24,18 @@ function mentionCandidates(chatId) {
     const g = group(chatId);
     if (g) return [...g.members.map(bot).filter(Boolean), { id: 'all', name: t('mention.everyone'), role: '' }];
     return state.bots.filter((b) => b.id !== botIdOf(chatId));
+}
+
+const startsWith = (b, query) => b.id.toLowerCase().startsWith(query) || (b.name || '').toLowerCase().startsWith(query);
+
+/** What a chosen bot is inserted as: its first name when that is one word no other candidate shares (the backend
+ *  matches name and id alike, mentioned() in agent.ts), else its id. @param {{ id: string, name?: string }} b */
+function mentionWord(b, candidates) {
+    const name = b.name || '';
+    const norm = (x) => x.toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+    if (!/^[\p{L}\p{N}_-]+$/u.test(name) || b.id === 'all') return b.id;
+    const n = norm(name);
+    return candidates.some((c) => c.id !== b.id && (norm(c.name || '') === n || norm(c.id) === n)) ? b.id : name;
 }
 
 /** @param {Pane} p */
@@ -37,7 +50,7 @@ export function checkMention(p) {
     const query = m[1].toLowerCase();
     const hits = mentionCandidates(p.chatId)
         .filter((b) => !query || b.id.toLowerCase().includes(query) || (b.name || '').toLowerCase().includes(query))
-        .sort((a, b) => Number(!a.id.toLowerCase().startsWith(query)) - Number(!b.id.toLowerCase().startsWith(query)));
+        .sort((a, b) => Number(!startsWith(a, query)) - Number(!startsWith(b, query)));
     if (hits.length === 0) return closeMention(p);
     p.mention.kind = 'bot';
     p.mention.start = pos - m[1].length - 1;
@@ -85,7 +98,7 @@ function chooseMention(p, i) {
     if (!b) return;
     const text = p.el.text;
     const v = text.value;
-    const before = v.slice(0, p.mention.start) + (p.mention.kind === 'command' ? '/' + b.name : '@' + b.id) + ' ';
+    const before = v.slice(0, p.mention.start) + (p.mention.kind === 'command' ? '/' + b.name : '@' + mentionWord(b, mentionCandidates(p.chatId))) + ' ';
     text.value = before + v.slice(text.selectionStart).replace(/^\S*\s?/, '');
     text.setSelectionRange(before.length, before.length);
     closeMention(p);
@@ -222,6 +235,7 @@ export function renderHistory(p, live) {
         else liveWrap(id, botId);
     }
     renderVoicePending(p);
+    renderOutbox(p.chatId);
     renderApprovals(p);
     renderQueue(p);
     scroll(p, true);
@@ -320,6 +334,7 @@ export function renderEntry(p, e) {
         time.appendChild(document.createTextNode(clockTime(e.ts)));
         b.appendChild(time);
         if (e.id) b.dataset.eid = e.id;
+        showLike(b, e, chatId);
         wrap.appendChild(b);
     }
     messages.appendChild(wrap);
@@ -453,17 +468,24 @@ function moreButton() {
 }
 
 // ---------------------------------------------------------- Likes
-// In a chat with a person, each side can like what the other wrote; both see the heart at the message.
+// In a chat with a person, each side can like what the other wrote; both see the heart at the message. In a bot's
+// chat the user can like an answer; the bot hears of it with the next message (not in groups: that may go to another).
+
+/** Whether the message menu offers a like for this entry. */
+function likeable(chatId, e, from) {
+    return isPerson(chatId) ? from.startsWith('person:') : e.role === 'assistant' && !isGroup(chatId);
+}
 
 /** Puts the heart at a liked message's bubble, or takes it away. */
 function showLike(bubble, e, chatId) {
     const old = bubble.querySelector('.like-mark');
     if (old) old.remove();
-    const on = isPerson(chatId) && !!e.like && e.like.on;
+    const on = !isGroup(chatId) && !!e.like && e.like.on;
     bubble.classList.toggle('liked', on);
     if (!on) return;
     const s = node('span', 'like-mark');
-    s.title = !e.from || e.from === 'me' ? t('message.likedBy', { name: person(chatId).name }) : t('message.likedByMe');
+    s.title = !isPerson(chatId) ? t('message.likedBot', { name: (bot(chatId) || {}).name || '' })
+        : e.role === 'user' && (!e.from || e.from === 'me') ? t('message.likedBy', { name: person(chatId).name }) : t('message.likedByMe');
     s.setAttribute('role', 'img');
     s.setAttribute('aria-label', s.title);
     s.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.4A4.1 4.1 0 0 1 12 7.6a4.1 4.1 0 0 1 7.5 2.5c0 5.8-7.5 10.4-7.5 10.4z"/></svg>';
@@ -756,10 +778,12 @@ function openMessageMenu(p, bubble, x, y) {
     const from = e.role === 'user' ? (e.from || 'me') : (e.botId || botIdOf(chatId));
     // The pane may show another chat by the time the entry is chosen
     item('reply', t('message.reply'), () => { if (p.chatId === chatId) setReply(p, { id: e.id, from, text: quoteText(e) }); });
-    // What the other person wrote; the heart appears once the backend has stored it
-    if (isPerson(chatId) && from.startsWith('person:')) {
+    // What the other person wrote or a bot answered; the heart appears once the backend has stored it. A bot's like
+    // goes to its machine, which tells the bot with the next message there
+    if (likeable(chatId, e, from)) {
         const liked = !!e.like && e.like.on;
-        item(liked ? 'unlike' : 'like', t(liked ? 'message.unlike' : 'message.like'), () => send({ type: 'like', chatId, entryId: e.id, on: !liked }));
+        const b = isPerson(chatId) ? null : bot(chatId);
+        item(liked ? 'unlike' : 'like', t(liked ? 'message.unlike' : 'message.like'), () => send({ type: 'like', chatId, entryId: e.id, on: !liked }, (b && responsibleMachine(b)) || undefined));
     }
     item(pinned ? 'unpin' : 'pin', pinned ? t('message.unpin') : t('message.pin'), () => sendPin(chatId, {
         id: e.id, text: e.text || (e.attachments || []).map((a) => a.name).join(', '), ts: e.ts, from,

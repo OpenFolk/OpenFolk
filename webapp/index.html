@@ -148,13 +148,16 @@
                 </div>
             </header>
             <div class="git-page-content" id="git-page-content"></div>
-            <!-- The same page frame shows the status (tab "Status"): the machines, then the plans' quota -->
+            <!-- The same page frame shows the status (tab "Status"): the machines, the open changes, then the plans' quota -->
             <div class="git-page-content machines-page" id="machines-page" hidden>
                 <!-- A machine that lost its sign-in: what to do, above the machines (welcome.js setupCard(true)) -->
                 <div class="start-setup status-signin" id="machines-signin" hidden></div>
                 <h3 data-i18n="status.machines"></h3>
                 <div class="machines" id="machines"></div>
                 <p class="empty-small" id="machines-none" data-i18n="status.noMachines" hidden></p>
+                <!-- The open changes of all bots' repos, with commit and push (menus.js; until 2026-11 a tab of its own) -->
+                <h3 data-i18n="git.openChanges"></h3>
+                <div class="status-repos" id="status-repos"></div>
                 <h3 data-i18n="status.quota"></h3>
                 <div class="usage" id="usage" hidden></div>
                 <p class="empty-small" id="usage-none" data-i18n="status.noUsage"></p>
@@ -223,6 +226,10 @@
                 <div class="working-line" data-el="working" hidden>
                     <span class="working-star" data-el="working-star">✻</span><span data-el="working-text" aria-live="polite"></span>
                     <!-- Stop here instead of next to send and microphone, so it is not hit by accident -->
+                    <!-- Only background tasks run: they are stopped here (asked first) -->
+                    <button type="button" class="stop" data-el="btn-stop-tasks" data-i18n-title="chat.stopTasksTitle" hidden>
+                        <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span data-i18n="chat.stop"></span>
+                    </button>
                     <button type="button" class="stop" data-el="btn-stop" data-i18n-title="chat.interrupt" hidden>
                         <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span data-i18n="chat.stop"></span>
                     </button>
@@ -608,12 +615,13 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg>
             <span data-i18n="tabs.bots"></span>
         </button>
-        <button type="button" class="tab" data-tab="repos" id="tab-repos">
+        <button type="button" class="tab" data-tab="machines">
             <span class="tab-icon">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 3-11 5.5"/></svg>
-                <b class="tab-badge" id="tab-repos-badge" hidden></b>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+                <!-- the number of repos with open changes, "!" for a hint or a machine that lost its sign-in (machines.js) -->
+                <b class="tab-badge" id="tab-status-badge" hidden>!</b>
             </span>
-            <span data-i18n="tabs.repos"></span>
+            <span data-i18n="tabs.status"></span>
         </button>
         <button type="button" class="tab" data-tab="missions">
             <span class="tab-icon">
@@ -622,14 +630,6 @@
                 <b class="tab-badge" id="tab-missions-badge" hidden></b>
             </span>
             <span data-i18n="tabs.missions"></span>
-        </button>
-        <button type="button" class="tab" data-tab="machines">
-            <span class="tab-icon">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
-                <!-- "!" while a machine that runs bots lost its sign-in (welcome.js signInLost) -->
-                <b class="tab-badge" id="tab-status-badge" hidden>!</b>
-            </span>
-            <span data-i18n="tabs.status"></span>
         </button>
         <button type="button" class="tab" data-tab="settings">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -645,6 +645,8 @@
     <form class="dialog" id="editor-form">
         <button type="button" class="round page-back on-new" data-page-back data-i18n-aria-label="common.back" data-i18n-title="common.back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
         <h2 id="editor-title" class="on-move on-new" data-i18n="editor.newBot"></h2>
+        <!-- Editing saves by itself: closing is all that is left of the buttons (shown with .autosave) -->
+        <button type="button" class="round editor-close" data-close data-i18n-aria-label="common.close" data-i18n-title="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         <p class="hint on-new" id="editor-new-hint" data-i18n="editor.newHint"></p>
         <div class="avatar-picker">
             <div class="avatar large" id="editor-avatar"></div>
@@ -739,6 +741,8 @@
         </div>
         <fieldset class="choice" id="editor-allowed-tools" hidden><legend data-i18n="editor.allowedTools"></legend></fieldset>
         <p class="error on-move on-new" id="editor-error" hidden></p>
+        <!-- Editing a bot: every change is saved by itself; this line says so (editors.js editorChanged) -->
+        <p class="hint editor-saved" id="editor-saved" aria-live="polite"></p>
         <div class="actions on-move on-new">
             <button type="button" class="btn" data-close data-i18n="common.cancel"></button>
             <button type="submit" class="primary" data-i18n="common.save"></button>

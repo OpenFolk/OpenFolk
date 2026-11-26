@@ -9,7 +9,7 @@ import { isUnread, toggleUnread } from './chat-features.js';
 import { draftOf } from './queue.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
-import { ICONS, archiveConversation, chatMenuAction, deleteCategory, fillChatMenu, gitOpenOf, menuButton, modelDisplay, renameCategory, withoutVersion } from './menus.js';
+import { ICONS, archiveConversation, chatMenuAction, deleteCategory, toggleCategoryStay, fillChatMenu, gitOpenOf, menuButton, modelDisplay, renameCategory, withoutVersion } from './menus.js';
 import { setBadge } from './platform.js';
 import { openBotChanges, openInfo, openRoutineEditor } from './editors.js';
 import { RECENT_DAYS, renderPaletteResult } from './palette.js';
@@ -44,8 +44,24 @@ function queueBadge(meta, chatId) {
 
 export function backgroundText(tasks) {
     const n = tasks.length;
-    const what = tasks[0].description || t('background.taskRunning');
+    const what = shortTask(tasks[0].description) || t('background.taskRunning');
     return n > 1 ? t('background.many', { n, what }) : t('background.one', { what });
+}
+
+/** At most this many characters of a background task's description in a row or a header. */
+const TASK_SHORT = 32;
+
+/**
+ * A background task's description, short: a shell command (the CLI names those by the command itself) by its first
+ * real step, without "cd …", redirections, pipes and following steps; anything longer than TASK_SHORT ends in "…".
+ */
+export function shortTask(description) {
+    let s = String(description || '').trim();
+    if (!s) return '';
+    const steps = s.split(/\s*(?:&&|\|\||;|\|)\s*/).map((x) => x.trim()).filter((x) => x && !/^cd\s/.test(x));
+    if (steps.length) s = steps[0].replace(/\s+\d?>.*$/, '').replace(/\s+2>&1.*$/, '');
+    s = s.replace(/\s+/g, ' ');
+    return s.length > TASK_SHORT ? s.slice(0, TASK_SHORT - 1).trimEnd() + '…' : s;
 }
 
 export function chatStatus(chatId) {
@@ -63,7 +79,7 @@ export function chatStatus(chatId) {
 }
 
 /** Time of the newest message (ISO, '' = none); for a bot its conversations count too. */
-function latest(chatId) {
+export function latest(chatId) {
     const b = isGroup(chatId) || isConversation(chatId) ? null : bot(chatId);
     return [chatId, ...(b ? conversationsOf(b) : [])].reduce((ts, c) => ((state.lastTs[c] || '') > ts ? state.lastTs[c] : ts), '');
 }
@@ -129,13 +145,15 @@ export function renderChatList() {
     const section = (id) => {
         const b = isGroup(id) ? null : bot(id);
         const chats = [id, ...(b ? conversationsOf(b) : [])];
+        const k = cats.findIndex((c) => c.id === categoryOf(id));
+        // A folder set to keep its bots: they stay in it, whatever they do
+        if (k >= 0 && cats[k].stay) return 3 + k;
         const running = chats.some((c) => {
             const st = chatStatus(c).state;
             return st === 'thinking' || st === 'waiting' || backgroundOf(c).length > 0;
         });
         if (running) return 0;
         if (!isMuted(id) && chats.some(isUnread)) return 1;
-        const k = cats.findIndex((c) => c.id === categoryOf(id));
         return k >= 0 ? 3 + k : REST;
     };
     const sorted = [
@@ -213,7 +231,8 @@ export function renderChatList() {
             if (git.length) icons.appendChild(gitBadge(b, git));
             if (isMuted(id)) icons.appendChild(node('span', 'muted-badge', '🔕'));
             if (open) icons.appendChild(node('span', 'badge', String(open)));
-            else icons.appendChild(node('i', 'dot ' + (st === 'idle' && isUnread(id) ? 'new' : st)));
+            // a background task: the dot pulses like a running job until it ends
+            else icons.appendChild(node('i', 'dot ' + (st === 'idle' && isUnread(id) ? 'new' : behind.length ? 'thinking background' : st)));
             if (isUnread(id)) li.classList.add('unread');
             queueBadge(icons, id);
             meta.appendChild(icons);
@@ -605,6 +624,13 @@ function categoryHeading(c, count) {
     li.title = closed ? t('list.showFolder') : t('list.hideFolder');
     li.innerHTML = '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
     li.appendChild(node('span', 'name', c.name));
+    // the folder keeps its bots in place (its menu): a pin after the name
+    if (c.stay) {
+        const pin = node('span', 'stay-pin');
+        pin.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.pin}</svg>`;
+        pin.title = t('category.stayInFolder');
+        li.appendChild(pin);
+    }
     if (closed && count) li.appendChild(node('span', 'count', String(count)));
     li.addEventListener('click', () => toggleCollapsed('c:' + c.id));
     // With a mouse a folder moves up or down by dragging its heading
@@ -692,8 +718,14 @@ function openCategoryMenu(id, x, y) {
     const moves = [];
     if (at > 0) { const up = menuButton('up', t('category.moveUp')); up.dataset.action = 'up'; moves.push(up); }
     if (at < order.length - 1) { const down = menuButton('down', t('category.moveDown')); down.dataset.action = 'down'; moves.push(down); }
+    // Whether its bots move up while they work or have something new, or stay in the folder
+    const stays = Boolean(state.categories.find((c) => c.id === id)?.stay);
+    const stay = menuButton(stays ? 'check' : 'folder', t('category.stayInFolder'), stays ? 'on' : '');
+    stay.dataset.action = 'stay';
+    stay.setAttribute('role', 'menuitemcheckbox');
+    stay.setAttribute('aria-checked', String(stays));
     rowShow = rowMenuAt(() => categoryHead(id), x, y);
-    rowShow(...moves, rename, remove);
+    rowShow(...moves, stay, rename, remove);
 }
 
 export function setupListLongPress() {
@@ -715,6 +747,7 @@ export function setupListLongPress() {
             const id = rowMenu.dataset.category;
             const at = sortedCategories().findIndex((c) => c.id === id);
             if (action.dataset.action === 'rename') renameCategory(id);
+            else if (action.dataset.action === 'stay') toggleCategoryStay(id);
             else if (action.dataset.action === 'up' || action.dataset.action === 'down') {
                 moveCategory(id, at + (action.dataset.action === 'up' ? -1 : 1));
                 renderChatList();
@@ -1109,7 +1142,7 @@ function conversationRow(chatId) {
     meta.appendChild(tags);
     const open = openApprovals(chatId).length;
     const icons = node('div', 'meta-icons');
-    icons.appendChild(open ? node('span', 'badge', String(open)) : node('i', 'dot ' + (st === 'idle' && isUnread(chatId) ? 'new' : st)));
+    icons.appendChild(open ? node('span', 'badge', String(open)) : node('i', 'dot ' + (st === 'idle' && isUnread(chatId) ? 'new' : behind.length ? 'thinking background' : st)));
     if (isUnread(chatId)) li.classList.add('unread');
     queueBadge(icons, chatId);
     meta.appendChild(icons);

@@ -63,6 +63,16 @@ export default async function ({ start, check }) {
     await h.wait(150);
     check('a right click with the mouse renames as well', await p.evaluate(() => !document.getElementById('text-dialog').hidden && document.getElementById('text-input').value === 'Release'));
     await p.keyboard.press('Escape');
+    // the order follows the chats like the list: a working one first, the main chat stays in front
+    const names = async () => (await tabs()).map((x) => x.replace(/[*•]/g, ''));
+    await h.push({ type: 'state', machine: 'desk', botId: 'skool~aa11', state: 'idle' });
+    await h.push({ type: 'state', machine: 'desk', botId: 'skool~bb22', state: 'thinking', chatId: 'skool~bb22' });
+    await h.wait(200);
+    check('a working conversation moves to the front, after the main chat', (await names()).slice(0, 2).join('|') === 'Main chat|Documentation', await names());
+    await h.push({ type: 'state', machine: 'desk', botId: 'skool~bb22', state: 'idle' });
+    await h.push({ type: 'done', machine: 'desk', chatId: 'skool~aa11', botId: 'skool~aa11', entry: { id: 'r1', role: 'assistant', botId: 'skool', text: 'Done', ts: new Date().toISOString() } });
+    await h.wait(200);
+    check('finished with something new: in front of the rest', (await names()).slice(0, 2).join('|') === 'Main chat|Release', await names());
     check('no errors', h.errors.length === 0, h.errors);
     await h.close();
 }

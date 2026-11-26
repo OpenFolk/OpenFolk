@@ -56,7 +56,7 @@ export default async function ({ start, check }) {
     check('Listen: a sample in that voice from the bot\'s machine, played', sample && sample.name === 'coral' && sample.id.startsWith('preview:') && sample.machine === 'desk'
         && await p.evaluate(() => window.__played.some((s) => s.startsWith('blob:'))), sample);
 
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(300);
     const saved = h.sent.findLast((f) => f.type === 'bot_save');
     check('saved per provider', saved && saved.bot.voices && saved.bot.voices.openai === 'coral' && saved.bot.voice === 'female', saved && saved.bot);

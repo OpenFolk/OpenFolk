@@ -75,7 +75,7 @@ export default async function ({ start, check }) {
     // The old folder without a repository on the new machine: WORKSTATION refuses it, the editor stays open
     await p.fill('#editor-repo', '');
     await p.fill('#editor-folder', 'C:/www/skool');
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(200);
     const refused = h.sent.findLast((f) => f.type === 'folder_check');
     check('the new machine checks the folder', refused.machine === 'workstation' && refused.folder === 'C:/www/skool', refused);
@@ -83,7 +83,7 @@ export default async function ({ start, check }) {
 
     // Neither field: the new machine is asked for a folder of its own; here it has none, so nothing is saved
     await p.fill('#editor-folder', '');
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(100);
     const own = h.sent.findLast((f) => f.type === 'folder_create');
     check('neither folder nor repository: a folder of its own asked from the new machine', own && own.machine === 'workstation' && own.name === 'Skool Sven' && own.nextFree === true, own);
@@ -92,7 +92,7 @@ export default async function ({ start, check }) {
     // Folder and repository: the folder is not there yet, so the repository is cloned into it, then saved
     await p.fill('#editor-folder', '/work/skool');
     await p.fill('#editor-repo', REMOTE);
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(300);
     const clone = h.sent.find((f) => f.type === 'folder_clone');
     check('clone on the new machine into the folder', clone && clone.machine === 'workstation' && clone.url === REMOTE && clone.folder === '/work/skool', clone);
@@ -112,10 +112,10 @@ export default async function ({ start, check }) {
     check('LAPTOP is woken without a question', wake && wake.host === 'laptop' && dialog === null, { wake, dialog });
     check('the editor says LAPTOP is asleep', (await p.textContent('#editor-error')).includes('LAPTOP is asleep'));
     const before = saves().length;
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(150);
     check('asleep: not saved', saves().length === before && (await editorOpen()));
-    await p.click('#editor [data-close]');
+    await p.keyboard.press('Escape');
     await h.wait(150);
 
     // Renaming while the bot's machine sleeps: machine and folder stay, any machine awake takes it
@@ -124,7 +124,7 @@ export default async function ({ start, check }) {
     await p.evaluate(() => openEditor(bot('cloud')));
     await h.wait(150);
     await p.fill('#editor-name', 'Cloud Clara');
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(150);
     const renamed = saves().pop();
     check('rename on a sleeping machine: saved without a check', renamed && renamed.bot.name === 'Cloud Clara' && renamed.bot.machine === 'desk' && renamed.machine === undefined, renamed);
@@ -136,7 +136,7 @@ export default async function ({ start, check }) {
     await p.evaluate(() => openEditor(bot('cloud')));
     await h.wait(150);
     await p.fill('#editor-folder', 'C:/www/cloud2');
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(200);
     const legacy = saves().pop();
     check('old backend: saved anyway', legacy && legacy.bot.folder === 'C:/www/cloud2' && legacy.machine === 'desk' && !(await editorOpen()), legacy);
@@ -149,7 +149,7 @@ export default async function ({ start, check }) {
     await h.wait(100);
     check('an address in the folder field moves to the repository field', (await p.inputValue('#editor-repo')) === 'git@git.example.com:team/cloud.git'
         && (await p.inputValue('#editor-folder')) === '/work/skool', [await p.inputValue('#editor-folder'), await p.inputValue('#editor-repo')]);
-    await p.click('#editor [data-close]');
+    await p.keyboard.press('Escape');
     await h.wait(150);
 
     // The machine in the page's facts opens the editor at its machine field
@@ -157,7 +157,7 @@ export default async function ({ start, check }) {
     await p.click('#info .info-machine');
     await h.wait(150);
     check('the machine in the facts opens the editor there', (await editorOpen()) && (await p.evaluate(() => document.activeElement?.id)) === 'editor-machine');
-    await p.click('#editor [data-close]');
+    await p.keyboard.press('Escape');
     await h.wait(150);
 
     // a working bot does not move

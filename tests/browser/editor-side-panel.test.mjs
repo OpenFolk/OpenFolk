@@ -45,10 +45,10 @@ export default async function ({ start, check }) {
             check('docked: the chat stays usable next to the editor', h.sent.some((f) => f.type === 'send' && f.chatId === 'pdf' && f.text === 'Still here'));
             check('docked: the editor was not closed by that', await p.isVisible('#editor-form'));
         }
-        await p.fill('#editor-name', 'Changed but cancelled');
-        await p.click('#editor-form .actions [data-close]');
+        check(`${label}: no Save or Cancel while editing`, !(await p.isVisible('#editor-form .actions')));
+        await p.keyboard.press('Escape');
         await h.wait(200);
-        check(`${label}: Cancel leads back to the page`, !(await p.isVisible('#editor-form')) && (await p.isVisible('#info-panel')) && (await infoName()) === 'PDF-Reader', await infoName());
+        check(`${label}: back leads to the page`, !(await p.isVisible('#editor-form')) && (await p.isVisible('#info-panel')) && (await infoName()) === 'PDF-Reader', await infoName());
         if (width === 1100) {
             await p.click('#info-edit-top');
             await h.wait(200);
@@ -77,7 +77,7 @@ export default async function ({ start, check }) {
     await p.click('#info-edit-top');
     await h.wait(200);
     await p.fill('#editor-name', 'PDF-Writer');
-    await p.click('#editor-form button[type=submit]');
+    await p.evaluate(() => document.getElementById('editor-form').requestSubmit());
     await h.wait(300);
     const saved = h.sent.findLast((f) => f.type === 'bot_save');
     check('Save sends the bot and leads back to the page', saved?.bot.name === 'PDF-Writer' && !(await p.isVisible('#editor-form')) && (await p.isVisible('#info-panel')), saved?.bot);
@@ -97,7 +97,7 @@ export default async function ({ start, check }) {
     await botList([{ ...pdf, name: 'PDF-Writer', role: 'Again elsewhere' }, anna]);
     await h.wait(300);
     check('with the editor open the page is left alone and the typing stays', (await p.textContent('#info-role')) === 'Edited elsewhere' && (await p.inputValue('#editor-role')) === 'Typing');
-    await p.click('#editor-form .actions [data-close]');
+    await p.keyboard.press('Escape');
     await h.wait(150);
 
     // Not from the page: the window as before

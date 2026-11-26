@@ -25,7 +25,7 @@ export default async function ({ start, check }) {
     await h.wait(200);
     check('a bot without a stored machine: its repository filled in, its folder kept', (await repo()) === WEB && (await folder()) === 'C:/www/web',
         [await folder(), await repo()]);
-    await p.click('#editor [data-close]');
+    await p.keyboard.press('Escape');
     await h.wait(100);
 
     await p.evaluate(() => openEditor(null));

@@ -12,6 +12,7 @@ import { $, PANES_KEY, el, storage } from './core.js';
  * @property {HTMLButtonElement} chatTitle
  * @property {HTMLElement} chatName
  * @property {HTMLElement} chatSub
+ * @property {HTMLButtonElement} btnStopTasks
  * @property {HTMLElement} convTabs
  * @property {HTMLButtonElement} chatSettings
  * @property {HTMLButtonElement} chatModel
@@ -228,12 +229,12 @@ function placeSettings() {
 }
 
 /**
- * The tab of what the screen shows. The page of one bot's repos (`page` "bot") belongs to the repos, but on a phone it
+ * The tab of what the screen shows. The page of one bot's repos (`page` "bot") belongs to the status, but on a phone it
  * is a page under a chat with its own way back, without the tabs.
  */
 function renderTabs() {
-    const page = el.gitPage.hidden ? '' : el.gitPage.dataset.page || 'repos';
-    const tab = !el.settings.hidden ? 'settings' : page === 'bot' ? 'repos' : page || 'bots';
+    const page = el.gitPage.hidden ? '' : el.gitPage.dataset.page || 'machines';
+    const tab = !el.settings.hidden ? 'settings' : page === 'bot' ? 'machines' : page || 'bots';
     for (const b of el.tabBar.querySelectorAll('.tab')) {
         const on = /** @type {HTMLElement} */ (b).dataset.tab === tab;
         b.classList.toggle('on', on);

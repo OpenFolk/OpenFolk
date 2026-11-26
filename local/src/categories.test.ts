@@ -88,5 +88,14 @@ bots.orderCategories(['nope', idOf('Beta')]);
 check('an unknown id is skipped', names().startsWith('Beta,'), names());
 check('frame: order', checkClientFrame({ type: 'category_order', ids: ['a', 'b'] }).ok && !checkClientFrame({ type: 'category_order', ids: 'a' }).ok);
 
+// A folder that keeps its bots in place: stored, kept by a rename, taken back
+bots.saveCategory({ id: 'kunden', name: 'Kundschaft', stay: true });
+check('stay: stored', bots.loadCategories().find((c) => c.id === 'kunden')?.stay === true);
+bots.saveCategory({ id: 'kunden', name: 'Kunden neu' });
+check('stay: kept by a rename', bots.loadCategories().find((c) => c.id === 'kunden')?.stay === true);
+bots.saveCategory({ id: 'kunden', name: 'Kunden neu', stay: false });
+check('stay: taken back', !bots.loadCategories().find((c) => c.id === 'kunden')?.stay);
+check('frame: category_save with stay', checkClientFrame({ type: 'category_save', category: { id: 'kunden', name: 'K', stay: true } }).ok);
+
 fs.rmSync(dir, { recursive: true, force: true });
 if (failures) process.exit(1);

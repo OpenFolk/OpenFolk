@@ -36,6 +36,7 @@ import { alertDialog } from './dialogs.js';
 import { talkAnswer, talkDelta, talkError, talkHeard, talkInterim, talkStarted } from './talk.js';
 import { talkAnswerSdp, talkRefused } from './talk-realtime.js';
 import { missionError, missionSaved, receiveMissionDetail, receiveMissions, receiveProposal, refreshMissionsPage } from './missions.js';
+import { refused, resendWaiting, stored } from './outbox.js';
 
 // ================================================================ Connection
 
@@ -372,6 +373,7 @@ function receive(f) {
         case 'agents': {
             const before = state.online;
             state.online = f.online;
+            resendWaiting();
             state.onlineKnown = true;
             presenceToNewMachines();
             startApproval();
@@ -481,6 +483,13 @@ function receive(f) {
             state.botsKnown = true;
             state.bots = f.bots;
             state.groups = f.groups;
+            // "Keep its bots in the folder" just set, and the machine's answer does not carry it: its backend predates it
+            const stayAsked = state.categoryStayPending;
+            if (stayAsked && Date.now() < stayAsked.until) {
+                const back = (f.categories || []).find((c) => c.id === stayAsked.id);
+                if (back && Boolean(back.stay) !== stayAsked.stay) toast(t('category.stayNeedsBackend', { machine: upper(f.machine || '') }), 6000);
+                if (back) state.categoryStayPending = null;
+            }
             state.categories = f.categories || [];
             Object.assign(state.context, f.context || {});
             if (f.machine) state.backgroundPerMachine[f.machine] = f.background || {};
@@ -552,6 +561,9 @@ function receive(f) {
             break;
         }
         case 'user':
+            stored(f.chatId, f.entry);
+            // a message sent again after a dropped connection: the machine names the copy it has (outbox.js)
+            if (f.entry.id && (state.history[f.chatId] || []).some((e) => e.id === f.entry.id)) break;
             if (f.entry.voice) {
                 removeVoicePending(f.chatId);
                 talkHeard(f.chatId, f.entry);
@@ -790,6 +802,8 @@ function receive(f) {
         }
         case 'error': {
             const message = messageText(f);
+            // the machine answered a message with an error: nothing to send again
+            if (f.chatId && !f.request) refused(f.chatId);
             if (f.request === 'report' && reportFailed(message)) break;
             if (f.request === 'settings_save' || f.request === 'machine_settings_save') settingsSaveFailed();
             if (f.request === 'vault_save' || f.request === 'vault_delete') {
@@ -952,7 +966,7 @@ function receive(f) {
             receiveMissionDetail(f);
             break;
         case 'mission_proposal':
-            receiveProposal(f.proposal);
+            receiveProposal(f.proposal, f.id);
             break;
         case 'mission_saved':
             missionSaved(f.id);

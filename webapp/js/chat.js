@@ -4,13 +4,14 @@ import { t, tn } from './i18n.js';
 import { $, el, node, state, closest } from './core.js';
 import { activePane, capacity, closeSettings, createPane, isWide, layoutPanes, paneFor, panes, removePane, savePanes, setActivePane } from './panes.js';
 import { bot, conversationTitle, fillAvatar, group, isConversation, isGroup, isPerson, modelOf, modelsOfChat, person, responsibleMachine, send, senderName, shortFolder, upper } from './e2e.js';
-import { backgroundOf, backgroundText, chatStatus, closeChatSearch, renderChatList, revealInList } from './list.js';
+import { backgroundOf, backgroundText, chatStatus, closeChatSearch, latest, renderChatList, revealInList } from './list.js';
 import { renderMembers } from './machines.js';
 import { closeMention, isUnread, markSeen, renderHistory, renderPinned, setReply } from './chat-features.js';
 import { rec, renderUploads, stopRecording } from './voice.js';
 import { closeGitPage, gitOpenOf, gitPageFromChat, modelDisplay, renderInfoChat, tokensShort } from './menus.js';
 import { allChats, conversationsOf, isBlocked } from './connection.js';
-import { draftOf, loadDraft, saveDraft } from './queue.js';
+import { loadDraft, saveDraft } from './queue.js';
+import { confirmDialog } from './dialogs.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 
@@ -142,6 +143,21 @@ export function paneActivated() {
     try { history.replaceState(null, '', id ? '?chat=' + encodeURIComponent(id) : location.pathname); } catch { /* ignore */ }
 }
 
+/**
+ * Stops the background tasks of a chat (shells, subagents a bot left running) after asking: each machine gets the ids
+ * it reported. Its next background frame takes them off the line.
+ */
+export async function stopBackground(chatId) {
+    const tasks = backgroundOf(chatId);
+    if (!tasks.length) return;
+    const what = tasks.length > 1 ? t('chat.stopTasksMany', { n: tasks.length }) : t('chat.stopTasksOne', { what: tasks[0].description || t('background.taskRunning') });
+    if (!(await confirmDialog(what))) return;
+    for (const [machine, perSession] of Object.entries(state.backgroundPerMachine)) {
+        const ids = (perSession[chatId] || []).map((x) => x.id).filter(Boolean);
+        if (ids.length) send({ type: 'task_stop', chatId, taskIds: ids }, machine === '?' ? undefined : machine);
+    }
+}
+
 /** Every pane with a chat: header, sleep hint, send button, status line. */
 export function renderHeaders() {
     for (const p of panes) if (p.chatId) renderChatHeader(p);
@@ -183,6 +199,7 @@ function renderWorkingIn(p) {
     p.el.working.hidden = !running && !waiting && !behind.length;
     p.el.working.classList.toggle('waiting', waiting);
     p.el.working.classList.toggle('background', behind.length > 0);
+    p.el.btnStopTasks.hidden = !behind.length;
     if (!running) {
         p.el.workingStar.textContent = '';
         p.el.workingText.textContent = waiting ? t('status.waitingForYouLine') : behind.length ? backgroundText(behind) : '';
@@ -311,7 +328,7 @@ export function swipeBack(area, o) {
 
 /** @param {Pane} p */
 /**
- * The tabs above a bot's chat: its main chat, then its conversations in the order they were started, and "+" for a new
+ * The tabs above a bot's chat: its main chat, then its conversations ordered like the chat list, and "+" for a new
  * one. Only for a bot with conversations; a dot for something running or unread in a tab that is not open.
  * @param {import('./panes.js').Pane} p
  */
@@ -324,7 +341,15 @@ export function renderConversationTabs(p) {
         p.el.convTabs.replaceChildren();
         return;
     }
-    const tabs = [b.id, ...subs].map((cid) => {
+    // The conversations move like the list: working or waiting first, then finished with something unread, then the
+    // rest, each newest message first; the main chat stays the first tab
+    const rank = (cid) => {
+        const st = chatStatus(cid).state;
+        return st === 'thinking' || st === 'waiting' || backgroundOf(cid).length ? 0 : isUnread(cid) ? 1 : 2;
+    };
+    const order = subs.map((cid, i) => ({ cid, i, r: rank(cid), ts: latest(cid) }))
+        .sort((x, y) => x.r - y.r || y.ts.localeCompare(x.ts) || x.i - y.i).map((x) => x.cid);
+    const tabs = [b.id, ...order].map((cid) => {
         const k = node('button', 'conv-tab' + (cid === id ? ' on' : ''), cid === b.id ? t('chat.tabMain') : conversationTitle(cid));
         k.type = 'button';
         k.dataset.chat = cid;
@@ -407,6 +432,7 @@ function renderPersonHeader(p) {
     // a person has no settings page: their menu sits behind the name
     p.el.chatSettings.hidden = true;
     p.el.btnStop.hidden = true;
+    p.el.btnStopTasks.hidden = true;
     p.el.text.placeholder = t(isBlocked(p.chatId) ? 'people.blockedPlaceholder' : 'people.placeholder', { name: who.name });
     renderSleepHint(p);
     updateSendAllowed();

@@ -5,7 +5,16 @@ dieselben.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-26
+
 ### Neu
+- Ein Listenordner kann seine Bots an ihrem Platz halten: „Bots bleiben im Ordner“ im Menü des Ordners (langes Drücken
+  oder Rechtsklick auf seine Überschrift) lässt sie dort, während sie arbeiten oder Ungelesenes haben, statt nach oben zu
+  „Läuft gerade“ und „Fertig, ungelesen“; „Laufende und fertige Bots nach oben holen“ stellt es zurück. Neues optionales
+  Feld `stay` von `Category`.
+- Hintergrundaufgaben eines Bots (ein langer Testlauf, ein Build, ein Unteragent) lassen sich aus der App stoppen: Solange
+  nur sie laufen, hat die Statuszeile über der Eingabe „Stopp“, das nachfragt und sie auf ihrem Rechner beendet; was
+  sie bis dahin getan haben, bleibt. Neuer Frame `task_stop` (`stopTask` der CLI).
 - Mission Control: Missionen, langfristige Ziele, die ein Team aus Bots selbstständig verfolgt, in einem eigenen Tab.
   Ein Builder macht aus einem Ziel in eigenen Worten einen bearbeitbaren Vorschlag (Kriterien, Team mit Porträts und
   Supervisor, Meilensteine, Risiken, Autonomie, Freigaberegeln, Budget, Leitplanken, Zeitplan); der Supervisor führt die
@@ -87,12 +96,46 @@ dieselben.
   Schalter für die automatische Suche, wie in den Menüs der App.
 - Chats mit Personen: „Gefällt mir“ im ⋯-Menü einer Nachricht der anderen Person setzt ein Herz daran, das beide Seiten
   sehen, „Gefällt mir nicht mehr“ nimmt es zurück. Braucht die neue Version auf den Backends beider Konten.
+- „Gefällt mir“ an einer Bot-Antwort: ein Herz daran, und mit der nächsten Nachricht in diesem Chat erfährt der Bot,
+  welche Antworten dir gefallen haben, ohne eigenen Durchlauf, und kann sich als Wissen zur Arbeitsweise merken, was
+  dir wichtig ist. Nicht in Gruppenchats.
 
 ### Geändert
+- Freigabestufe „bei riskanten Aktionen“: Löschen im Bot-Ordner (`rm`, `rmdir`, `del`, `Remove-Item`, `find -delete`)
+  fragt nicht mehr, das ist die tägliche Arbeit des Bots. Löschen außerhalb des Ordners, des Ordners selbst oder eines
+  Ziels, das die Regel nicht erkennt (eine Variable), fragt mit dem Grund „löscht außerhalb des Bot-Ordners“.
+  Zerstörende Git-Befehle fragen weiterhin.
+- Gezeichnete Profilbilder (ohne Schlüssel für ein Bildmodell) kommen aus einem Baukasten statt aus einer Freihandzeichnung
+  des Modells: Das Modell wählt nur Hautton, Haare, Kleidung, Brille, Bart, Kopfhörer und Hintergrund aus festen
+  Möglichkeiten, der Baukasten (`local/src/avatar-kit.ts`) zeichnet daraus ein ruhiges, flaches Porträt wie auf der
+  Teamseite einer Firma: Business-Look (Blazer, Hemd, Rollkragen), keine Bärte und eher helle Haut, sofern die Wünsche
+  nichts anderes sagen, gedeckte Farben, keine Comicgesichter. Die 24 fertigen Bilder unter „KI-Avatar“ zeichnet derselbe
+  Baukasten (`npm run avatar-set`) und ändern sich mit.
+- Die Unterhaltungs-Tabs über dem Chat eines Bots ordnen sich wie die Chatliste: arbeitend oder wartend zuerst, dann
+  fertige mit Ungelesenem, dann der Rest, jeweils neueste Nachricht zuerst; der Hauptchat bleibt der erste Tab.
+- @-Erwähnungen über den Vornamen: Die Vervollständigung setzt den Vornamen eines Bots ein (`@Hugo` statt `@hub`),
+  sofern kein anderer Bot ihn als Namen oder ID hat, und findet Bots auch über den Anfang ihres Namens; das Backend
+  traf Namen und IDs schon vorher, groß und klein egal.
+- „Bot bearbeiten“ speichert jede Änderung selbst, ohne Speichern und Abbrechen: Getipptes nach einer kurzen Pause, eine
+  Auswahl sofort, eine noch wartende Änderung beim Schließen; eine Zeile darunter sagt „Gespeichert“. Ordner, Repository
+  und Rechner werden beim Verlassen des Felds geprüft, wie bisher beim Speichern. Ein neuer Bot behält „Anlegen“.
+- Eine Hintergrundaufgabe eines Bots steht kurz in Liste und Kopf: „Läuft noch: …“ mit dem ersten echten Schritt eines
+  Befehls (ohne `cd`, Pipes und Umleitungen, höchstens 32 Zeichen) statt des ganzen Befehls, und der Punkt der Zeile
+  pulsiert, bis die Aufgabe fertig ist.
+- Der Tab „Repos“ ist in „Status“ aufgegangen: Die Statusseite zeigt die offenen Änderungen aller Bots zwischen Rechnern
+  und Kontingent, mit Commit und Push wie bisher; der Status-Tab trägt ihre Zahl („!“ für einen Hinweis oder eine
+  verlorene Anmeldung).
 - Die Grenze von 30 fehlgeschlagenen Anmeldungen pro Stunde zählt je Konto: Raten an einem Konto sperrt nicht mehr die
   Passwort-Anmeldung aller anderen, und fehlgeschlagene Joins, Claims und Einrichtungslinks sperren sie gar nicht mehr.
 
 ### Behoben
+- Das leere Eingabefeld behält die Höhe einer Zeile: Gemessen, während es verborgen war (bei einer Aufnahme, in einem
+  geparkten Bereich, beim Chatwechsel), wurde es zu einem schmalen Streifen mit abgeschnittenem Platzhalter.
+- Eine Nachricht an einen Bot, auch mit Fotos oder als Sprachnachricht, verschwindet nicht mehr, wenn das Relay neu
+  startet (ein Deploy) oder die Verbindung unterwegs abreißt: Die App behält sie mit „Wird gesendet …“ im Chat, bis der
+  Rechner sie gespeichert hat, schickt sie nach dem Wiederverbinden oder 15 Sekunden ohne Antwort erneut und meldet nach
+  drei Minuten „Nicht angekommen“ mit „Erneut senden“. Der Rechner speichert eine Nachricht nur einmal, anhand des neuen
+  optionalen Felds `cid` von `send` (im Verlaufseintrag behalten), und beantwortet eine Kopie mit dem gespeicherten Eintrag.
 - Springt man in einen Chat (Tab, Befehlspalette, Benachrichtigung, Favoriten-Kachel), scrollt die Chatliste links zu
   seiner Zeile, nur so weit wie nötig; eine Unterhaltung unter einem zugeklappten Bot zeigt die Zeile des Bots.
 - iPhone und iPad (Web-App und Home-Bildschirm-App): Bei offener Tastatur springt das Fenster nicht mehr nach oben.
@@ -884,7 +927,8 @@ Node 22 oder Docker läuft.
 - Dateien im Datenordner des Backends werden mit Modus 0600 geschrieben (Linux und macOS). Rekursives Löschen läuft
   über `removeTree`, weil `fs.rmSync` unter Windows mit Node 24 Verzeichnis-Junctions folgt.
 
-[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/OpenFolk/OpenFolk/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/OpenFolk/OpenFolk/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/OpenFolk/OpenFolk/compare/v0.5.0...v0.6.0

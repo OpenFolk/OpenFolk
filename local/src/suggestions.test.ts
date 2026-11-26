@@ -21,7 +21,8 @@ check('context: missing folder empty', folderContext(path.join(projectRoot, 'doe
 const p = prompt({ what: 'name', folder: '', name: '', role: 'Deployments', tone: '', model: 'default', previous: ['Deploy-Dan'] }, '', 'name', 'en');
 check('prompt: role and previous names included', p.includes('Role: Deployments') && p.includes('Deploy-Dan') && p.includes('three'));
 check('prompt: names in the chosen language', p.includes('common\nEnglish first name') && prompt({ what: 'name', folder: '', name: '', role: '', tone: '', model: 'default' }, '', 'name', 'de').includes('German first name'));
-check('prompt: avatar asks for SVG', prompt({ what: 'avatar', folder: '', name: 'Pixel', role: '', tone: '', model: 'default' }, '').includes('viewBox'));
+const ap = prompt({ what: 'avatar', folder: '', name: 'Pixel', role: '', tone: '', model: 'default' }, '');
+check('prompt: avatar asks for the parts of the kit, not for SVG', ap.includes('kit') && ap.includes('ponytail') && ap.includes('headphones') && !ap.includes('viewBox'));
 check('prompt: first name and field of work as separate fields', /no hyphen/i.test(p) && /"Rudolf" with "Research"/.test(p) && !/Deploy Dave|SEO Sally/.test(p));
 check('prompt: known field of work included', prompt({ what: 'role', folder: '', name: 'Rudolf', area: 'Research', role: '', tone: '', model: 'default' }, '', 'role', 'en').includes('Field of work: Research'));
 const pf = prompt({ what: 'avatar', folder: '', name: 'Deploy Dave', role: 'Server', tone: '', model: 'default', previous: ['x'] }, '', 'photo');
@@ -34,7 +35,10 @@ check('description: gets truncated', descriptionFrom({ description: 'x'.repeat(2
 const fp = photoPrompt('A woman with red hair in a blazer.');
 check('photo prompt: person first, photo requirements after', fp.startsWith('A woman') && fp.includes('Photorealistic') && fp.includes('No text'));
 check('result avatar: photo as data URL passes', JSON.stringify(resultFrom('avatar', { image: 'data:image/jpeg;base64,/9j/4AAQ' })) === JSON.stringify({ what: 'avatar', image: 'data:image/jpeg;base64,/9j/4AAQ' }));
-check('result avatar: foreign image URL falls back to SVG and fails', throws(() => resultFrom('avatar', { image: 'https://x/y.jpg' })));
+check('result avatar: foreign image URL is refused', throws(() => resultFrom('avatar', { image: 'https://x/y.jpg' })));
+const parts = (resultFrom('avatar', { skin: 'deep', hair: 'black', style: 'afro', collar: 'blazer', cloth: 'navy', bg: 'sage', beard: 'none', glasses: 'round', headphones: false, earrings: true }) as { what: string; svg?: string });
+check('result avatar: the parts the model chose come back drawn by the kit', parts.what === 'avatar' && typeof parts.svg === 'string' && parts.svg.startsWith('<svg') && checkSvg(parts.svg) === parts.svg && parts.svg.includes('r="76"'));
+check('result avatar: garbage parts still give a picture (the defaults)', (resultFrom('avatar', { style: 'mohawk', nonsense: 1 }) as { svg?: string }).svg?.startsWith('<svg') === true);
 
 const pairs = (...l: [string, string, string?][]) => ({ suggestions: l.map(([name, area, voice]) => ({ name, area, voice })) });
 check('result name: cleaned, without duplicates, at most three, field of work beside each name',

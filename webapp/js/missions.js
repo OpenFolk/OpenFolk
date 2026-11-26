@@ -3,7 +3,7 @@
    the builder, which turns a goal in plain words into a proposal the user edits before anything is made. What a
    mission is and does comes from its machine's backend (local/src/missions.ts); the page never decides for it. */
 import { t, tn } from './i18n.js';
-import { el, node, state, toast } from './core.js';
+import { el, loadedAccount, node, relayScope, state, storage, toast } from './core.js';
 import { bot, clockTime, fillAvatar, send, upper } from './e2e.js';
 import { openChat } from './chat.js';
 import { confirmDialog } from './dialogs.js';
@@ -14,7 +14,31 @@ import { lineChart, shortNumber } from './chart.js';
 /** @type {View} */
 let view = { kind: 'list' };
 /** The builder: the proposal or mission being edited, whether the model is drafting, the last error. */
-const builder = { draft: null, busy: false, error: '', machine: '', goal: '', folder: '' };
+const builder = { draft: null, busy: false, error: '', machine: '', goal: '', folder: '', request: '', since: 0 };
+
+// A new mission not saved yet is kept on this device (per relay and account): a reload of the page, a restart of the
+// relay or the app sent to the background must not lose a proposal that took a minute and the edits made to it.
+const DRAFT_KEY = `openfolk-mission-draft${relayScope}:${loadedAccount}`;
+/** A proposal not answered after this long is taken as lost (the backend restarted meanwhile). */
+const PROPOSAL_WAIT_MS = 5 * 60_000;
+
+function keepDraft() {
+    const unsaved = builder.draft && !builder.draft.id;
+    if (!unsaved && !builder.goal.trim() && !builder.busy) return storage.remove(DRAFT_KEY);
+    storage.set(DRAFT_KEY, JSON.stringify({
+        goal: builder.goal, folder: builder.folder, machine: builder.machine, draft: unsaved ? builder.draft : null,
+        request: builder.busy ? builder.request : '', since: builder.since,
+    }));
+}
+
+(() => {
+    try {
+        const k = JSON.parse(storage.get(DRAFT_KEY) || 'null');
+        if (!k) return;
+        Object.assign(builder, { goal: k.goal || '', folder: k.folder || '', machine: k.machine || '', draft: k.draft || null });
+        if (k.request && Date.now() - (k.since || 0) < PROPOSAL_WAIT_MS) Object.assign(builder, { busy: true, request: k.request, since: k.since });
+    } catch { /* a broken entry: start empty */ }
+})();
 /** Filter of the log on the mission page. */
 let logFilter = 'all';
 let detailAsked = 0;
@@ -94,16 +118,20 @@ export function receiveMissionDetail(f) {
     if (!el.missionsPage.hidden && view.kind === 'detail' && view.id === f.id && !typing()) renderMissionsPage();
 }
 
-export function receiveProposal(p) {
+export function receiveProposal(p, id) {
+    // Sent to every page of the account: only the one that asked (or reloaded since) takes it
+    if (id && id !== builder.request) return;
     builder.busy = false;
+    builder.request = '';
     builder.error = '';
     builder.draft = { ...p, id: '', folder: p.folder || builder.folder || suggestedFolder(p.name, builder.machine) };
-    if (!el.missionsPage.hidden && view.kind === 'builder') renderMissionsPage();
+    keepDraft();
+    if (!el.missionsPage.hidden) renderMissionsPage();
 }
 
 export function missionSaved(id) {
-    builder.busy = false;
-    builder.draft = null;
+    Object.assign(builder, { busy: false, draft: null, goal: '', folder: '', request: '' });
+    keepDraft();
     if (!el.missionsPage.hidden) openMission(id);
 }
 
@@ -111,6 +139,8 @@ export function missionSaved(id) {
 export function missionError(message) {
     if (!el.missionsPage.hidden && view.kind === 'builder') {
         builder.busy = false;
+        builder.request = '';
+        keepDraft();
         builder.error = message;
         renderMissionsPage();
         return;
@@ -146,11 +176,22 @@ function askDetail(id) {
 
 // ---------------------------------------------------------------- Navigation
 
-/** The tab "Missions": the overview. */
+/** Set when the tab opens the page again: a builder still on the page is shown as it was, with what was typed. */
+let resuming = false;
+
+/**
+ * The tab "Missions": back where the user left it. An unsaved mission lives only in the builder, so going back to the
+ * overview here would hide it (and a proposal that arrived meanwhile); a mission gone meanwhile falls back to the list.
+ */
 export function showMissionList() {
-    view = { kind: 'list' };
+    if (view.kind === 'detail' && !mission(view.id)) view = { kind: 'list' };
+    if (view.kind === 'detail') askDetail(view.id);
+    resuming = view.kind === 'builder';
     for (const m of new Set(state.online)) send({ type: 'missions' }, m);
 }
+
+/** An unsaved new mission waits in the builder (proposal drafting or ready, fields filled in). */
+const draftWaiting = () => builder.busy || !!(builder.draft && !builder.draft.id) || !!builder.goal.trim();
 
 export function openMission(id) {
     view = { kind: 'detail', id };
@@ -190,6 +231,12 @@ export function missionsTitle() {
 
 export function renderMissionsPage() {
     el.gitTitle.textContent = missionsTitle();
+    const keep = resuming && view.kind === 'builder' && el.missionsPage.querySelector('.mission-form');
+    resuming = false;
+    if (keep) {
+        el.gitSub.textContent = '';
+        return;
+    }
     const m = view.kind === 'detail' ? mission(view.id) : null;
     el.gitSub.textContent = m ? upper(m.machine) : '';
     if (view.kind === 'builder') el.missionsPage.replaceChildren(...renderBuilder());
@@ -219,9 +266,18 @@ function renderList() {
     tile(milestones, t('missions.tileMilestones'));
     tile(critical, t('missions.tileCritical'), true);
     const head = node('div', 'mission-actions');
-    const create = button(t('missions.new'), 'primary', () => openBuilder(null));
-    create.disabled = !state.online.length;
-    head.append(create);
+    // A begun new mission is not lost by going back to the overview: it waits here until saved or discarded
+    if (draftWaiting()) {
+        const goOn = button(t(builder.busy ? 'missions.draftRunning' : 'missions.draftContinue'), 'primary', () => {
+            view = { kind: 'builder' };
+            renderMissionsPage();
+        });
+        head.append(goOn);
+    } else {
+        const create = button(t('missions.new'), 'primary', () => openBuilder(null));
+        create.disabled = !state.online.length;
+        head.append(create);
+    }
     const out = [tiles, head];
     if (!all.length) out.push(node('p', 'empty-small', t('missions.none')));
     for (const m of all) out.push(missionCard(m));
@@ -601,11 +657,13 @@ function goalStep() {
     goal.placeholder = t('missions.goalExample');
     goal.value = builder.goal;
     goal.dataset.field = 'goal';
+    goal.addEventListener('input', () => { builder.goal = goal.value; keepDraft(); });
     form.append(labelled(t('missions.f.goal'), goal));
     const folder = /** @type {HTMLInputElement} */ (node('input'));
     folder.placeholder = t('missions.folderOptional');
     folder.value = builder.folder;
     folder.dataset.field = 'folder';
+    folder.addEventListener('input', () => { builder.folder = folder.value.trim(); keepDraft(); });
     form.append(labelled(t('missions.f.folder'), folder, t('missions.folderHint')));
     const machine = machineSelect();
     if (machine) form.append(labelled(t('missions.f.machine'), machine));
@@ -617,6 +675,7 @@ function goalStep() {
         builder.goal = goal.value;
         builder.folder = folder.value.trim();
         builder.draft = emptyDraft();
+        keepDraft();
         renderMissionsPage();
     });
     manual.disabled = builder.busy;
@@ -630,7 +689,10 @@ function goalStep() {
         builder.folder = folder.value.trim();
         builder.busy = true;
         builder.error = '';
-        send({ type: 'mission_propose', text: builder.goal, ...(builder.folder ? { folder: builder.folder } : {}) }, builder.machine || undefined);
+        builder.request = Math.random().toString(36).slice(2, 12);
+        builder.since = Date.now();
+        keepDraft();
+        send({ type: 'mission_propose', text: builder.goal, id: builder.request, ...(builder.folder ? { folder: builder.folder } : {}) }, builder.machine || undefined);
         renderMissionsPage();
     });
     return [form];
@@ -754,12 +816,29 @@ function builderForm(d) {
         send({ type: 'mission_save', mission: input, ...(start ? { start: true } : {}) }, editing ? mission(d.id)?.machine : machine);
         renderMissionsPage();
     };
-    if (!editing) row.append(button(t('missions.discard'), 'btn', () => { builder.draft = null; renderMissionsPage(); }));
+    if (!editing) {
+        row.append(button(t('missions.discard'), 'btn', () => {
+            Object.assign(builder, { draft: null, goal: '', folder: '', error: '', request: '', busy: false });
+            keepDraft();
+            view = { kind: 'list' };
+            renderMissionsPage();
+        }));
+    }
     row.append(button(t(editing ? 'missions.saveChanges' : 'missions.saveDraft'), editing ? 'primary' : 'btn', () => save(false)));
     if (!started) row.append(button(t('missions.saveStart'), 'primary', () => save(true)));
     for (const x of row.querySelectorAll('button')) /** @type {HTMLButtonElement} */ (x).disabled = builder.busy;
     form.append(row);
     form.addEventListener('submit', (ev) => ev.preventDefault());
+    // Every edit of a new mission is kept on the device, so a reload brings it back as it was
+    if (!editing) {
+        const keep = () => {
+            const now = collect(form, d, true);
+            if (now) builder.draft = { ...d, ...now, machine: d.machine };
+            keepDraft();
+        };
+        form.addEventListener('input', keep);
+        form.addEventListener('change', keep);
+    }
     return form;
 }
 
@@ -794,8 +873,8 @@ function memberRow(x, started, team) {
     return row;
 }
 
-/** The form as MissionInput; null (with the error shown) when something is missing. */
-function collect(form, d) {
+/** The form as MissionInput; null (with the error shown) when something is missing; `quiet`: as far as filled in, for keeping it. */
+function collect(form, d, quiet = false) {
     const v = (f) => /** @type {HTMLInputElement} */ (form.querySelector(`:scope > label [data-field="${f}"], :scope > .two-columns [data-field="${f}"]`))?.value?.trim() ?? '';
     const lines = (f) => v(f).split('\n').map((x) => x.trim()).filter(Boolean);
     const num = (f) => (v(f) === '' ? undefined : Math.max(0, Number(v(f))) || 0);
@@ -808,14 +887,17 @@ function collect(form, d) {
             : { name: field('name'), area: field('area'), role: field('role'), tone: field('tone'), voice: field('voice') === 'male' ? 'male' : 'female', supervisor: lead };
     }).filter((x) => x.botId || x.name);
     const fail = (key) => {
+        if (quiet) return null;
         builder.error = t(key);
         renderMissionsPage();
         return null;
     };
-    if (!v('name')) return fail('missions.needName');
-    if (!v('goal')) return fail('missions.needGoal');
-    if (!team.length) return fail('missions.needTeam');
-    if (!v('folder') && !d.folder) return fail('missions.needFolder');
+    if (!quiet) {
+        if (!v('name')) return fail('missions.needName');
+        if (!v('goal')) return fail('missions.needGoal');
+        if (!team.length) return fail('missions.needTeam');
+        if (!v('folder') && !d.folder) return fail('missions.needFolder');
+    }
     const money = /^\s*([\d.,]+)\s*([A-Za-z]{3})?\s*$/.exec(v('money'));
     const guardrails = {};
     for (const line of lines('guardrails')) {
