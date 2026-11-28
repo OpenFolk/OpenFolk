@@ -15,6 +15,7 @@ import { checkPeerData } from './frames.ts';
 import { t } from './i18n.ts';
 import { migratePeerData } from './migrate.ts';
 import { DEFAULT_ACCOUNT, inAccount } from './store.ts';
+import { cleanRelayVersion, relayInfo } from './relay-info.ts';
 import type {
     AgentFrame, AgentInbound, AgentOutbound, ClientFrame, E2eFrame, NativePushChannel, NativePushMessage, NativePushSubscription, PairBox, PeerData, Person,
     WakeEntry,
@@ -390,6 +391,7 @@ export class RelayClient {
                 case 'woken': for (const h of r.all()) h.woken(e.routines); break;
                 case 'warning': of(e.account)?.warning(e.code, e.params ?? {}); break;
                 case 'relay_hello':
+                    relayInfo.version = cleanRelayVersion(e.version);
                     this.relayPushChannels = Array.isArray(e.pushChannels) ? e.pushChannels.filter((c) => c === 'apns' || c === 'fcm') : [];
                     if (this.relayPushChannels.length) this.log(`relay delivers app push over ${this.relayPushChannels.join(', ')}`);
                     r.hello(Array.isArray(e.accounts) ? e.accounts.filter((a) => typeof a === 'string') : null,

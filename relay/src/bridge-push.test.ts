@@ -78,6 +78,18 @@ await bridge.connectAgent(plain.ws as never, '203.0.113.10', 'workstation');
 const hello2 = plain.received.find((x) => 'type' in x && x.type === 'relay_hello');
 check('relay without credentials reports no channels', !!hello2 && 'pushChannels' in hello2 && hello2.pushChannels.length === 0);
 
+// ---- the relay's version in relay_hello (optional, so an older backend ignores it and a relay without one sends none)
+check('relay_hello has no version while the relay has none', !!hello2 && !('version' in hello2));
+bridge.version = '0.9.0';
+const versioned = fakeAgent();
+await bridge.connectAgent(versioned.ws as never, '203.0.113.11', 'tower');
+const hello3 = versioned.received.find((x) => 'type' in x && x.type === 'relay_hello');
+check('relay_hello tells the version of the relay', !!hello3 && 'version' in hello3 && hello3.version === '0.9.0', hello3);
+const withAccounts = fakeAgent();
+await bridge.connectAgent(withAccounts.ws as never, '203.0.113.12', 'tablet', true);
+const hello4 = withAccounts.received.find((x) => 'type' in x && x.type === 'relay_hello');
+check('… also to a backend that serves accounts', !!hello4 && 'version' in hello4 && hello4.version === '0.9.0', hello4);
+
 // ---- a second sign-in under a connected name: from elsewhere it warns the machine, from the same address it is a restart
 const warnings = () => backend.received.filter((x) => 'type' in x && x.type === 'warning');
 const impostor = fakeAgent();

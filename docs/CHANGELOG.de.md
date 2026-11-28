@@ -9,6 +9,11 @@ dieselben.
 - Die Store-Apps fragen einmal nach den Nutzungsbedingungen, bevor die erste Nachricht an eine Person geht (Apples Regeln
   für Inhalte anderer Personen); Browser und Desktop-Apps fragen nicht.
 - Einstellungen › Über verlinkt die Datenschutzerklärung und die Seite zum Löschen des Kontos auf openfolk.app.
+- Die Version des Relays: Das Relay nennt sie in `relay_hello` (neues optionales Feld `version`), die Backends reichen sie
+  als `relayVersion` in `backend_status` weiter, und die Web-App zeigt sie neben der Adresse des Relays auf der
+  Status-Seite und in Einstellungen › Über. Ist das Relay älter als die App oder ein verbundenes Backend (nur
+  Major.Minor), sagt es eine Zeile auf der Status-Seite, und der Status-Tab bekommt ein „!“. Ein Relay vor 0.9.0 nennt
+  keine Version und erscheint als „unbekannt (älter als 0.9.0)“. `PROTOCOL_VERSION` bleibt unverändert.
 
 ### Geändert
 - „Melden“ ohne weiteren Admin auf dem Relay bleibt in der App: Das Backend schickt die Meldung über den Push-Dienst von

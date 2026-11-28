@@ -115,11 +115,16 @@ export function relayAddress() {
  * 127.0.0.1), ' · via <host>' for a relay elsewhere; '' while there is no address.
  */
 export function connectionVia() {
+    const r = relayHost();
+    return r ? ' · ' + (r.local ? t('status.viaLocal') : t('status.viaRelay', { host: r.host })) : '';
+}
+
+/** Host name of the relay this device uses and whether that is the relay on this computer; null while there is no address. */
+export function relayHost() {
     let host = '';
-    try { host = new URL(relayAddress()).hostname; } catch { return ''; }
-    if (!host) return '';
-    const local = host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '[::1]';
-    return ' · ' + (local ? t('status.viaLocal') : t('status.viaRelay', { host }));
+    try { host = new URL(relayAddress()).hostname; } catch { return null; }
+    if (!host) return null;
+    return { host, local: host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '[::1]' };
 }
 
 /** The app has no relay address yet; the login form asks for it. */

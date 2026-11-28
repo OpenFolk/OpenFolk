@@ -2,11 +2,11 @@
 import { BACKEND_LANGUAGE_KEY, LANGUAGE_KEY, i18n, isLanguage, locale, readSetting, resolveLanguage, setLanguage, t, writeSetting } from './i18n.js';
 import { BUBBLE_DEFAULT, BUBBLE_KEY, PROTOCOL_VERSION, SUPPORT_MAIL, THEME_KEY, el, md, node, state, storage, toast } from './core.js';
 import { clockTime, e2e, send, upper } from './e2e.js';
-import { askAutologon, machineCan } from './machines.js';
+import { RELAY_VERSION_SINCE, askAutologon, machineCan, relayStatus } from './machines.js';
 import { setShowAllAccounts } from './others.js';
 import { qrSvg } from './qr-login.js';
 import { layoutPanes } from './panes.js';
-import { desktopUpdates, desktopVersion, iosBrowserTab, relayAddress } from './platform.js';
+import { desktopUpdates, desktopVersion, iosBrowserTab, relayAddress, relayHost } from './platform.js';
 import { loadPushSettings } from './push.js';
 import { loadAccounts } from './accounts.js';
 import { relayClaimForm } from './relay-claim.js';
@@ -162,8 +162,9 @@ export function renderSettings() {
 }
 
 /**
- * "About": the versions the app really knows. The backends send their protocol version in backend_status (software
- * versions of backend and relay do not reach the app); the desktop app is named in its user agent.
+ * "About": the versions the app really knows. The backends send their version and protocol version in backend_status,
+ * with the version of the relay they are connected to (relayVersion, from the relay's own hello); the desktop app is named in
+ * its user agent.
  */
 export function renderAbout() {
     const rows = [];
@@ -174,6 +175,9 @@ export function renderAbout() {
     rows.push([t('about.openfolk'), version]);
     if (desktopVersion) rows.push([t('about.desktop'), desktopVersion]);
     rows.push([t('about.webapp'), t('about.protocol', { n: PROTOCOL_VERSION })]);
+    const relay = relayStatus();
+    const via = relayHost();
+    if (relay && via) rows.push([t('about.relay'), `${relay.version || t('status.relayUnknown', { since: RELAY_VERSION_SINCE })} · ${via.local ? t('status.viaLocal') : via.host}`]);
     const machines = Object.keys(state.backendPerMachine).filter((m) => state.online.includes(m)).sort();
     for (const machine of machines) {
         const st = state.backendPerMachine[machine];

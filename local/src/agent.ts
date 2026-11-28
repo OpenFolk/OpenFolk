@@ -30,6 +30,7 @@ import {
 } from './bots.ts';
 import { autologon, canAutologon, type AutologonState } from './autologon.ts';
 import { BACKEND_VERSION, config } from './config.ts';
+import { relayInfo } from './relay-info.ts';
 import { pin, pinnedForBrowser } from './pinned.ts';
 import { applySeen, loadSeen, seenSince } from './seen.ts';
 import { chatCommands, folderCommands, isCommand } from './commands.ts';
@@ -333,6 +334,7 @@ export class BotManager implements SessionHooks {
             since: new Date(this.startedAt).toISOString(), changed: changedSince(this.startedAt), ...(w ? { requested: w } : {}),
             protocol: PROTOCOL_VERSION, minClientProtocol: MIN_CLIENT_PROTOCOL,
             handover: this.accountId === ownerAccount() ? handoverTargets() : [], ...(BACKEND_VERSION ? { version: BACKEND_VERSION } : {}),
+            ...(relayInfo.version ? { relayVersion: relayInfo.version } : {}),
         };
         const ide = this.accountId === ownerAccount() ? handoverIdeName() : null;
         if (ide) Object.assign(status, { ide });

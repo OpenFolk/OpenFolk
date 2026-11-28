@@ -91,7 +91,7 @@ export const el = {
     kType: /** @type {HTMLSelectElement} */ ($('knowledge-type')), kDescription: /** @type {HTMLInputElement} */ ($('knowledge-description')), kText: /** @type {HTMLTextAreaElement} */ ($('knowledge-text')), kError: $('knowledge-error'), kDelete: /** @type {HTMLButtonElement} */ ($('knowledge-delete')),
     machines: $('machines'), machinesNone: $('machines-none'), usageNone: $('usage-none'), machinesPage: $('machines-page'),
     missionsPage: $('missions-page'), tabMissionsBadge: $('tab-missions-badge'),
-    tabBar: $('tab-bar'), tabStatus: /** @type {HTMLElement} */ ($('tab-bar').querySelector('[data-tab=machines]')), tabStatusBadge: $('tab-status-badge'), statusRepos: $('status-repos'), machinesSignin: $('machines-signin'),
+    tabBar: $('tab-bar'), tabStatus: /** @type {HTMLElement} */ ($('tab-bar').querySelector('[data-tab=machines]')), tabStatusBadge: $('tab-status-badge'), statusRepos: $('status-repos'), machinesSignin: $('machines-signin'), machinesRelay: $('machines-relay'),
     gitPage: $('git-page'), gitPageContent: $('git-page-content'), gitBack: /** @type {HTMLButtonElement} */ ($('git-back')), gitTitle: $('git-title'), gitSub: $('git-sub'),
     archive: $('archive'), archiveSub: $('archive-sub'), archiveList: $('archive-list'),
     report: $('report'), reportForm: /** @type {HTMLFormElement} */ ($('report-form')), reportQuote: $('report-quote'), reportReason: /** @type {HTMLSelectElement} */ ($('report-reason')),

@@ -4,7 +4,8 @@ import { el, node, state } from './core.js';
 import { clockTime, colorOf, group, responsibleMachine, send, upper } from './e2e.js';
 import { renderHeaders } from './chat.js';
 import { textHeight } from './queue.js';
-import { connectionVia } from './platform.js';
+import { connectionVia, relayHost } from './platform.js';
+import { VERSION } from './release.js';
 
 /** @typedef {import('./panes.js').Pane} Pane */
 import { renderSettings } from './settings.js';
@@ -75,19 +76,77 @@ export function refreshMachinesPage() {
     if (!el.machinesPage.hidden) renderMachines();
 }
 
+/** The first OpenFolk whose relay tells its version (relay_hello); a relay without one is older than this. */
+export const RELAY_VERSION_SINCE = '0.9.0';
+
+/** [major, minor] of "1.2.3" (patch and pre-release left out: a relay one patch behind is no reason to warn); null if it is no version. */
+function majorMinor(v) {
+    const m = /^(\d+)\.(\d+)/.exec(v || '');
+    return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
+/** Whether major.minor of a is lower than that of b. */
+function olderMinor(a, b) {
+    const x = majorMinor(a);
+    const y = majorMinor(b);
+    return Boolean(x && y && (x[0] < y[0] || (x[0] === y[0] && x[1] < y[1])));
+}
+
 /**
- * The badge of the status tab: the number of repos with open changes (menus.js renderGitTotal), "!" for a hint or while
- * a machine that runs bots lost its sign-in; the page says which and how.
+ * What is known of the relay this device is connected to: its version (relayVersion of the backends' backend_status; the
+ * relay is one for all machines online) and, if it is older than this app or a connected backend (major.minor only),
+ * the newest of those as `older`: { text, version }. A backend that sends no version of its own is from before the field
+ * and says nothing about the relay; one that does and gets none says the relay is older than RELAY_VERSION_SINCE.
+ * Null while nothing is known.
+ * @returns {{ version: string, unknown: boolean, older: { text: string, version: string } | null } | null}
+ */
+export function relayStatus() {
+    const backends = state.online.map((m) => [m, state.backendPerMachine[m]]).filter(([, b]) => b && b.version);
+    const version = (backends.find(([, b]) => b.relayVersion) || [])[1]?.relayVersion || '';
+    const unknown = !version && backends.some(([, b]) => !olderMinor(b.version, RELAY_VERSION_SINCE));
+    if (!version && !unknown) return null;
+    // Without a version the relay is known to be older than RELAY_VERSION_SINCE: older than whatever has reached it
+    const behind = (v) => (version ? olderMinor(version, v) : !olderMinor(v, RELAY_VERSION_SINCE));
+    const others = [{ version: VERSION, text: t('status.relayThisApp', { version: VERSION }) },
+        ...backends.map(([m, b]) => ({ version: b.version, text: t('status.relayBackend', { machine: upper(m), version: b.version }) }))]
+        .filter((o) => behind(o.version))
+        .sort((a, b) => (olderMinor(a.version, b.version) ? 1 : olderMinor(b.version, a.version) ? -1 : 0));
+    return { version, unknown, older: others[0] || null };
+}
+
+/** The line above the machines: the relay's address and version, and what to do when it is older (no popup). */
+function renderRelayLine() {
+    const r = relayStatus();
+    const via = relayHost();
+    el.machinesRelay.hidden = !r || !via;
+    if (!r || !via) return;
+    const what = r.version || t('status.relayUnknown', { since: RELAY_VERSION_SINCE });
+    const rows = [node('div', '', t('status.relayLine', { host: via.local ? t('status.viaLocal') : via.host, version: what }))];
+    if (r.older) rows.push(node('div', 'relay-old', relayOutdatedText(r)));
+    el.machinesRelay.replaceChildren(...rows);
+}
+
+/** "The relay (version 0.8.0) is older than this app (0.9.0). Update the relay." */
+function relayOutdatedText(r) {
+    return t(r.version ? 'status.relayOutdated' : 'status.relayOutdatedUnknown', { relay: r.version, other: r.older.text });
+}
+
+/**
+ * The badge of the status tab: the number of repos with open changes (menus.js renderGitTotal), "!" for a hint, while
+ * a machine that runs bots lost its sign-in or while the relay is older than the app or a backend; the page says which and how.
  */
 export function renderStatusBadge() {
     const lost = signInLost();
-    el.tabStatusBadge.hidden = !lost && !reposBadge.count && !reposBadge.hint;
-    el.tabStatusBadge.textContent = reposBadge.count && !lost ? String(reposBadge.count) : '!';
-    el.tabStatus.title = [lost ? t('status.signInLost') : '', reposBadge.title].filter(Boolean).join(' · ');
+    const relay = relayStatus();
+    const old = Boolean(relay && relay.older);
+    el.tabStatusBadge.hidden = !lost && !old && !reposBadge.count && !reposBadge.hint;
+    el.tabStatusBadge.textContent = reposBadge.count && !lost && !old ? String(reposBadge.count) : '!';
+    el.tabStatus.title = [lost ? t('status.signInLost') : '', old ? relayOutdatedText(relay) : '', reposBadge.title].filter(Boolean).join(' · ');
 }
 
 export function renderMachines() {
     renderStatusBadge();
+    renderRelayLine();
     const card = setupCard(true);
     el.machinesSignin.replaceChildren(...(card ? [card] : []));
     el.machinesSignin.hidden = !card;
