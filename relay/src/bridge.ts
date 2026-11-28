@@ -79,6 +79,8 @@ export class Bridge {
      * `pushChannels` is what the relay tells every backend on connect; empty = the relay cannot deliver.
      */
     pushChannels: NativePushChannel[] = [];
+    /** The relay's own version, told to every backend in relay_hello (relay.ts sets it); empty = not told. */
+    version = '';
     onPush: (subscriptions: NativePushSubscription[], message: NativePushMessage) => Promise<NativePushSubscription[]> = async () => [];
     /** A backend's answer to "first_device" (relay.ts passes the box to the waiting device). */
     onFirstDevice: (id: string, box: PairBox | undefined, error: string | undefined) => void = () => undefined;
@@ -337,12 +339,13 @@ export class Bridge {
         this.log(`Agent ${machine} connected from ${ip}${accounts ? '' : ' (without accounts, serves main only)'}${bound ? ` (bound to account ${bound})` : ''} (${this.online().join(', ')})`);
         const list = this.accountList();
         const setupBy = bound ? this.setupBy(bound) : undefined;
+        const ver = this.version ? { version: this.version } : {};
         this.toAgent(ws, !accounts
-            ? { type: 'relay_hello', pushChannels: this.pushChannels }
+            ? { type: 'relay_hello', pushChannels: this.pushChannels, ...ver }
             : bound
-                ? { type: 'relay_hello', pushChannels: this.pushChannels, accounts: [bound], deletedAccounts: [], people: this.peopleFor(agent, list.people), bound, ...(setupBy ? { setupBy } : {}) }
+                ? { type: 'relay_hello', pushChannels: this.pushChannels, ...ver, accounts: [bound], deletedAccounts: [], people: this.peopleFor(agent, list.people), bound, ...(setupBy ? { setupBy } : {}) }
                 : {
-                    type: 'relay_hello', pushChannels: this.pushChannels, accounts: list.ids.filter((id) => this.serves(agent, id)), deletedAccounts: list.deleted,
+                    type: 'relay_hello', pushChannels: this.pushChannels, ...ver, accounts: list.ids.filter((id) => this.serves(agent, id)), deletedAccounts: list.deleted,
                     people: list.people,
                 });
         this.announceOnline();

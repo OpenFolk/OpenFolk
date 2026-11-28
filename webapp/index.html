@@ -153,6 +153,8 @@
                 <!-- A machine that lost its sign-in: what to do, above the machines (welcome.js setupCard(true)) -->
                 <div class="start-setup status-signin" id="machines-signin" hidden></div>
                 <h3 data-i18n="status.machines"></h3>
+                <!-- The relay: its address and version, and a line when it is older than this app or a backend (machines.js relayStatus) -->
+                <div class="machines-relay" id="machines-relay" hidden></div>
                 <div class="machines" id="machines"></div>
                 <p class="empty-small" id="machines-none" data-i18n="status.noMachines" hidden></p>
                 <!-- The open changes of all bots' repos, with commit and push (menus.js; until 2026-11 a tab of its own) -->

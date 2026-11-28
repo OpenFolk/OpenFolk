@@ -27,6 +27,7 @@ import { MachineTokens, MIN_TOKEN_LENGTH, Owner, UNCLAIMED_PAGE, type Credential
 import { acceptWakeAgent, handleWakeRequest, setWakeConfig, wake, wakeConfig, wakeConfigured, wakeSummary, wakeableMachines, type WakeConfig } from './wakeup.ts';
 import { WakeScheduler } from './wake-schedule.ts';
 import { nativeChannels, sendNative } from '../../shared/push-native.ts';
+import { RELAY_VERSION } from './version.ts';
 import { DEVICE_WINDOWS, handlePushRequest, handleReportRequest, Limiter, REPORT_WINDOWS, SENDER_WINDOWS } from './push-service.ts';
 
 export interface RelayOptions {
@@ -670,6 +671,7 @@ export async function startRelay(o: RelayOptions): Promise<RelayHandle> {
 
     // Push to the apps for backends without APNs/FCM credentials of their own (APNS_* / FCM_* on the relay)
     bridge.pushChannels = nativeChannels();
+    bridge.version = RELAY_VERSION;
     bridge.onPush = async (subscriptions, message) => {
         const gone: typeof subscriptions = [];
         await Promise.all(subscriptions.map(async (sub) => {

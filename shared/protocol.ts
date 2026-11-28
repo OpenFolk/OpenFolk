@@ -1404,7 +1404,9 @@ export type AgentFrame =
         /** Name of the IDE "Open in the IDE" opens (the machine setting); missing when the .env sets its own command or from older backends. */
         ide?: string;
         /** Version of OpenFolk the backend runs (local/package.json); missing = backend before 0.2.1. */
-        version?: string }
+        version?: string;
+        /** Version of the relay this backend is connected to, from its relay_hello; missing = relay before 0.9.0 or backend before it. */
+        relayVersion?: string }
     /**
      * History of a VS Code session: `from` is the index of the first entry; from there the browser replaces its
      * state (everything on open, afterwards only the changed end).
@@ -2030,6 +2032,8 @@ export type AgentInbound =
     | { type: 'warning'; code: 'new_device' | 'duplicate_agent'; params: Record<string, string>; account?: string }
     /** First message after connecting: what the relay can do for this backend. Older relays send none. */
     | { type: 'relay_hello'; /** app push channels the relay can deliver to (APNS_* / FCM_* set on the relay) */ pushChannels: NativePushChannel[];
+        /** the version of OpenFolk the relay runs (relay/package.json); missing = relay before 0.9.0 */
+        version?: string;
         /** the accounts there are and the ones deleted (their data goes); missing = relay without accounts, only 'main' */
         accounts?: string[]; deletedAccounts?: string[];
         /** the accounts with name and reach, for person chats; missing = relay from before them */

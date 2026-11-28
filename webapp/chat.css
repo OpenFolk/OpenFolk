@@ -434,6 +434,8 @@ pre { white-space: pre-wrap; word-break: break-word; }
 .machine-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .machine-text strong { color: var(--text); font-weight: 600; }
 .machines-error { color: var(--danger); }
+.machines-relay { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.machines-relay .relay-old { margin-top: 2px; color: var(--warning); }
 .dot.on { background: #25d366; }
 .dot.half { background: var(--warning); }
 .dot.off { background: transparent; border: 1.5px solid var(--muted); }

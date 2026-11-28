@@ -9,6 +9,11 @@ and the project uses [Semantic Versioning](https://semver.org/) once it leaves 0
 - The store apps ask once for the terms of use before the first message to a person (Apple's rules for content of
   other people); the browser and the desktop apps do not.
 - Settings › About links the privacy policy and the page on deleting your account at openfolk.app.
+- The relay's version: the relay tells it in `relay_hello` (new optional field `version`), the backends pass it on as
+  `relayVersion` in `backend_status`, and the web app shows it next to the relay's address on the status page and in
+  Settings › About. When the relay is older than the app or a connected backend (major.minor only), a line on the status
+  page says so and the status tab gets a "!". A relay before 0.9.0 sends none and shows as "unknown (older than 0.9.0)".
+  No change to `PROTOCOL_VERSION`.
 
 ### Changed
 - "Report" without another admin on the relay stays in the app: the backend sends the report to the OpenFolk team
